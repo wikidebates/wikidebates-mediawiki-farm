@@ -86,7 +86,9 @@ namespace {
 		'Processing discarded an interlanguage link'
 	);
 
-	foreach ( [ null, '', 'invalid json', '"unexpected scalar"', '[]' ] as $response ) {
+	foreach ( [ null, '', 'invalid json', '"unexpected scalar"', '[]',
+		'{"query":{"pages":[]}}', '{"query":{"pages":"broken"}}'
+	] as $response ) {
 		$client->response = $response;
 		$bad = $extension->getLinksFromApi( 'Test page' );
 		assertInterlanguageApi( $bad === [], 'Invalid API response should be ignored' );
