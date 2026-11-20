@@ -316,8 +316,13 @@ class InterlanguageExtension {
 			urlencode( $title );
 		$response = MediaWikiServices::getInstance()->getHttpRequestFactory()->get( $url, [], __METHOD__ );
 		$data = is_string( $response ) ? json_decode( $response, true ) : null;
-		// Invalid responses retain the existing fallback to locally stored links.
-		return is_array( $data ) ? $data : [];
+		// Invalid or empty page lists must use the existing local-link fallback.
+		if ( !is_array( $data ) || !isset( $data['query']['pages'] ) ||
+			!is_array( $data['query']['pages'] ) || !$data['query']['pages']
+		) {
+			return [];
+		}
+		return $data;
 	}
 
 	/**
