@@ -53,15 +53,16 @@ $wgResourceModules['ext.Interlanguage'] = array(
  * @return bool
  */
 function wfInterlanguageExtension( $parser ) {
-	global $wgHooks, $wgInterlanguageExtension;
+	global $wgInterlanguageExtension;
 
 	if ( !isset( $wgInterlanguageExtension ) ) {
 		$wgInterlanguageExtension = new InterlanguageExtension();
-		$wgHooks['OutputPageParserOutput'][] = $wgInterlanguageExtension;
-		$wgHooks['EditPage::showEditForm:fields'][] = array( $wgInterlanguageExtension, 'pageLinks' );
-		$wgHooks['SkinTemplateOutputPageBeforeExec'][] = [ $wgInterlanguageExtension, 'onSkinTemplateOutputPageBeforeExec' ];
-		$wgHooks['ContentAlterParserOutput'][] = $wgInterlanguageExtension;
-		$wgHooks['OutputPageParserOutput'][] = [ $wgInterlanguageExtension, 'onWikirougeOutputPageParserOutput' ];
+		$hookContainer = \MediaWiki\MediaWikiServices::getInstance()->getHookContainer();
+		$hookContainer->register( 'OutputPageParserOutput', $wgInterlanguageExtension );
+		$hookContainer->register( 'EditPage::showEditForm:fields', [ $wgInterlanguageExtension, 'pageLinks' ] );
+		$hookContainer->register( 'SkinTemplateOutputPageBeforeExec', [ $wgInterlanguageExtension, 'onSkinTemplateOutputPageBeforeExec' ] );
+		$hookContainer->register( 'ContentAlterParserOutput', $wgInterlanguageExtension );
+		$hookContainer->register( 'OutputPageParserOutput', [ $wgInterlanguageExtension, 'onWikirougeOutputPageParserOutput' ] );
 		$parser->setFunctionHook( 'interlanguage', [ $wgInterlanguageExtension, 'interlanguage' ], Parser::SFH_NO_HASH );
 	}
 	return true;
@@ -83,7 +84,8 @@ $wgHooks['ArticleDeleteComplete'][] = function (
 
 	$canonicalTitleText = InterlanguageExtension::getCanonicalTitleText( $title );
 
-	$foreignDbr = wfGetDB( DB_PRIMARY, [], $wgInterlanguageExtensionDB );
+	$foreignDbr = \MediaWiki\MediaWikiServices::getInstance()->getConnectionProvider()
+		->getPrimaryDatabase( $wgInterlanguageExtensionDB );
 	$foreignDbr->delete(
 		'interlanguage_links',
 		[
