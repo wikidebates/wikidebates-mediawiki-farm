@@ -33,6 +33,12 @@ class InterlanguageExtension {
 	 */
 	public $foreignDbr = false;
 
+	/**
+	 * Keep the primary connection separate from the replica connection.
+	 * @var \Wikimedia\Rdbms\IDatabase|false
+	 */
+	private $foreignDbw = false;
+
 	public static function getCanonicalTitleText( Title $title ) {
 		$canonicalNamespaces = MediaWikiServices::getInstance()->getNamespaceInfo()->getCanonicalNamespaces();
 		$titleText = $title->getText();
@@ -54,16 +60,16 @@ class InterlanguageExtension {
 			return true;
 		}
 
-		$a = @unserialize( $a );
+		$a = @unserialize( $a, [ 'allowed_classes' => false ] );
 		if ( !is_array( $a ) ) {
 			return true;
 		}
 
-		$langLinks = $outputPage->getLanguageLinks();
+		$langLinks = [];
 		foreach ( $a as $value ) {
 			$langLinks[] = "{$value['lang']}:{$value['*']}";
 		}
-		$outputPage->setLanguageLinks( array_unique( $langLinks ) );
+		$outputPage->addLanguageLinks( $langLinks );
 		return true;
 	}
 
@@ -87,13 +93,13 @@ class InterlanguageExtension {
 //			return true;
 //		}
 
-		if ( !$this->foreignDbr ) {
-			$this->foreignDbr = MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase( $wgInterlanguageExtensionDB );
+		if ( !$this->foreignDbw ) {
+			$this->foreignDbw = MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase( $wgInterlanguageExtensionDB );
 		}
 
 		$canonicalTitleText = self::getCanonicalTitleText( $title );
 
-		$foreignDB = $this->foreignDbr;
+		$foreignDB = $this->foreignDbw;
 		$tables = [ 'langlinks', 'page' ];
 		$vars = [ 'page_id', 'page_namespace', 'page_title' ];
 		$conds = [
@@ -144,7 +150,7 @@ class InterlanguageExtension {
 		if ( $row ) {
 			$pageId = $row->page_id;
 			$parserOutput->addModules( [ 'ext.Interlanguage' ] );
-			$a = $this->readLinksFromDB( $this->foreignDbr, $pageId );
+			$a = $this->readLinksFromDB( $foreignDB, $pageId );
 
 			$foreignLang = substr( $wgInterlanguageExtensionInterwiki, 0, -1 );
 			$foreignTitle = null;
@@ -301,11 +307,12 @@ class InterlanguageExtension {
 
 		$url = $wgInterlanguageExtensionApiUrl .
 			"?action=query&prop=langlinks&" .
-			"lllimit=500&format=php&redirects&titles=" .
+			"lllimit=500&format=json&formatversion=1&redirects&titles=" .
 			urlencode( $title );
-		$a = Http::get( $url );
-		$a = @unserialize( $a );
-		return $a;
+		$response = MediaWikiServices::getInstance()->getHttpRequestFactory()->get( $url, [], __METHOD__ );
+		$data = is_string( $response ) ? json_decode( $response, true ) : null;
+		// Invalid responses retain the existing fallback to locally stored links.
+		return is_array( $data ) ? $data : [];
 	}
 
 	/**
@@ -363,7 +370,7 @@ class InterlanguageExtension {
 		if ( !$ilp ) {
 			$ilp = [];
 		} else {
-			$ilp = @unserialize( $ilp );
+			$ilp = @unserialize( $ilp, [ 'allowed_classes' => false ] );
 			if ( !is_array( $ilp ) ) {
 				$ilp = [];
 			}
@@ -387,7 +394,7 @@ class InterlanguageExtension {
 			return false;
 		}
 
-		$ilp = @unserialize( $ilp );
+		$ilp = @unserialize( $ilp, [ 'allowed_classes' => false ] );
 		if ( !is_array( $ilp ) ) {
 			return [];
 		}
@@ -401,7 +408,7 @@ class InterlanguageExtension {
 	function onOutputPageParserOutput( &$out, $parserOutput ) {
 		$pagelinks = $this->getPageLinks( $parserOutput );
 		if ( $pagelinks ) {
-			$out->interlanguage_pages = $pagelinks;
+			$out->setProperty( 'interlanguage_pages', $pagelinks );
 		}
 		return true;
 	}
@@ -494,7 +501,7 @@ THEEND;
 		global $wgInterlanguageExtensionInterwiki;
 
 		$out = $sktemplate->getOutput();
-		$pagelinks = isset( $out->interlanguage_pages ) ? $out->interlanguage_pages : [];
+		$pagelinks = $out->getProperty( 'interlanguage_pages' ) ?? [];
 		$pagelinktitles = $this->makePageLinkTitles( $pagelinks );
 
 		// Allow quick page creation when the title will be the same
@@ -554,7 +561,7 @@ THEEND;
 		$pagelinks = [];
 		$row = $res->fetchObject();
 		if ( $row ) {
-			$pagelinks = @unserialize( $row->pp_value );
+			$pagelinks = @unserialize( $row->pp_value, [ 'allowed_classes' => false ] );
 		}
 
 		return $pagelinks;
