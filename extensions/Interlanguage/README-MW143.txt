@@ -30,8 +30,11 @@ Correctifs de compatibilite et de securite (novembre 2026)
 - La fonction de parseur est enregistree sur chaque instance du parseur.
 - Les reponses de purge distante anormales sont journalisees (canal Interlanguage).
 
-Tests sans demarrer MediaWiki :
+Tests sans demarrer MediaWiki (sans reseau ni ecriture SQL) :
 	php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguageApiSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguageDatabaseSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
 
 Verifier la syntaxe :
 	php -l extensions/Interlanguage/Interlanguage.php
@@ -48,3 +51,17 @@ Non modifie volontairement : logique de detection des differences dans
 LinksUpdate, authentification/reessais des purges distantes, et deplacement
 des ecritures SQL hors du rendu. Ces changements ont un impact fonctionnel
 et necessitent des tests d'integration specifiques.
+
+Recette fonctionnelle recommandee avant toute fusion
+- Sur une instance de test fr/en, comparer les liens interlangues existants
+  avant/apres activation des correctifs (pages ordinaires et redirects).
+- Verifier les pages ayant une relation explicite avec le wiki central,
+  les titres comportant un deux-points et les pages sans traduction.
+- Verifier le module API "prop=langlinks" sur les deux wikis.
+- Verifier qu'un second parseur construit dans la meme requete reconnait
+  la fonction interlanguage.
+- Sur une instance de test seulement, creer/modifier/supprimer un lien
+  interlangue et confirmer que les pages ciblees sont actualisees.
+- Surveiller les avertissements PHP et le canal de logs Interlanguage.
+- Les tests de code autonomes simulent les dependances MediaWiki :
+  leur reussite ne demontre pas le bon fonctionnement interwikis reel.
