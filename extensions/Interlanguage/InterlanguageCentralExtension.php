@@ -79,7 +79,9 @@ class InterlanguageCentralExtension {
 	 */
 	public static function getILL( int $db, Title $title ) {
 
-		$dbr = wfGetDB( $db );
+		$dbr = $db === DB_PRIMARY
+			? MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase()
+			: MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 
 		$res = $dbr->select(
 			'langlinks',
@@ -126,7 +128,7 @@ class InterlanguageCentralExtension {
 			$a[$lang] = $titleText;
 		}
 
-		$dbr = wfGetDB( DB_REPLICA );
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 
 		$conds = [ 'ill_from' => $pageId ];
 
