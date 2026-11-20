@@ -13,7 +13,7 @@ jobs:
   interlanguage:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           persist-credentials: false
           submodules: false
@@ -26,4 +26,7 @@ jobs:
           find extensions/Interlanguage -type f -name '*.php' ! -name '*Copie*' -print0 |
             xargs -0 -n 1 php -l
       - name: Run isolated regression tests
-        run: php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
+        run: |
+          php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
+          php extensions/Interlanguage/tests/InterlanguageApiSmokeTest.php
+          php extensions/Interlanguage/tests/InterlanguageDatabaseSmokeTest.php
