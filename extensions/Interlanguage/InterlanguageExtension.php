@@ -67,6 +67,11 @@ class InterlanguageExtension {
 
 		$langLinks = [];
 		foreach ( $a as $value ) {
+			if ( !is_array( $value ) || !isset( $value['lang'], $value['*'] ) ||
+				!is_string( $value['lang'] ) || !is_string( $value['*'] )
+			) {
+				continue;
+			}
 			$langLinks[] = "{$value['lang']}:{$value['*']}";
 		}
 		$outputPage->addLanguageLinks( $langLinks );
