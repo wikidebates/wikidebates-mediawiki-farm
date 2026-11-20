@@ -88,7 +88,7 @@ class InterlanguageExtension {
 //		}
 
 		if ( !$this->foreignDbr ) {
-			$this->foreignDbr = wfGetDB( DB_PRIMARY, [], $wgInterlanguageExtensionDB );
+			$this->foreignDbr = MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase( $wgInterlanguageExtensionDB );
 		}
 
 		$canonicalTitleText = self::getCanonicalTitleText( $title );
@@ -106,7 +106,7 @@ class InterlanguageExtension {
 		$updateInterlanguageLinks = !$row;
 		if ( !$row ) {
 			// Try to find redirects
-			$db = wfGetDB( DB_REPLICA );
+			$db = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 			$res = $db->select(
 				[ 'redirect', 'page' ],
 				'page.*',
@@ -248,7 +248,7 @@ class InterlanguageExtension {
 		global $wgInterlanguageExtensionDB;
 
 		if ( !$this->foreignDbr ) {
-			$this->foreignDbr = wfGetDB( DB_REPLICA, array(), $wgInterlanguageExtensionDB );
+			$this->foreignDbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase( $wgInterlanguageExtensionDB );
 		}
 
 		list( $dbKey, $namespace ) = $this->getKeyNS( $param );
@@ -549,7 +549,7 @@ THEEND;
 	 * @return array If there are no pages linked, an empty array is returned.
 	 */
 	function loadPageLinks( $articleid ) {
-		$dbr = wfGetDB( DB_REPLICA );
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 		$res = $dbr->select( 'page_props', 'pp_value', [ 'pp_page' => $articleid, 'pp_propname' => 'interlanguage_pages' ], __FUNCTION__);
 		$pagelinks = [];
 		$row = $res->fetchObject();
@@ -567,7 +567,7 @@ THEEND;
 	 * @return array
 	 */
 	function preservePageLinks( $articleid ) {
-		$dbr = wfGetDB( DB_REPLICA );
+		$dbr = MediaWikiServices::getInstance()->getConnectionProvider()->getReplicaDatabase();
 		$a = $this->readLinksFromDB( $dbr, $articleid );
 		$res = true;
 		return [ $res, $a ];
