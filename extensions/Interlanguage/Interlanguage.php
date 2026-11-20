@@ -63,8 +63,10 @@ function wfInterlanguageExtension( $parser ) {
 		$hookContainer->register( 'SkinTemplateOutputPageBeforeExec', [ $wgInterlanguageExtension, 'onSkinTemplateOutputPageBeforeExec' ] );
 		$hookContainer->register( 'ContentAlterParserOutput', $wgInterlanguageExtension );
 		$hookContainer->register( 'OutputPageParserOutput', [ $wgInterlanguageExtension, 'onWikirougeOutputPageParserOutput' ] );
-		$parser->setFunctionHook( 'interlanguage', [ $wgInterlanguageExtension, 'interlanguage' ], Parser::SFH_NO_HASH );
 	}
+
+	// Each parser instance must receive the function, not just the first one.
+	$parser->setFunctionHook( 'interlanguage', [ $wgInterlanguageExtension, 'interlanguage' ], Parser::SFH_NO_HASH );
 	return true;
 }
 
