@@ -31,14 +31,14 @@ Correctifs de compatibilite et de securite (novembre 2026)
 - Les reponses de purge distante anormales sont journalisees (canal Interlanguage).
 
 Tests sans demarrer MediaWiki :
-    php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
 
 Verifier la syntaxe :
-    php -l extensions/Interlanguage/Interlanguage.php
-    php -l extensions/Interlanguage/InterlanguageExtension.php
-    php -l extensions/Interlanguage/InterlanguageCentralExtension.php
-    php -l extensions/Interlanguage/InterlanguageCentralExtensionPurgeJob.php
-    php -l extensions/Interlanguage/api/ApiQueryLangLinks.php
+	php -l extensions/Interlanguage/Interlanguage.php
+	php -l extensions/Interlanguage/InterlanguageExtension.php
+	php -l extensions/Interlanguage/InterlanguageCentralExtension.php
+	php -l extensions/Interlanguage/InterlanguageCentralExtensionPurgeJob.php
+	php -l extensions/Interlanguage/api/ApiQueryLangLinks.php
 
 A valider avant deploiement : liens fr/en, ajout, modification et suppression
 de liens sur le wiki central, purge distante et fonctionnement de l'API.
