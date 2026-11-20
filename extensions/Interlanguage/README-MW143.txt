@@ -35,6 +35,8 @@ Tests sans demarrer MediaWiki (sans reseau ni ecriture SQL) :
 	php extensions/Interlanguage/tests/InterlanguageApiSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguageDatabaseSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguageCentralSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php
 
 Verifier la syntaxe :
 	php -l extensions/Interlanguage/Interlanguage.php
@@ -65,3 +67,18 @@ Recette fonctionnelle recommandee avant toute fusion
 - Surveiller les avertissements PHP et le canal de logs Interlanguage.
 - Les tests de code autonomes simulent les dependances MediaWiki :
   leur reussite ne demontre pas le bon fonctionnement interwikis reel.
+
+Verification non destructive de l'API avant/apres deploiement
+- Enregistrer la sortie de la meme requete avant et apres la mise a jour.
+- Pour le wiki francais :
+	curl -fsSG 'https://fr.wikidebates.org/w/api.php' \
+		--data-urlencode 'action=query' \
+		--data-urlencode 'prop=langlinks' \
+		--data-urlencode 'titles=Dieu existe-t-il ?' \
+		--data-urlencode 'format=json' \
+		--data-urlencode 'formatversion=1'
+- Pour le wiki anglais, utiliser l'URL en.wikidebates.org et un titre
+  existant dont les liens interlangues sont connus.
+- Les requetes ci-dessus sont des lectures ; elles ne purgent rien et ne
+  modifient pas les pages. Les tests de changement de liens se font
+  uniquement sur une installation de test distincte.
