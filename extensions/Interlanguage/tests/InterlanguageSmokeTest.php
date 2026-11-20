@@ -74,4 +74,14 @@ expectInterlanguage(
 	'Non-array serialized language links should be ignored'
 );
 
+$parserOutput->setPageProperty(
+	'wikirouge-langlinks',
+	serialize( [ [ 'lang' => false, '*' => 'Invalid' ], [ 'lang' => 'de', '*' => 'A page' ] ] )
+);
+$extension->onWikirougeOutputPageParserOutput( $outputPage, $parserOutput );
+expectInterlanguage(
+	$outputPage->languageLinks === [ 'en:A:Page', 'fr:Une page', 'de:A page' ],
+	'Malformed language link entries should be skipped'
+);
+
 echo "Interlanguage smoke tests: OK\n";
