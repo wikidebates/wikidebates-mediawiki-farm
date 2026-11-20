@@ -124,7 +124,7 @@ class InterlanguageCentralExtension {
 		$a = [];
 
 		foreach ( $links as $l ) {
-			[ $lang, $titleText ] = explode( ':', $l );
+			[ $lang, $titleText ] = explode( ':', $l, 2 );
 			$a[$lang] = $titleText;
 		}
 
