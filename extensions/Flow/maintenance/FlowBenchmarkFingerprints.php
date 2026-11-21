@@ -39,6 +39,16 @@ final class FlowBenchmarkFingerprints {
 		}
 		ksort( $contentByRevision, SORT_STRING );
 
+		// Hash every revision property, including actions, permissions and links.
+		// HMAC protects private or unguessable response fields in diagnostics.
+		$revisionMetadata = [];
+		foreach ( $revisions as $revisionId => $revision ) {
+			$metadata = $revision;
+			unset( $metadata['content'] );
+			$revisionMetadata[$revisionId] = $metadata;
+		}
+		ksort( $revisionMetadata, SORT_STRING );
+
 		$contentHmacByRevision = [];
 		foreach ( $contentByRevision as $revisionId => $content ) {
 			$contentHmacByRevision[$revisionId] = hash_hmac(
@@ -56,6 +66,13 @@ final class FlowBenchmarkFingerprints {
 			'revisions_in_order_sha256' => self::digest( $revisionIds ),
 			'revisions_sorted_sha256' => self::digest( $sortedRevisionIds ),
 			'content_sorted_by_revision_id_sha256' => self::digest( $contentByRevision ),
+			// Exact full-response comparison; volatile per-request tokens may differ.
+			'full_api_hmac_sha256' => hash_hmac(
+				'sha256', json_encode( $topicList, JSON_UNESCAPED_SLASHES ), $hmacKey
+			),
+			'revision_metadata_hmac_sha256' => hash_hmac(
+				'sha256', json_encode( $revisionMetadata, JSON_UNESCAPED_SLASHES ), $hmacKey
+			),
 			'root_ids' => $roots,
 			'post_revisions_by_id' => $sortedPosts,
 			'content_hmac_by_revision_id' => $contentHmacByRevision,
