@@ -184,32 +184,31 @@ check( $replyPost->rootLookups === 3 && $timedPermissions->checks === 7,
 	'The original two checks remain active when the observer is absent' );
 check( $timings === [], 'Uninstrumented content rendering records no benchmark events' );
 
-// The topic list has already fetched latest post revisions before
-// loadMetadataBatch(). This experiment skips ONLY that extra metadata
-// fetch, with the original path used by default and for other queries.
+// Standard topic-list rows already contain current post revisions. The
+// redundant metadata read is disabled without changing generic queries
+// or subclasses with their own revision-collection implementations.
 $topicQuery = ( new ReflectionClass( \Flow\Formatter\TopicListQuery::class ) )
 	->newInstanceWithoutConstructor();
 $shouldPreload = new ReflectionMethod(
 	\Flow\Formatter\TopicListQuery::class, 'shouldPreloadCurrentRevisionsForMetadata'
 );
-check( $shouldPreload->invoke( $topicQuery ) === true,
-	'Default metadata collection still preloads current revisions' );
-$topicQuery->setBenchmarkSkipCurrentRevisionRefetch( true );
 check( $shouldPreload->invoke( $topicQuery ) === false,
-	'Maintenance-only variant can skip the redundant current revision lookup' );
-$topicQuery->setBenchmarkSkipCurrentRevisionRefetch( false );
-check( $shouldPreload->invoke( $topicQuery ) === true,
-	'Clearing the variant restores the original metadata read' );
+	'Normal topic lists skip the duplicate current-revision lookup by default' );
 
-// Confirm the parent default still applies to other Flow query classes.
+class MetadataFallbackTopicQuery extends \Flow\Formatter\TopicListQuery {
+}
+$fallbackQuery = ( new ReflectionClass( MetadataFallbackTopicQuery::class ) )
+	->newInstanceWithoutConstructor();
+check( $shouldPreload->invoke( $fallbackQuery ) === true,
+	'Subclasses keep the generic current revision preload for safety' );
+
 $genericPreload = new ReflectionMethod(
 	\Flow\Formatter\AbstractQuery::class, 'shouldPreloadCurrentRevisionsForMetadata'
 );
 check( $genericPreload->invoke( $topicQuery ) === true,
-	'The generic query implementation always preserves current revision fetching' );
+	'Generic query classes still preload current revisions' );
 
-// Spy on metadata loading itself, not just the A/B toggle.
-// The input topic revision is already the latest one from collectRevisions().
+// Spy on metadata loading, including the class-specific fallback.
 class MetadataLatestTopicRevision extends \Flow\Model\PostRevision {
 	public function __construct( private \Flow\Model\UUID $id ) {
 	}
@@ -262,26 +261,22 @@ $metadataMethod = new ReflectionMethod(
 $queryStorage = new ReflectionProperty( \Flow\Formatter\AbstractQuery::class, 'storage' );
 $queryStorage->setValue( $topicQuery, $spyStorage );
 $metadataMethod->invoke( $topicQuery, [ $latestTopic ] );
+check( $spyStorage->currentRevisionQueries === 0,
+	'Normal topic metadata does not re-fetch the already loaded current revision' );
+$queryStorage->setValue( $fallbackQuery, $spyStorage );
+$metadataMethod->invoke( $fallbackQuery, [ $latestTopic ] );
 check( $spyStorage->currentRevisionQueries === 1,
-	'Legacy topic metadata redundantly fetches the already loaded current revision' );
-$freshTopicQuery = ( new ReflectionClass( \Flow\Formatter\TopicListQuery::class ) )
-	->newInstanceWithoutConstructor();
-$queryStorage->setValue( $freshTopicQuery, $spyStorage );
-$freshTopicQuery->setBenchmarkSkipCurrentRevisionRefetch( true );
-$metadataMethod->invoke( $freshTopicQuery, [ $latestTopic ] );
-check( $spyStorage->currentRevisionQueries === 1,
-	'Benchmark-only variant skips the duplicated current revision query' );
+	'Subclass preserves the fallback current-revision lookup' );
 $currentMethod = new ReflectionMethod(
 	\Flow\Formatter\TopicListQuery::class, 'getCurrentRevision'
 );
-check( $currentMethod->invoke( $freshTopicQuery, $latestTopic ) === $latestTopic,
-	'Topic list continues using the original latest revision object' );
-$freshTopicQuery->setBenchmarkSkipCurrentRevisionRefetch( false );
-$metadataMethod->invoke( $freshTopicQuery, [ $latestTopic ] );
-check( $spyStorage->currentRevisionQueries === 2,
-	'Disabling the variant restores the legacy current revision fetch' );
+check( $currentMethod->invoke( $topicQuery, $latestTopic ) === $latestTopic,
+	'Optimized topic list retains the latest revision object identity' );
+check( $currentMethod->invoke( $fallbackQuery, $latestTopic ) === $latestTopic,
+	'Subclass still returns the input latest revision object' );
+
 // An edited topic title still needs its previous revision for history
-// metadata. The A/B variant must eliminate only the current-revision lookup.
+// metadata. Only standard topic lists omit the redundant current lookup.
 class MetadataEditedTopicRevision extends MetadataLatestTopicRevision {
 	public function __construct(
 		\Flow\Model\UUID $postId,
@@ -345,26 +340,28 @@ $revisionCacheProperty = new ReflectionProperty(
 	\Flow\Formatter\AbstractQuery::class, 'revisionCache'
 );
 $cacheKeys = [];
-foreach ( [ false, true ] as $skip ) {
-	$editedTopicQuery = ( new ReflectionClass( \Flow\Formatter\TopicListQuery::class ) )
+foreach ( [ \Flow\Formatter\TopicListQuery::class, MetadataFallbackTopicQuery::class ] as $queryClass ) {
+	$editedTopicQuery = ( new ReflectionClass( $queryClass ) )
 		->newInstanceWithoutConstructor();
 	$editedTopicStorage = new MetadataEditedTopicSpyStorage( $latestRevision, $previousRevision );
 	$queryStorage->setValue( $editedTopicQuery, $editedTopicStorage );
-	$editedTopicQuery->setBenchmarkSkipCurrentRevisionRefetch( $skip );
 	$metadataMethod->invoke( $editedTopicQuery, [ $latestRevision ] );
 	check( $editedTopicStorage->previousFetches === 1,
-		'Edited title previous revision is preloaded in both modes' );
-	check( $editedTopicStorage->currentFetches === ( $skip ? 0 : 1 ),
-		'Only the redundant current revision read varies by A/B mode' );
+		'Edited title previous revision remains preloaded for topic lists and subclasses' );
+	check(
+		$editedTopicStorage->currentFetches ===
+			( $queryClass === MetadataFallbackTopicQuery::class ? 1 : 0 ),
+		'Only standard topic lists avoid the redundant current revision lookup'
+	);
 	check( $previousMethod->invoke( $editedTopicQuery, $latestRevision ) === $previousRevision,
-		'Edited title resolves its previous revision in both modes' );
+		'Edited title still resolves its previous revision' );
 	check( $currentMethod->invoke( $editedTopicQuery, $latestRevision ) === $latestRevision,
-		'Edited title preserves identity of its current revision in both modes' );
+		'Edited title preserves its current revision object identity' );
 	$keys = array_keys( $revisionCacheProperty->getValue( $editedTopicQuery ) );
 	sort( $keys, SORT_STRING );
 	$cacheKeys[] = $keys;
 }
 check( $cacheKeys[0] === $cacheKeys[1],
-	'Original and skip paths cache the same previous/current revision IDs' );
+	'Optimized and fallback paths cache the same previous/current revision IDs' );
 
 echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " benchmark timing assertions\n";
