@@ -28,10 +28,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$this->addOption( 'limit', 'Topics per render (1..50; default 10)', false, true );
 		$this->addOption( 'sortby', 'newest or updated (default updated)', false, true );
 		$this->addOption( 'breakdown', 'Include read-only phase timings for the renderer' );
-		$this->addOption(
-			'skip-permission-prewarm',
-			'Maintenance-only A/B experiment: lazily resolve permission roots and boards'
-		);
 		$this->requireExtension( 'Flow' );
 	}
 
@@ -40,7 +36,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$limit = (int)$this->getOption( 'limit', 10 );
 		$sortby = $this->getOption( 'sortby', 'updated' );
 		$breakdown = $this->hasOption( 'breakdown' );
-		$skipPermissionPrewarm = $this->hasOption( 'skip-permission-prewarm' );
 		if ( $runs < 1 || $runs > 3 || $limit < 1 || $limit > 50 ||
 			!in_array( $sortby, [ 'newest', 'updated' ], true )
 		) {
@@ -63,9 +58,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 		for ( $i = 0; $i < $runs; $i++ ) {
 			$block = new TopicListBlock( $workflow, Container::get( 'storage' ) );
 			$block->init( $context, 'view-topiclist' );
-			if ( $skipPermissionPrewarm ) {
-				$block->setBenchmarkSkipPermissionPrewarm( true );
-			}
 			$phases = [];
 			$formatDetails = [];
 			$formatCalls = [];
@@ -114,8 +106,8 @@ class FlowBenchmarkTopicList extends Maintenance {
 				'roots' => count( $topicList['roots'] ?? [] ),
 				'posts' => count( $topicList['posts'] ?? [] ),
 				'revisions' => count( $topicList['revisions'] ?? [] ),
-				// Compare visible root/post/revision identities across both A/B
-				// modes without including request-specific links or tokens.
+				// Stable identity fingerprint for regression comparisons; does
+				// not include full HTML, actions or user-specific tokens.
 				'result_structure_sha256' => hash( 'sha256', json_encode( [
 					$topicList['roots'] ?? [],
 					$topicList['posts'] ?? [],
@@ -140,7 +132,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'page' => $title->getPrefixedText(),
 			'sortby' => $sortby,
 			'limit' => $limit,
-			'permission_prewarm' => $skipPermissionPrewarm ? 'disabled' : 'enabled',
 			'peak_memory_bytes' => memory_get_peak_usage( true ),
 			'note' => 'In-process timings include database and conversion work; '
 				. 'later samples may benefit from warmed request caches. '
@@ -149,8 +140,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 				. 'query_detail_ms is nested inside messages_and_permissions. '
 				. '*_detail_calls counts measured operations rather than messages. '
 				. 'result_structure_sha256 fingerprints visible root/post/revision identifiers, '
-				. 'not the full API payload. --skip-permission-prewarm is benchmark-only; '
-				. 'use separate PHP processes for A/B comparisons. '
+				. 'not the full API payload. Compare independent PHP processes. '
 				. 'Use MediaWiki database profiling for SQL counts.',
 			'samples' => $samples,
 		], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" );

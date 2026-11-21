@@ -86,13 +86,6 @@ class TopicListBlock extends AbstractBlock {
 	/** @var callable|null Optional phase timing observer for read-only maintenance benchmarking. */
 	private $benchmarkTimer;
 
-	/** @var bool Maintenance-only experimental switch; never enabled by normal API requests. */
-	private $benchmarkSkipPermissionPrewarm = false;
-
-	public function setBenchmarkSkipPermissionPrewarm( bool $skip ): void {
-		$this->benchmarkSkipPermissionPrewarm = $skip;
-	}
-
 	/**
 	 * Record timings only when explicitly requested by the maintenance benchmark.
 	 * Standard API and page rendering do not install an observer.
@@ -386,15 +379,9 @@ class TopicListBlock extends AbstractBlock {
 		if ( $this->benchmarkTimer !== null ) {
 			$query->setBenchmarkTimer( $this->benchmarkTimer );
 		}
-		if ( $this->benchmarkSkipPermissionPrewarm ) {
-			$query->setBenchmarkSkipPermissionPrewarm( true );
-		}
 		try {
 			$found = $query->getResults( $page->getResults(), $prefetchedRoots );
 		} finally {
-			if ( $this->benchmarkSkipPermissionPrewarm ) {
-				$query->setBenchmarkSkipPermissionPrewarm( false );
-			}
 			if ( $this->benchmarkTimer !== null ) {
 				$query->setBenchmarkTimer( null );
 			}
