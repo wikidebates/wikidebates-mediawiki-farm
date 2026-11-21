@@ -217,6 +217,45 @@ check( $topicKeyMethod->invoke( $permissions, $firstRevision ) === $otherTopicId
 check( $firstCollection->rootLookups === 4,
 	'Viewer change clears the topic key cache with other permission caches' );
 $permissions->setUser( $reader );
+ 
+// The subtree-based fast path only primes topic identity. Rights are
+// still computed separately and all existing invalidation rules remain.
+$primedCollection = new CountingTopicCollection( $topicId, $board );
+$primedReply = new TestPost(
+	'0000000000000100', '0000000000000101', $primedCollection, $topicId
+);
+$primedPostId = $primedReply->getPostId()->getAlphadecimal();
+$permissions->clearCache();
+$permissions->primeTopicCacheKeysForView( [ $primedReply ], [
+	$primedPostId => $topicId->getAlphadecimal(),
+] );
+check( $topicKeyMethod->invoke( $permissions, $primedReply ) === $topicId->getAlphadecimal(),
+	'Trusted subtree membership primes the same root key as the original lookup' );
+check( $primedCollection->rootLookups === 0,
+	'Primed subtree identity avoids a repeated root tree lookup' );
+$permissions->primeTopicCacheKeysForView( [ $primedReply ], [
+	$primedPostId => $otherTopicId->getAlphadecimal(),
+] );
+check( $topicKeyMethod->invoke( $permissions, $primedReply ) === $topicId->getAlphadecimal(),
+	'A conflicting second priming cannot replace an already resolved root' );
+
+$titleCollection = new CountingTopicCollection( $topicId, $board );
+$unprimedTitle = new TestPost( '0000000000000102', '0000000000000103', $titleCollection );
+$permissions->primeTopicCacheKeysForView( [ $unprimedTitle ], [
+	$unprimedTitle->getPostId()->getAlphadecimal() => $otherTopicId->getAlphadecimal(),
+] );
+check( $topicKeyMethod->invoke( $permissions, $unprimedTitle ) === $topicId->getAlphadecimal(),
+	'Topic titles retain the original workflow lookup rather than a primed reply key' );
+check( $titleCollection->rootLookups === 1, 'Topic title was not primed' );
+
+$primedCollection->topicId = $otherTopicId;
+$cache->onAfterUpdate( $primedReply, [], [], [] );
+$permissions->primeCacheForView( [] );
+check( $topicKeyMethod->invoke( $permissions, $primedReply ) === $otherTopicId->getAlphadecimal(),
+	'Mutation invalidates the primed topic association' );
+check( $primedCollection->rootLookups === 1, 'Mutation falls back to a fresh tree lookup' );
+$permissions->clearCache();
+
 
 
  
