@@ -36,6 +36,11 @@ $topicFormatter = ( new ReflectionClass( \Flow\Formatter\TopicListFormatter::cla
 	->newInstanceWithoutConstructor();
 ( new ReflectionProperty( \Flow\Formatter\TopicListFormatter::class, 'serializer' ) )
 	->setValue( $topicFormatter, $revisionFormatter );
+$permissions = ( new ReflectionClass( \Flow\RevisionActionPermissions::class ) )
+	->newInstanceWithoutConstructor();
+( new ReflectionProperty( \Flow\Formatter\RevisionFormatter::class, 'permissions' ) )
+	->setValue( $revisionFormatter, $permissions );
+$permissionProperty = new ReflectionProperty( \Flow\RevisionActionPermissions::class, 'benchmarkTimer' );
 
 $observer = static function ( string $phase, float $milliseconds ) use ( &$timings ): void {
 	$timings[$phase] = $milliseconds;
@@ -47,12 +52,16 @@ check( $topicProperty->getValue( $topicFormatter ) === $observer,
 	'The topic formatter receives the opt-in callback' );
 check( $revisionProperty->getValue( $revisionFormatter ) === $observer,
 	'The revision formatter receives the same callback' );
+check( $permissionProperty->getValue( $permissions ) === $observer,
+	'The permissions service receives the same callback' );
 
 $topicFormatter->setBenchmarkTimer( null );
 check( $topicProperty->getValue( $topicFormatter ) === null,
 	'The topic formatter releases the callback after rendering' );
 check( $revisionProperty->getValue( $revisionFormatter ) === null,
 	'The revision formatter releases the callback after rendering' );
+check( $permissionProperty->getValue( $permissions ) === null,
+	'The permissions service releases the callback after rendering' );
 
 // The read-only benchmark's observer must reach the shared ContentFixer
 // without persisting beyond the formatting batch, even on failures.
@@ -73,6 +82,8 @@ check( $fixerProperty->getValue( $contentFixer ) === $observer,
 $topicFormatter->setBenchmarkTimer( null );
 check( $fixerProperty->getValue( $contentFixer ) === null,
 	'ContentFixer observer is cleared after the benchmark' );
+check( $permissionProperty->getValue( $permissions ) === null,
+	'Permission timing cannot leak out of the benchmark' );
 
 // Time the exact call path used for links and actions; propagate values and
 // failures without writing to the normal API response.
