@@ -1083,3 +1083,48 @@ fragment parse, DOM insertion and permission check remains unchanged.
 Run the existing read-only benchmark with `--reuse-html-dom --breakdown`
 and inspect the new values in the first and subsequent renders before
 deciding whether HTML-fragment reparsing is worth a separate A/B trial.
+
+## Cold-request diagnosis: topic visibility and action-link construction
+
+The November 21 French Bistro cold-run profile for 50 topics and 242
+messages showed roughly 118 ms inside `messages_and_permissions` and
+219 ms inside `formatting`. The initial permission cache correctly
+served 585 hits and computed 2,438 misses, while subsequent in-process
+renders reused 3,023 decisions without misses. Do not bypass or share
+viewer-specific permissions to speed up cold requests.
+
+Two remaining ambiguous costs are now measured with the existing
+read-only `--breakdown` observer:
+
+- `query_detail_ms.visible_topic_permissions`: the summed time for
+  `RevisionActionPermissions::isAllowed( $topicTitle, 'view' )`
+  inside `filter_visible_topics` (which previously took ~24 ms cold).
+  This is aggregated into a single observer event per query.
+- `format_detail_ms.action_allowed_branch`: summed time spent in the
+  action-type switch *after* the original permission check, including
+  action-specific extra checks and any URL construction. This is
+  a broad branch cost, not pure URL-generation time. The corresponding
+  call count is the number of granted action branches processed.
+- `format_detail_calls.action_output_link`: count of write links in
+  the final action arrays (one 0-ms event per output link).
+- `format_detail_calls.read_output_link`: count of read links in the
+  final read-link arrays (one 0-ms event per output link).
+
+`visible_topic_permissions` is nested within `filter_visible_topics`;
+`action_allowed_branch` is nested within `revision_actions`. The
+existing `revision_links` measures overall read-link construction.
+Do not add nested times to their parents. Zero-ms counters are not
+elapsed durations, and instrumentation introduces timing overhead.
+
+No visibility predicate, moderation behavior, per-action permission,
+URL-generation switch, LinkBatch step, or output value is changed.
+Ordinary web/API rendering installs no observer and does not emit
+these measurements. All branch and link timers are removed when the
+benchmark observer is disabled; the smoke suite covers permitted
+and denied actions and exact URL parity.
+
+After deploying, run `Flow:FlowBenchmarkTopicList --wiki=fr` with
+`--page='Wikidébats:Bistro' --runs=3 --limit=50 --sortby=updated`
+`--reuse-html-dom --breakdown`. Compare the new subphases at cold
+and warm passes, and use an independent-process A/B experiment
+before retaining any future functional performance change.
