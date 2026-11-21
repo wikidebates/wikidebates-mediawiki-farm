@@ -86,6 +86,14 @@ class TopicListBlock extends AbstractBlock {
 	/** @var callable|null Optional phase timing observer for read-only maintenance benchmarking. */
 	private $benchmarkTimer;
 
+	/** @var bool Maintenance-only full user-serialization memo A/B. */
+	private bool $benchmarkReuseSerializedUsers = false;
+
+	public function setBenchmarkReuseSerializedUsers( bool $reuse ): void {
+		$this->benchmarkReuseSerializedUsers = $reuse;
+	}
+
+
 	/**
 	 * Record timings only when explicitly requested by the maintenance benchmark.
 	 * Standard API and page rendering do not install an observer.
@@ -395,9 +403,16 @@ class TopicListBlock extends AbstractBlock {
 		if ( $this->benchmarkTimer !== null ) {
 			$serializer->setBenchmarkTimer( $this->benchmarkTimer );
 		}
+		if ( $this->benchmarkReuseSerializedUsers ) {
+			$serializer->setBenchmarkReuseSerializedUsers( true );
+		}
 		try {
 			$formatted = $serializer->formatApi( $this->workflow, $workflows, $found, $page, $this->context );
 		} finally {
+			// The serializer is a shared service: never leak A/B output behavior.
+			if ( $this->benchmarkReuseSerializedUsers ) {
+				$serializer->setBenchmarkReuseSerializedUsers( false );
+			}
 			if ( $this->benchmarkTimer !== null ) {
 				$serializer->setBenchmarkTimer( null );
 			}
