@@ -61,14 +61,23 @@ class FlowBenchmarkTopicList extends Maintenance {
 			$phases = [];
 			$formatDetails = [];
 			$formatCalls = [];
+			$queryDetails = [];
+			$queryCalls = [];
 			if ( $breakdown ) {
 				$block->setBenchmarkTimer(
-					static function ( string $phase, float $milliseconds ) use ( &$phases, &$formatDetails, &$formatCalls ): void {
-						$prefix = 'format_detail_';
-						if ( str_starts_with( $phase, $prefix ) ) {
-							$key = substr( $phase, strlen( $prefix ) );
+					static function ( string $phase, float $milliseconds ) use (
+						&$phases, &$formatDetails, &$formatCalls, &$queryDetails, &$queryCalls
+					): void {
+						$formatPrefix = 'format_detail_';
+						$queryPrefix = 'query_detail_';
+						if ( str_starts_with( $phase, $formatPrefix ) ) {
+							$key = substr( $phase, strlen( $formatPrefix ) );
 							$formatDetails[$key] = round( ( $formatDetails[$key] ?? 0 ) + $milliseconds, 3 );
 							$formatCalls[$key] = ( $formatCalls[$key] ?? 0 ) + 1;
+						} elseif ( str_starts_with( $phase, $queryPrefix ) ) {
+							$key = substr( $phase, strlen( $queryPrefix ) );
+							$queryDetails[$key] = round( ( $queryDetails[$key] ?? 0 ) + $milliseconds, 3 );
+							$queryCalls[$key] = ( $queryCalls[$key] ?? 0 ) + 1;
 						} else {
 							$phases[$phase] = $milliseconds;
 						}
@@ -103,6 +112,9 @@ class FlowBenchmarkTopicList extends Maintenance {
 				// These timings nest inside 'formatting'; do not add them to phases_ms.
 				$sample['format_detail_ms'] = $formatDetails;
 				$sample['format_detail_calls'] = $formatCalls;
+				// These timings nest inside messages_and_permissions, not formatting.
+				$sample['query_detail_ms'] = $queryDetails;
+				$sample['query_detail_calls'] = $queryCalls;
 				// The remaining time includes assembly and timing overhead.
 				$sample['other_ms'] = round( max( 0, $wallMs - array_sum( $phases ) ), 2 );
 			}
@@ -117,8 +129,9 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'note' => 'In-process timings include database and conversion work; '
 				. 'later samples may benefit from warmed request caches. '
 				. 'Phase timings, when requested, are wall-clock time, may include SQL, '
-				. 'and exclude block init; detailed formatting phases are nested, not additive. '
-				. 'format_detail_calls counts measured operations rather than messages. '
+				. 'and exclude block init; detailed formatting and query phases are nested, not additive. '
+				. 'query_detail_ms is nested inside messages_and_permissions. '
+				. '*_detail_calls counts measured operations rather than messages. '
 				. 'Use MediaWiki database profiling for SQL counts.',
 			'samples' => $samples,
 		], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" );
