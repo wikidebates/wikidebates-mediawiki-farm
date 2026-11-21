@@ -330,3 +330,54 @@ test( 'invalid rating values fail closed before changing any field', () => {
 	expect( () => mw.pageFormsDrafts.restore( context.$form, saved ) ).toThrow();
 	expect( $( '#unique' ).val() ).toBe( 'Original' );
 } );
+
+
+function treeWidget( labels = [ 'Alpha', 'Beta' ], multiple = false ) {
+	const $wrapper = $( '<div class="pfTreeInputWrapper"></div>' ).appendTo( context.$form );
+	const $tree = $( '<div class="pfTreeInput"></div>' ).attr( {
+		data: JSON.stringify( labels.map( ( text ) => ( { text } ) ) ),
+		params: JSON.stringify( { delimiter: ',', multiple, cur_value: 'Alpha' } )
+	} ).appendTo( $wrapper );
+	const $hidden = $( '<input type="hidden" name="Item[Tree]" class="PFTree_data" value="Alpha">' ).appendTo( $wrapper );
+	return { $tree, $hidden };
+}
+
+test( 'restores an unambiguous tree selection and refreshes its lazy source parameters', () => {
+	const { $tree, $hidden } = treeWidget();
+	const draft = mw.pageFormsDrafts.capture( context.$form );
+	const item = draft.fields.find( ( field ) => field.name === 'Item[Tree]' );
+	expect( item.value ).toBe( 'Alpha' );
+	item.value = 'Beta';
+	mw.pageFormsDrafts.restore( context.$form, draft );
+	expect( $hidden.val() ).toBe( 'Beta' );
+	expect( JSON.parse( $tree.attr( 'params' ) ).cur_value ).toBe( 'Beta' );
+	expect( $tree.data( 'jstree' ) ).toBeUndefined();
+} );
+
+test( 'restoring a tree updates the already initialized visual selection', () => {
+	const { $tree, $hidden } = treeWidget();
+	const widget = {
+		get_json: jest.fn( () => [ { id: 'a', text: 'Alpha' }, { id: 'b', text: 'Beta' } ] ),
+		deselect_all: jest.fn(),
+		select_node: jest.fn()
+	};
+	$tree.data( 'jstree', widget );
+	const draft = mw.pageFormsDrafts.capture( context.$form );
+	draft.fields.find( ( field ) => field.name === 'Item[Tree]' ).value = 'Beta';
+	mw.pageFormsDrafts.restore( context.$form, draft );
+	expect( $hidden.val() ).toBe( 'Beta' );
+	expect( widget.deselect_all ).toHaveBeenCalledWith( true );
+	expect( widget.select_node ).toHaveBeenCalledWith( 'b', true, true );
+} );
+
+test( 'unknown or ambiguous tree choices fail before modifying any fields', () => {
+	const { $hidden } = treeWidget( [ 'Alpha', 'Beta', 'Beta' ] );
+	const draft = mw.pageFormsDrafts.capture( context.$form );
+	draft.fields[ 0 ].value = 'Must remain unchanged';
+	draft.fields.find( ( field ) => field.name === 'Item[Tree]' ).value = 'Beta';
+	expect( () => mw.pageFormsDrafts.restore( context.$form, draft ) ).toThrow();
+	expect( $( '#unique' ).val() ).toBe( 'Original' );
+	expect( $hidden.val() ).toBe( 'Alpha' );
+	draft.fields.find( ( field ) => field.name === 'Item[Tree]' ).value = 'Missing';
+	expect( () => mw.pageFormsDrafts.restore( context.$form, draft ) ).toThrow();
+} );
