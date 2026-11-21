@@ -1019,3 +1019,33 @@ with `--runs=3 --limit=50 --sortby=updated --reuse-html-dom --breakdown`.
 Compare cold and warm runs and decide whether **any single fixer** merits
 a follow-up optimization; do not skip security checks or change the
 returned HTML based on profiling alone.
+
+## A/B experiment: reuse link targets already resolved for LinkBatch
+
+Profiling 192 HTML contents on the French Bistro found the WikiLinkFixer
+preload and apply stages consume about 10.7 ms and 9.2 ms in the first
+render, and about 2.9 ms and 5.4 ms in warm renders. The original
+WikiLinkFixer resolves every link target twice: once before LinkBatch
+and again when invoking MediaWiki LinkRenderer. This may be redundant,
+but its actual cost had not been measured.
+
+An opt-in `Flow:FlowBenchmarkTopicList --reuse-wikilink-titles` flag
+temporarily reuses only successfully resolved Title objects for the
+same href and same page context within the current document. The next
+document resets the memo. An unrecognized href or page context falls
+back to the original resolution. The original LinkBatch, LinkRenderer,
+HTML serialization, red-link handling, DOM fixers and XSS checks
+continue to run. The flag is **disabled in normal web/API rendering**
+and does not add a new site configuration option.
+
+Benchmark tests compare exact fixed HTML on two different board titles,
+repeated links, missing links, fragment links and percent-encoded hrefs.
+The benchmark always resets this opt-in variant in a `finally` block.
+
+Compare 6 pairs of independent `--runs=1 --reuse-html-dom` processes,
+alternating the presence of `--reuse-wikilink-titles`, without
+`--breakdown` in the primary timings. The benchmark emits
+`wikilink_title_reuse: enabled|disabled`. Confirm identical canonical
+content, roots and associations via `--diagnose-digests`; do not
+promote to ordinary rendering without both parity and a reproducible
+performance benefit. If there is no benefit, remove the experiment.
