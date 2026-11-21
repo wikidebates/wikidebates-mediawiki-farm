@@ -203,6 +203,62 @@ namespace {
 	( new \ReflectionProperty( RevisionFormatter::class, 'permissions' ) )
 		->setValue( $renderer, $permissions );
 
+
+	// The profiler must distinguish successful action branches from
+	// permission checks and must count resulting URLs, not approvals.
+	class TimedWriteUrlGenerator extends UrlGenerator {
+		public int $generated = 0;
+		public function __construct() {
+		}
+		public function editPostAction(
+			?\MediaWiki\Title\Title $title,
+			UUID $workflowId,
+			UUID $postId,
+			UUID $revId
+		) {
+			$this->generated++;
+			return 'edit-link';
+		}
+	}
+	$writeUrls = new TimedWriteUrlGenerator;
+	( new \ReflectionProperty( RevisionFormatter::class, 'urlGenerator' ) )
+		->setValue( $renderer, $writeUrls );
+	$writePermissions = new class( new FlowActions( [
+		'test-action' => [ 'actions' => [ 'edit-post' ] ],
+	] ), $reader ) extends RevisionActionPermissions {
+		public int $checks = 0;
+		public function isAllowed( \Flow\Model\AbstractRevision $revision, $action ) {
+			check( $action === 'edit-post', 'Only the existing edit-post permission is checked' );
+			$this->checks++;
+			return true;
+		}
+	};
+	( new \ReflectionProperty( RevisionFormatter::class, 'permissions' ) )
+		->setValue( $renderer, $writePermissions );
+	check( $renderer->buildActions( $actionRow ) === [ 'edit' => 'edit-link' ],
+		'Original write URL is generated without profiling' );
+	$writeTimings = [];
+	$renderer->setBenchmarkTimer(
+		static function ( string $phase, float $milliseconds ) use ( &$writeTimings ): void {
+			$writeTimings[$phase][] = $milliseconds;
+		}
+	);
+	check( $renderer->buildActions( $actionRow ) === [ 'edit' => 'edit-link' ],
+		'Profiled action URL remains unchanged' );
+	check( $writePermissions->checks === 2 && $writeUrls->generated === 2,
+		'Both profiled and unprofiled paths perform a fresh permission check and URL build' );
+	check( count( $writeTimings['format_detail_action_allowed_branch'] ?? [] ) === 1 &&
+		$writeTimings['format_detail_action_allowed_branch'][0] >= 0,
+		'Allowed action branch is timed exactly once' );
+	check( count( $writeTimings['format_detail_action_output_link'] ?? [] ) === 1,
+		'Profiler counts exactly one resulting write link' );
+	$renderer->setBenchmarkTimer( null );
+	$writeTimings = [];
+	check( $renderer->buildActions( $actionRow ) === [ 'edit' => 'edit-link' ],
+		'Ordinary write link remains identical after turning profiling off' );
+	check( $writeTimings === [], 'Disabled profiler records no new action events' );
+	( new \ReflectionProperty( RevisionFormatter::class, 'permissions' ) )
+		->setValue( $renderer, $permissions );
 	class SpyFormatter extends RevisionFormatter {
 		public int $primeCount = 0;
 		public int $clearCount = 0;
