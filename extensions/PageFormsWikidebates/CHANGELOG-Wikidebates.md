@@ -1,5 +1,20 @@
 # CHANGELOG Wikidebates
 
+## Deferred VEForAll, mapping efficiency and deeper recovery (November 2026)
+- Lazy-load VEForAll's platform and editors on Page Forms only after visibility
+  or focus, via the matching wikidebates-veforall revision. Preserve native
+  textarea editing while scripts load; wait for in-progress initialization
+  before submitting, without initializing offscreen editors.
+- Skip repeated SMW property lookups and repeated template label expansions
+  for identical values within the same request. No cache or SQL schema changes.
+- Add read-only real-wiki category/SMW benchmark and browser resource report;
+  report actual measured timings rather than inferring performance gains.
+- Validate and restore nested repeating instances up to a global budget of 500;
+  restore rating values with their visual state. Keep tree widgets export-only
+  until a verified selection adapter is available.
+- Test browser interactions in both Chromium and Firefox, and run an extra
+  disposable MediaWiki 1.43/SMW integration job.
+
 ## Progressive editing and local recovery (November 2026)
 - Initialize individual near-viewport widgets instead of their whole form; keep
   values available before initialization, including the hidden tree value.
