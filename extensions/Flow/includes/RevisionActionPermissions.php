@@ -367,6 +367,43 @@ class RevisionActionPermissions {
 
 
 	/**
+	 * Prime only resolved post-to-topic identities that the topic-list tree
+	 * lookup already returned. This method does not make or cache any access
+	 * decisions; every view, root, board and moderation check still runs.
+	 *
+	 * Historical callers and other query types do not provide these keys.
+	 * Do not override previously resolved conflicting keys, and never prime
+	 * topic-title revisions: historical titles retain their original keys.
+	 *
+	 * @param AbstractRevision[] $revisions Current revisions selected by the topic list
+	 * @param array<string,string> $topicIdsByPost Post ID to topic ID (alphadecimal)
+	 */
+	public function primeTopicCacheKeysForView( array $revisions, array $topicIdsByPost ): void {
+		if ( !$topicIdsByPost ) {
+			return;
+		}
+
+		$this->ensureCacheIsFresh();
+		foreach ( $revisions as $revision ) {
+			if ( !( $revision instanceof PostRevision ) || $revision->isTopicTitle() ) {
+				continue;
+			}
+			$postAlpha = $revision->getPostId()->getAlphadecimal();
+			$topicAlpha = $topicIdsByPost[$postAlpha] ?? null;
+			if ( !is_string( $topicAlpha ) || $topicAlpha === '' || $topicAlpha === $postAlpha ) {
+				continue;
+			}
+			$cacheKey = $revision->getRevisionType() . ':' . $postAlpha;
+			if ( isset( $this->topicCacheKeys[$cacheKey] ) &&
+				$this->topicCacheKeys[$cacheKey] !== $topicAlpha
+			) {
+				continue;
+			}
+			$this->topicCacheKeys[$cacheKey] = $topicAlpha;
+		}
+	}
+
+	/**
 	 * Warm per-request caches used by topic list rendering.
 	 *
 	 * @param AbstractRevision[] $revisions
