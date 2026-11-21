@@ -53,7 +53,7 @@
 				},
 				{
 					"name": "Commit verified feature code without transport bootstrap",
-					"run": "set -eu\nrm .github/flow-lite-bundle.b64 .github/workflows/flow-lite-apply.yml\ngit add -A .github extensions/Flow\ngit diff --cached --check\ngit config user.name 'github-actions[bot]'\ngit config user.email '41898282+github-actions[bot]@users.noreply.github.com'\ngit commit -m \"Flow: add opt-in lightweight board preview and lazy topic hydration\"\ngit push origin HEAD:refs/heads/feature/flow-light-topiclist-20261121\n"
+					"run": "set -eu\ngit restore .github/workflows/flow-checks.yml\nrm .github/flow-lite-bundle.b64\ngit add -A extensions/Flow .github/flow-lite-bundle.b64\ngit diff --cached --check\ngit config user.name 'github-actions[bot]'\ngit config user.email '41898282+github-actions[bot]@users.noreply.github.com'\ngit commit -m \"Flow: add opt-in lightweight board preview and lazy topic hydration\"\ngit push origin HEAD:refs/heads/feature/flow-light-topiclist-20261121\n"
 				}
 			]
 		}
