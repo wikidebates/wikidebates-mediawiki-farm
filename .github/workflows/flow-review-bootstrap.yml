@@ -1,0 +1,24 @@
+name: Flow review bootstrap
+
+on:
+  push:
+    branches: [fix/flow-performance-mw143-20261121]
+    paths: [.github/workflows/flow-review-bootstrap.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flow-review-source
+          path: extensions/Flow/
+          include-hidden-files: true
+          retention-days: 1
