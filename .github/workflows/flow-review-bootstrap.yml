@@ -1,24 +1,65 @@
-name: Flow review bootstrap
-
-on:
-  push:
-    branches: [fix/flow-performance-mw143-20261121]
-    paths: [.github/workflows/flow-review-bootstrap.yml]
-
-permissions:
-  contents: read
-
-jobs:
-  snapshot:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-          submodules: false
-      - uses: actions/upload-artifact@v4
-        with:
-          name: flow-review-source
-          path: extensions/Flow/
-          include-hidden-files: true
-          retention-days: 1
+{
+	"name": "Apply verified Flow patch",
+	"on": {
+		"push": {
+			"branches": [
+				"fix/flow-performance-mw143-20261121"
+			],
+			"paths": [
+				".github/workflows/flow-review-bootstrap.yml"
+			]
+		}
+	},
+	"permissions": {
+		"contents": "write"
+	},
+	"concurrency": {
+		"group": "flow-fix-20261121",
+		"cancel-in-progress": false
+	},
+	"jobs": {
+		"apply": {
+			"runs-on": "ubuntu-latest",
+			"timeout-minutes": 15,
+			"if": "github.repository == 'wikidebates/wikidebates-mediawiki-farm' && github.ref == 'refs/heads/fix/flow-performance-mw143-20261121'",
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"ref": "${{ github.sha }}",
+						"submodules": false
+					}
+				},
+				{
+					"uses": "shivammathur/setup-php@v2",
+					"with": {
+						"php-version": "8.4",
+						"coverage": "none"
+					}
+				},
+				{
+					"uses": "actions/setup-node@v4",
+					"with": {
+						"node-version": "22"
+					}
+				},
+				{
+					"name": "Apply exact patch and verify all sixteen files",
+					"run": "python3 .github/apply-flow-fixes.py\nrm .github/apply-flow-fixes.py .github/workflows/flow-review-bootstrap.yml\ngit diff --check"
+				},
+				{
+					"name": "PHP syntax and cache regressions",
+					"run": "find extensions/Flow -type f -name '*.php' -not -path '*/vendor/*' -print0 | xargs -0 -n 1 php -l\nphp extensions/Flow/tests/smoke/FlowCacheTest.php"
+				},
+				{
+					"name": "JavaScript and SQL regressions",
+					"run": "find extensions/Flow/modules -type f -name '*.js' -print0 | xargs -0 -n 1 node --check\nnode extensions/Flow/tests/smoke/flow-loadmore.test.js\nPYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s extensions/Flow/tests/smoke -p 'test_*.py' -v"
+				},
+				{
+					"name": "Commit only the verified feature-branch changes",
+					"run": "git config user.name \"github-actions[bot]\"\ngit config user.email \"41898282+github-actions[bot]@users.noreply.github.com\"\ngit add -u -- extensions/Flow .github/apply-flow-fixes.py .github/workflows/flow-review-bootstrap.yml\ngit diff --cached --check\ngit diff --cached --stat\ngit commit -m \"Fix Flow SQL, permission cache invalidation and batch rendering\"\ngit push origin HEAD:refs/heads/fix/flow-performance-mw143-20261121"
+				}
+			]
+		}
+	}
+}
