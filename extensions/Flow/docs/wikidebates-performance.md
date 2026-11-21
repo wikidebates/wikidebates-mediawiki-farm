@@ -1129,60 +1129,54 @@ After deploying, run `Flow:FlowBenchmarkTopicList --wiki=fr` with
 and warm passes, and use an independent-process A/B experiment
 before retaining any future functional performance change.
 
-## A/B experiment: duplicate current-revision metadata retrieval
+## Optimized current-revision metadata loading (adopted November 2026)
 
-First renders of the French Bistro (50 topics, 242 posts) spent
-11.80 ms in `load_metadata`, versus ~7.76 ms on subsequent in-process
-renders. The topic query already calls `collectRevisions()` with
-`findMulti( 'PostRevision', ..., sort rev_id DESC, limit 1 )` to load
-each post's latest revision. Next, `AbstractQuery::loadMetadataBatch()`
-unconditionally loads latest revisions for every collection again.
+The topic query already loads each post's latest revision using
+`collectRevisions()`, with a descending revision-ID lookup limited to one
+row per post. Its `getCurrentRevision()` returns that exact `PostRevision`
+object. A second latest-revision query in
+`AbstractQuery::loadMetadataBatch()` therefore populated metadata not
+used to build topic-list rows.
 
-`TopicListQuery::getCurrentRevision()` returns the provided revision
-unchanged because its inputs are already latest revisions. This makes
-the second current-revision retrieval a plausible avoidable cost.
-Other metadata loading (root identity maps, workflows, previous
-revisions and summaries) is unaffected by this experiment.
+### Evidence from the previous maintenance-only experiment
 
-The new **maintenance-only** `--skip-current-revision-refetch` flag
-skips only the `AbstractQuery` current-revision preload stage for
-`TopicListQuery`. All other query subclasses retain the original
-behavior. The flag is false by default, passed through the benchmark
-block, and cleared on the shared query service in a `finally` block.
-No production configuration or rendered API/HTML output changes.
+A/B measurements used independent PHP processes on the French Bistro
+(`sortby=updated`, 50 topics and 242 posts, with HTML DOM reuse enabled):
 
-The experiment's JSON result reports
-`current_revision_refetch_skipped: enabled|disabled`. Test the same
-50 topics with 12 independent `--runs=1 --reuse-html-dom` processes
-alternating this flag. Confirm exact
-`diagnostic.content_sorted_by_revision_id_sha256`,
-`diagnostic.posts_sorted_by_id_sha256`, and
-`diagnostic.roots_sorted_sha256` parity, plus 242 posts, before
-interpreting the time difference. Collect medians without
-`--breakdown` for the primary A/B, and optionally use the breakdown
-to isolate whether `load_metadata` falls. Do **not** activate for
-regular traffic before confirming semantic parity, tests and
-a reproducible whole-render benefit.
+- First 6+6-process comparison: median whole-render gain 6.675 ms (2.01%);
+  median CPU gain 5.310 ms (1.76%).
+- Second 6+6-process comparison: median whole-render gain 5.700 ms (1.79%);
+  median CPU gain 3.895 ms (1.33%).
+- Three 4-process ABBA groups from the second comparison: average wall-time
+  differences (original minus optimized) +12.240, -7.315 and +7.775 ms;
+  average CPU differences +7.535, -0.445 and +7.155 ms. The whole-render
+  benefit is small compared with process-level noise.
+- With separate `--breakdown` trials, the `query_detail_ms.load_metadata`
+  phase averaged 11.167 ms originally versus 4.265 ms optimized: a 6.902 ms
+  reduction (61.8%). Profiling overhead prevents treating these timings as
+  equivalent to unprofiled whole-render measurements.
 
-### Follow-up: complete response metadata verification
+The second 12-process comparison returned exactly the same 242 posts and
+one identical digest across **both** variants for each of these seven fields:
+the full API HMAC, revision metadata HMAC, canonical content, canonical post
+associations, canonical roots, ordered structure and output content.
+This demonstrates parity for the sampled maintenance context,
+not for every moderation or user-rights scenario.
 
-The initial canonical hashes cover revision content, associations and root
-identity, but not all actions, permissions and links. When
-`--diagnose-digests` is enabled, additional HMAC-SHA256 values now cover:
+The previous benchmark option `--skip-current-revision-refetch` and the
+topic-list block/query A/B toggles have now been removed. The optimization
+applies by default to the **exact** `TopicListQuery` class; subclasses and
+other `AbstractQuery` implementations keep the conservative current-revision
+preload. This is intentional because subclasses can change their post-loading
+behavior.
 
-- `diagnostic.full_api_hmac_sha256`: exact serialized API response, in order.
-- `diagnostic.revision_metadata_hmac_sha256`: all revision fields except
-  `content`, sorted by revision ID.
+Root and workflow metadata, previous revisions (including edited titles),
+permission checks, moderation, summaries and query-cache generation
+invalidation remain unchanged. The smoke suite checks the skip, subclass
+fallback and edited-title previous/current revision identity.
 
-These diagnostics are generated after the timed interval and use the existing
-private site key. Do not print raw API payloads or the HMAC key. The full API
-digest is intentionally sensitive to paging order and volatile fields (such as
-per-request action tokens). If it differs, inspect whether the difference is
-expected, rather than removing or normalizing security-relevant fields.
-
-Before enabling the optimization for public traffic, run independent-process
-A/B trials for both `updated` and `newest`, with identical user context and
-stable page data. Check all previous canonical hashes, the new metadata HMAC,
-and the full response HMAC; include moderated/hidden and edited-title fixtures
-in functional regression tests. Keep `--breakdown` out of primary wall-clock
-timings; use it separately for `query_detail_ms.load_metadata`.
+No LocalSettings change, parser cache epoch adjustment, schema migration or
+cache purge is required. The new HMAC diagnostics remain available in
+`--diagnose-digests`, and are collected after the timed render. They protect
+raw content, links, action tokens and user-specific fields from being emitted
+as plaintext in benchmark logs.
