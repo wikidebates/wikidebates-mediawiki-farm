@@ -135,6 +135,24 @@ class RevisionFormatter {
 	}
 
 	/**
+	 * Time an individual serializer operation only for the maintenance benchmark.
+	 * Ordinary page rendering uses the original direct method calls.
+	 *
+	 * @return mixed
+	 */
+	private function timeFormattingOperation( string $phase, callable $operation ) {
+		$started = hrtime( true );
+		try {
+			return $operation();
+		} finally {
+			( $this->benchmarkTimer )(
+				'format_detail_' . $phase,
+				round( ( hrtime( true ) - $started ) / 1000000, 3 )
+			);
+		}
+	}
+
+	/**
 	 * @var UserNameBatch
 	 */
 	protected $usernames;
@@ -244,7 +262,16 @@ class RevisionFormatter {
 	public function formatApi( FormatterRow $row, IContextSource $ctx, $action = 'view' ) {
 		$this->permissions->setUser( $ctx->getUser() );
 
-		if ( !$this->permissions->isAllowed( $row->revision, $action ) ) {
+		$permissionStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
+		$canView = $this->permissions->isAllowed( $row->revision, $action );
+		if ( $permissionStarted !== null ) {
+			( $this->benchmarkTimer )(
+				'format_detail_revision_view_permission',
+				round( ( hrtime( true ) - $permissionStarted ) / 1000000, 3 )
+			);
+		}
+
+		if ( !$canView ) {
 			LoggerFactory::getInstance( 'Flow' )->debug(
 				__METHOD__ . ': Permission denied for user on action {action}',
 				[
@@ -256,7 +283,14 @@ class RevisionFormatter {
 			return false;
 		}
 
+		$moderationStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$moderatedRevision = $this->templating->getModeratedRevision( $row->revision );
+		if ( $moderationStarted !== null ) {
+			( $this->benchmarkTimer )(
+				'format_detail_moderated_revision_lookup',
+				round( ( hrtime( true ) - $moderationStarted ) / 1000000, 3 )
+			);
+		}
 		$ts = $row->revision->getRevisionId()->getTimestampObj();
 		$res = [
 			ApiResult::META_BC_BOOLS => [
@@ -276,9 +310,17 @@ class RevisionFormatter {
 			'isOriginalContent' => $row->revision->isOriginalContent(),
 			'isModerated' => $moderatedRevision->isModerated(),
 			// These are read urls
-			'links' => $this->buildLinks( $row ),
+			'links' => $this->benchmarkTimer === null
+				? $this->buildLinks( $row )
+				: $this->timeFormattingOperation(
+					'revision_links', fn () => $this->buildLinks( $row )
+				),
 			// These are write urls
-			'actions' => $this->buildActions( $row ),
+			'actions' => $this->benchmarkTimer === null
+				? $this->buildActions( $row )
+				: $this->timeFormattingOperation(
+					'revision_actions', fn () => $this->buildActions( $row )
+				),
 			'size' => [
 				'old' => $row->revision->getPreviousContentLength(),
 				'new' => $row->revision->getContentLength(),
@@ -389,6 +431,7 @@ class RevisionFormatter {
 			// have a safe parameter to use within l10n for content
 			// output.
 			if ( $row->revision->isTopicTitle() && !isset( $res['properties']['topic-of-post'] ) ) {
+				$titleParamsStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 				$res['properties']['topic-of-post'] = $this->processParam(
 					'topic-of-post',
 					$row->revision,
@@ -416,6 +459,12 @@ class RevisionFormatter {
 				) {
 					$res['content']['plaintext'] =
 						$res['properties']['topic-of-post-text-from-html']->getValue();
+				}
+				if ( $titleParamsStarted !== null ) {
+					( $this->benchmarkTimer )(
+						'format_detail_topic_title_params',
+						round( ( hrtime( true ) - $titleParamsStarted ) / 1000000, 3 )
+					);
 				}
 			}
 
@@ -502,6 +551,7 @@ class RevisionFormatter {
 	}
 
 	public function serializeUser( $userWiki, $userId, $userIp ) {
+		$userStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$res = [
 			'name' => $this->usernames->get( $userWiki, $userId, $userIp ),
 			'wiki' => $userWiki,
@@ -517,6 +567,12 @@ class RevisionFormatter {
 			$res['links'] = $this->serializeUserLinks( $res );
 		}
 
+		if ( $userStarted !== null ) {
+			( $this->benchmarkTimer )(
+				'format_detail_user_serialization',
+				round( ( hrtime( true ) - $userStarted ) / 1000000, 3 )
+			);
+		}
 		return $res;
 	}
 
