@@ -911,15 +911,21 @@ the cause is understood. Also repeat **original vs original** to
 separate renderer differences from naturally unstable data, and retain
 the default read-only, unmodified web/API renderer.
 
-### Opt-in single-pass Flow HTML rendering (default OFF)
+### Single-pass Flow HTML rendering (enabled by default)
 
-The `FlowReuseDecodedDom` extension configuration flag defaults to
-**false**. With that default the production web/API HTML path is
-unchanged. Set the flag to true for a specific wiki *only after*
-carefully reviewing real content, safety and parser compatibility:
+`FlowReuseDecodedDom` defaults to **true** in the Flow extension itself.
+Its runtime logic is unchanged: the optimized renderer is used for ordinary
+`fixed-html` content on each wiki without a `LocalSettings.php` override.
+The existing A/B comparisons cover the French Bistro and selected French
+and English boards; the measured gains are modest and individual results
+can vary due to database/cache conditions.
+
+If `LocalSettings.php` currently sets `$wgFlowReuseDecodedDom = true;`,
+remove that redundant override after deploying this new default. For
+an emergency rollback on one or all wikis, explicitly set it to false:
 
 ```php
-$wgFlowReuseDecodedDom = true;
+$wgFlowReuseDecodedDom = false;
 ```
 
 The flag is read when the FlowTemplating service is constructed, so it
@@ -929,11 +935,14 @@ All existing content/permission checks, the Flow HTML XSS hook,
 moderation and DOM fixers still execute. The optimized path falls
 back to original parsing if no decoded DOM is available.
 
-Rollback: set the flag back to false or remove the override,
-then restart/reload PHP workers as required by the deployment's
+Rollback: set the flag to false in the wiki configuration, or revert
+the extension default in the repository; removing the flag override now
+**enables**, rather than disables, the optimized rendering path.
+Restart/reload PHP workers as required by the deployment's
 configuration/OPcache setup. Verify the live site and API after
 configuration changes; do not assume cached HTML has been refreshed.
-Do not enable this configuration as part of the code-only deployment.
+Production was already enabled by explicit configuration during the A/B
+rollout; this change only makes that behavior the extension default.
 
 The read-only maintenance benchmark continues to compare both
 alternatives independently of the site flag. Its temporary override
