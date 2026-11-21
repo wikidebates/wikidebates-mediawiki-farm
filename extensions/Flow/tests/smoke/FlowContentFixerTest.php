@@ -107,5 +107,56 @@ namespace {
 	check( $fixer->apply( 'a &amp; b', $title ) === 'a &amp; b',
 		'HTML entities still require the normal DOM processing' );
 	check( count( $batch->batches ) === 2, 'Messages without wikilinks do not trigger link batches' );
+
+	// The benchmark's per-stage observer must preserve the generated HTML.
+	$content = '<body><p>Bonjour <strong>Wikidébats</strong> &amp; Flow.</p></body>';
+	$unprofiled = $fixer->apply( $content, $title );
+	$durations = [];
+	$fixer->setBenchmarkTimer(
+		static function ( string $phase, float $ms ) use ( &$durations ): void {
+			$durations[$phase][] = $ms;
+		}
+	);
+	check( $fixer->apply( $content, $title ) === $unprofiled,
+		'Profiled DOM correction produces identical HTML' );
+	foreach ( [ 'dom_parse', 'dom_fixers', 'dom_serialize' ] as $stage ) {
+		$key = 'format_detail_content_' . $stage;
+		check( isset( $durations[$key][0] ) && $durations[$key][0] >= 0,
+			'Profiling records a nonnegative ' . $stage . ' duration' );
+	}
+	$events = count( $durations );
+	check( $fixer->apply( 'Simple text 123', $title ) === 'Simple text 123',
+		'Profiled plaintext preserves the original fast path' );
+	check( count( $durations ) === $events,
+		'Plaintext does not register fictitious DOM work' );
+
+	class ProfiledHtmlRevision extends \Flow\Model\PostRevision {
+		public function __construct( private \MediaWiki\Title\Title $title ) {
+		}
+		public function getContent( $format = 'html' ) {
+			check( $format === 'html', 'ContentFixer reads the existing HTML format' );
+			return '<body><p>Content <em>from revision</em>.</p></body>';
+		}
+		public function getCollection() {
+			return new class( $this->title ) {
+				public function __construct( private \MediaWiki\Title\Title $title ) {
+				}
+				public function getTitle() {
+					return $this->title;
+				}
+			};
+		}
+	}
+	$revision = new ProfiledHtmlRevision( $title );
+	$source = $fixer->getContent( $revision );
+	check( $source === $fixer->apply( $revision->getContent( 'html' ), $title ),
+		'The timed getContent path preserves content and source HTML' );
+	check( isset( $durations['format_detail_content_source_html'][0] ),
+		'Profiling measures HTML source retrieval as distinct from DOM processing' );
+	$fixer->setBenchmarkTimer( null );
+	check( $fixer->getContent( $revision ) === $source,
+		'Disabling profiling restores the unchanged noninstrumented path' );
+
 	echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " HTML/link-batching assertions\n";
+
 }

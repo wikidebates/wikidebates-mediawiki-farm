@@ -49,6 +49,14 @@ class Templating {
 	}
 
 	/**
+	 * Keep all ContentFixer timing opt-in and limited to the benchmark window.
+	 * The content fixer is shared by rendering helpers in this process.
+	 */
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->contentFixer->setBenchmarkTimer( $observer );
+	}
+
+	/**
 	 * Returns pretty-printed user links + user tool links for history and
 	 * RecentChanges pages.
 	 *

@@ -308,3 +308,67 @@ memory. This maintenance benchmark reuses process-local caches and
 **does not directly prove** an equal improvement for independent HTTP
 requests. Check real logged-in and anonymous page loads, and include
 a moderation/restore test on the actual wiki before declaring a gain.
+
+## Split HTML content retrieval from DOM processing (read-only)
+
+After removing the edit-check cache and retaining the 512-entry
+last-revision LRU, the measured French Bistro board (50 topics, 242 posts)
+takes approximately 111.71 ms at warm render (two samples), including
+47.52 ms for the main `Templating::getContent()` calls. Neither the
+first run nor the two warm runs establish an HTTP-request baseline.
+
+When `--breakdown` is enabled, `format_detail_ms` additionally contains:
+
+- `content_source_html`: `AbstractRevision::getContent( 'html' )`,
+  including any conversion, safety hooks or legacy head normalization
+- `content_dom_parse`: `ContentFixer::createDOM()`, for content
+  containing markup/entities
+- `content_dom_fixers`: running all applicable DOM fixers, including
+  MediaWiki LinkBatch work and red-link rendering
+- `content_dom_serialize`: `Utils::getInnerHtml()`, including empty-node
+  corrections and XML serialization
+
+These four values are nested within `content_conversion`, **only** for
+`fixed-html` paths where permissions permit access to the content.
+They do not include the additional title conversions measured by
+`topic_title_params`, which are separate operations.
+
+New `format_detail_calls` provides event counts for each named
+`format_detail_ms` stage. In particular, the difference between
+`content_source_html` and `content_dom_parse` event counts helps
+identify how often the existing plaintext fast path avoids parsing
+(more precisely, only among successfully retrieved HTML inputs).
+Never sum overlapping duration fields, and do not interpret event
+counts as unique messages: summaries or repeated conversions can
+trigger additional calls.
+
+This profiling is activated **only** for the maintenance benchmark.
+The normal rendering path preserves the same `ContentFixer::getContent()`
+and `ContentFixer::apply()` behavior without timing callbacks.
+Observers are cleared when the formatter's benchmark is over.
+The profile does not log or persist message contents.
+
+Use the existing command for warm in-process timings:
+
+```sh
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
+	--wiki=fr \
+	--page='Wikidébats:Bistro' \
+	--runs=3 --limit=50 --sortby=updated --breakdown
+```
+
+A separate-process sample, useful for comparison with the above
+but still **not equivalent** to distinct browser requests, is:
+
+```sh
+for i in 1 2 3 4 5; do
+	php maintenance/run.php Flow:FlowBenchmarkTopicList \
+		--wiki=fr --page='Wikidébats:Bistro' \
+		--runs=1 --limit=50 --sortby=updated --breakdown
+done
+```
+
+Do not alter the DOM bypass conditions based on these timings alone:
+the current conversion also handles red links, invalid images and
+compatibility HTML normalization. Any future shortcut must prove
+identical returned HTML, entity handling, moderation and links.

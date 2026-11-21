@@ -16,6 +16,20 @@ class ContentFixer {
 	 */
 	protected $contentFixers = [];
 
+	/** @var callable|null Profiling observer, set only by the read-only benchmark. */
+	private $benchmarkTimer;
+
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+	}
+
+	private function recordBenchmarkStep( string $phase, int $started ): void {
+		( $this->benchmarkTimer )(
+			'format_detail_content_' . $phase,
+			round( ( hrtime( true ) - $started ) / 1000000, 3 )
+		);
+	}
+
 	/**
 	 * Accepts multiple content fixers.
 	 *
@@ -38,10 +52,17 @@ class ContentFixer {
 	 * @return string
 	 */
 	public function getContent( AbstractRevision $revision ) {
-		return $this->apply(
-			$revision->getContent( 'html' ),
-			$revision->getCollection()->getTitle()
-		);
+		if ( $this->benchmarkTimer === null ) {
+			return $this->apply(
+				$revision->getContent( 'html' ),
+				$revision->getCollection()->getTitle()
+			);
+		}
+
+		$started = hrtime( true );
+		$html = $revision->getContent( 'html' );
+		$this->recordBenchmarkStep( 'source_html', $started );
+		return $this->apply( $html, $revision->getCollection()->getTitle() );
 	}
 
 	/**
@@ -58,9 +79,24 @@ class ContentFixer {
 		if ( strpbrk( $content, '<>&' ) === false ) {
 			return $content;
 		}
+		$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$dom = self::createDOM( $content );
+		if ( $started !== null ) {
+			$this->recordBenchmarkStep( 'dom_parse', $started );
+		}
+
+		$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$this->applyToDom( $dom, $title );
-		return Utils::getInnerHtml( $dom->getElementsByTagName( 'body' )->item( 0 ) );
+		if ( $started !== null ) {
+			$this->recordBenchmarkStep( 'dom_fixers', $started );
+		}
+
+		$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
+		$html = Utils::getInnerHtml( $dom->getElementsByTagName( 'body' )->item( 0 ) );
+		if ( $started !== null ) {
+			$this->recordBenchmarkStep( 'dom_serialize', $started );
+		}
+		return $html;
 	}
 
 	/**
