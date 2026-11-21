@@ -30,4 +30,28 @@ check( $begin->invoke( $block ) === null, 'Observer can be disabled' );
 $end->invoke( $block, 'disabled', $started );
 check( !isset( $timings['disabled'] ), 'Disabled observer is never called' );
 
+$revisionFormatter = ( new ReflectionClass( \Flow\Formatter\RevisionFormatter::class ) )
+	->newInstanceWithoutConstructor();
+$topicFormatter = ( new ReflectionClass( \Flow\Formatter\TopicListFormatter::class ) )
+	->newInstanceWithoutConstructor();
+( new ReflectionProperty( \Flow\Formatter\TopicListFormatter::class, 'serializer' ) )
+	->setValue( $topicFormatter, $revisionFormatter );
+
+$observer = static function ( string $phase, float $milliseconds ) use ( &$timings ): void {
+	$timings[$phase] = $milliseconds;
+};
+$topicFormatter->setBenchmarkTimer( $observer );
+$topicProperty = new ReflectionProperty( \Flow\Formatter\TopicListFormatter::class, 'benchmarkTimer' );
+$revisionProperty = new ReflectionProperty( \Flow\Formatter\RevisionFormatter::class, 'benchmarkTimer' );
+check( $topicProperty->getValue( $topicFormatter ) === $observer,
+	'The topic formatter receives the opt-in callback' );
+check( $revisionProperty->getValue( $revisionFormatter ) === $observer,
+	'The revision formatter receives the same callback' );
+
+$topicFormatter->setBenchmarkTimer( null );
+check( $topicProperty->getValue( $topicFormatter ) === null,
+	'The topic formatter releases the callback after rendering' );
+check( $revisionProperty->getValue( $revisionFormatter ) === null,
+	'The revision formatter releases the callback after rendering' );
+
 echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " benchmark timing assertions\n";

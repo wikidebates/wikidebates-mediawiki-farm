@@ -59,10 +59,19 @@ class FlowBenchmarkTopicList extends Maintenance {
 			$block = new TopicListBlock( $workflow, Container::get( 'storage' ) );
 			$block->init( $context, 'view-topiclist' );
 			$phases = [];
+			$formatDetails = [];
 			if ( $breakdown ) {
-				$block->setBenchmarkTimer( static function ( string $phase, float $milliseconds ) use ( &$phases ): void {
-					$phases[$phase] = $milliseconds;
-				} );
+				$block->setBenchmarkTimer(
+					static function ( string $phase, float $milliseconds ) use ( &$phases, &$formatDetails ): void {
+						$prefix = 'format_detail_';
+						if ( str_starts_with( $phase, $prefix ) ) {
+							$key = substr( $phase, strlen( $prefix ) );
+							$formatDetails[$key] = round( ( $formatDetails[$key] ?? 0 ) + $milliseconds, 3 );
+						} else {
+							$phases[$phase] = $milliseconds;
+						}
+					}
+				);
 			}
 			$cpuBefore = getrusage();
 			$started = microtime( true );
@@ -89,6 +98,8 @@ class FlowBenchmarkTopicList extends Maintenance {
 			];
 			if ( $breakdown ) {
 				$sample['phases_ms'] = $phases;
+				// These timings nest inside 'formatting'; do not add them to phases_ms.
+				$sample['format_detail_ms'] = $formatDetails;
 				// The remaining time includes assembly and timing overhead.
 				$sample['other_ms'] = round( max( 0, $wallMs - array_sum( $phases ) ), 2 );
 			}
@@ -103,7 +114,8 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'note' => 'In-process timings include database and conversion work; '
 				. 'later samples may benefit from warmed request caches. '
 				. 'Phase timings, when requested, are wall-clock time, may include SQL, '
-				. 'and exclude block init; use MediaWiki database profiling for SQL counts.',
+				. 'and exclude block init; detailed formatting phases are nested, not additive. '
+				. 'Use MediaWiki database profiling for SQL counts.',
 			'samples' => $samples,
 		], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" );
 	}

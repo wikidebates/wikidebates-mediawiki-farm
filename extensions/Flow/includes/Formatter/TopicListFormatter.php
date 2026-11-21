@@ -19,6 +19,18 @@ class TopicListFormatter extends BaseTopicListFormatter {
 	 */
 	protected $serializer;
 
+	/** @var callable|null Optional maintenance-only timing callback. */
+	private $benchmarkTimer;
+
+	/**
+	 * Measure formatter internals only during an explicit read-only benchmark.
+	 * The caller must clear this observer in a finally block after rendering.
+	 */
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+		$this->serializer->setBenchmarkTimer( $observer );
+	}
+
 	public function __construct( UrlGenerator $urlGenerator, RevisionFormatter $serializer ) {
 		$this->urlGenerator = $urlGenerator;
 		$this->serializer = $serializer;
@@ -67,6 +79,7 @@ class TopicListFormatter extends BaseTopicListFormatter {
 	 */
 	public function buildResult( array $workflows, array $found, IContextSource $ctx ) {
 		$revisions = $posts = $replies = [];
+		$serializeStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$this->serializer->primePostRevisions( $found );
 		try {
 			foreach ( $found as $formatterRow ) {
@@ -80,8 +93,15 @@ class TopicListFormatter extends BaseTopicListFormatter {
 			}
 		} finally {
 			$this->serializer->clearPrimedPostRevisions();
+			if ( $serializeStarted !== null ) {
+				( $this->benchmarkTimer )(
+					'format_detail_revision_serialization',
+					round( ( hrtime( true ) - $serializeStarted ) / 1000000, 3 )
+				);
+			}
 		}
 
+		$aggregateStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		foreach ( $revisions as $i => $serialized ) {
 			$alpha = $serialized['postId'];
 			$revisions[$i]['replies'] = $replies[$alpha] ?? [];
@@ -108,6 +128,13 @@ class TopicListFormatter extends BaseTopicListFormatter {
 					$revisions[$revId] += $metadata;
 				}
 			}
+		}
+
+		if ( $aggregateStarted !== null ) {
+			( $this->benchmarkTimer )(
+				'format_detail_topic_aggregation',
+				round( ( hrtime( true ) - $aggregateStarted ) / 1000000, 3 )
+			);
 		}
 
 		return [

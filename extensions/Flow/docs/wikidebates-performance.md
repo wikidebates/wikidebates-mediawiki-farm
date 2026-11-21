@@ -187,3 +187,36 @@ any database work inside each stage. They are **not** SQL counts or HTML
 browser render times. This feature adds no database queries, cache purge,
 persistent state, API fields or public rendering changes. It only records
 stages when explicitly enabled on the maintenance-created block.
+
+
+## Nested formatting measurements
+
+The first real phase benchmarks of `Wikidébats:Bistro` confirmed that
+formatting accounts for approximately 73% of the wall-clock time in warm
+runs: 30.58 ms out of 41.93 ms for 69 messages, and 115.70 ms out of
+156.86 ms for 242 messages. Fetching topic workflows and root revisions
+takes a much smaller share. This does **not** demonstrate that all
+formatting time is spent converting HTML.
+
+With `--breakdown`, samples now also contain `format_detail_ms`:
+
+- `revision_serialization`: time spent iterating and serializing post
+  revisions, including content conversion, permission checks, generated
+  actions and links, and recursive summary serialization
+- `content_conversion`: accumulated time **inside** the
+  `Templating::getContent()` calls made by the revision serializer,
+  including summaries (a subset of `revision_serialization`)
+- `topic_aggregation`: time spent linking replies and computing
+  per-topic reply counts and last-updated metadata
+
+All `format_detail_ms` values are nested in `phases_ms.formatting`;
+`content_conversion` is also nested in `revision_serialization`.
+**Do not sum these fields as if they were independent.** A difference
+between revision serialization and content conversion is a useful
+indicator of the cost of links/actions/users/permissions/other metadata,
+but does not attribute it to one specific operation.
+
+The same `--breakdown` command is used; no new option is needed.
+When the maintenance timer is off, the formatters do not measure time.
+The observer is removed after each instrumented render, including
+exception paths. No content, revision, or private data is logged.

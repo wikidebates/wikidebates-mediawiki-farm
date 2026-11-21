@@ -114,7 +114,15 @@ class RevisionFormatter {
 	private $userLinksViewer;
 
 	/** @var PostRevision[] Current post revisions preloaded only while serializing a topic batch. */
+
 	private $availablePostRevisions = [];
+
+	/** @var callable|null Optional aggregate timer for the read-only benchmark. */
+	private $benchmarkTimer;
+
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+	}
 
 	/**
 	 * @var UserNameBatch
@@ -303,10 +311,18 @@ class RevisionFormatter {
 
 		if ( $this->includeContent ) {
 			$contentFormat = $this->decideContentFormat( $row->revision );
+			$contentStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
+			$content = $this->templating->getContent( $row->revision, $contentFormat );
+			if ( $contentStarted !== null ) {
+				( $this->benchmarkTimer )(
+					'format_detail_content_conversion',
+					round( ( hrtime( true ) - $contentStarted ) / 1000000, 3 )
+				);
+			}
 
 			// @todo better name?
 			$res['content'] = [
-				'content' => $this->templating->getContent( $row->revision, $contentFormat ),
+				'content' => $content,
 				'format' => $contentFormat
 			];
 		}
