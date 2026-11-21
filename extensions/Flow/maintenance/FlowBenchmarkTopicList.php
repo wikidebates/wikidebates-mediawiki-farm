@@ -32,6 +32,12 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'reuse-html-dom',
 			'Maintenance-only A/B experiment: reuse the parsed HTML source DOM for fixers'
 		);
+		$this->addOption(
+			'offset-id',
+			'For --sortby=newest, continue after this topic root ID (read-only pagination)',
+			false,
+			true
+		);
 		$this->requireExtension( 'Flow' );
 	}
 
@@ -41,10 +47,16 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$sortby = $this->getOption( 'sortby', 'updated' );
 		$breakdown = $this->hasOption( 'breakdown' );
 		$reuseHtmlDom = $this->hasOption( 'reuse-html-dom' );
+		$offsetId = $this->hasOption( 'offset-id' )
+			? (string)$this->getOption( 'offset-id' )
+			: null;
 		if ( $runs < 1 || $runs > 3 || $limit < 1 || $limit > 50 ||
 			!in_array( $sortby, [ 'newest', 'updated' ], true )
 		) {
 			$this->fatalError( 'Use --runs=1..3 --limit=1..50 --sortby=newest|updated' );
+		}
+		if ( $offsetId !== null && ( $offsetId === '' || $sortby !== 'newest' ) ) {
+			$this->fatalError( '--offset-id requires a nonempty ID and --sortby=newest' );
 		}
 
 		$title = Title::newFromText( $this->getOption( 'page' ) );
@@ -60,6 +72,14 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$context = RequestContext::getMain();
 		$context->setTitle( $title );
 		$samples = [];
+		$renderOptions = [
+			'sortby' => $sortby,
+			'limit' => $limit,
+			'format' => 'fixed-html',
+		];
+		if ( $offsetId !== null ) {
+			$renderOptions['offset-id'] = $offsetId;
+		}
 		for ( $i = 0; $i < $runs; $i++ ) {
 			$block = new TopicListBlock( $workflow, Container::get( 'storage' ) );
 			$block->init( $context, 'view-topiclist' );
@@ -96,11 +116,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 			$cpuBefore = getrusage();
 			$started = microtime( true );
 			try {
-				$topicList = $block->renderApi( [
-					'sortby' => $sortby,
-					'limit' => $limit,
-					'format' => 'fixed-html',
-				] );
+				$topicList = $block->renderApi( $renderOptions );
 			} finally {
 				$templating->setBenchmarkReuseDecodedDom( false );
 			}
@@ -118,8 +134,13 @@ class FlowBenchmarkTopicList extends Maintenance {
 			foreach ( $topicList['revisions'] ?? [] as $revisionId => $revision ) {
 				$revisionContent[$revisionId] = $revision['content'] ?? null;
 			}
+			// The newest-sort pager uses the final root ID as its next offset.
+			// Reuse the same contract as TopicListBlock::renderTocApi().
+			$roots = $topicList['roots'] ?? [];
+			$lastRootId = $roots ? end( $roots ) : null;
 			$sample = [
 				'run' => $i + 1,
+				'last_root_id' => is_string( $lastRootId ) ? $lastRootId : null,
 				'wall_ms' => $wallMs,
 				'cpu_ms' => $cpuMs,
 				'roots' => count( $topicList['roots'] ?? [] ),
@@ -154,6 +175,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'page' => $title->getPrefixedText(),
 			'sortby' => $sortby,
 			'limit' => $limit,
+			'offset_id' => $offsetId,
 			'html_dom_reuse' => $reuseHtmlDom ? 'enabled' : 'disabled',
 			'peak_memory_bytes' => memory_get_peak_usage( true ),
 			'note' => 'In-process timings include database and conversion work; '
@@ -166,6 +188,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 				. 'not the full API payload. result_content_sha256 fingerprints exact '
 				. 'per-revision content and formats (not action tokens). '
 				. '--reuse-html-dom is maintenance-only; the normal renderer is unchanged. '
+				. 'For newest sort, pass last_root_id as --offset-id to inspect older topics. '
 				. 'Compare independent PHP processes. '
 				. 'Use MediaWiki database profiling for SQL counts.',
 			'samples' => $samples,
