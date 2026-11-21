@@ -31,10 +31,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$this->addOption( 'breakdown', 'Include read-only phase timings for the renderer' );
 		$this->addOption( 'diagnose-digests', 'Inspect ordering, IDs and private per-revision HMACs' );
 		$this->addOption(
-			'reuse-serialized-users',
-			'Maintenance-only A/B: reuse serialized user payloads within a topic-list batch'
-		);
-		$this->addOption(
 			'reuse-html-dom',
 			'Maintenance-only A/B experiment: reuse the parsed HTML source DOM for fixers'
 		);
@@ -53,7 +49,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$sortby = $this->getOption( 'sortby', 'updated' );
 		$breakdown = $this->hasOption( 'breakdown' );
 		$diagnoseDigests = $this->hasOption( 'diagnose-digests' );
-		$reuseSerializedUsers = $this->hasOption( 'reuse-serialized-users' );
 		$reuseHtmlDom = $this->hasOption( 'reuse-html-dom' );
 		$offsetId = $this->hasOption( 'offset-id' )
 			? (string)$this->getOption( 'offset-id' )
@@ -99,7 +94,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 		for ( $i = 0; $i < $runs; $i++ ) {
 			$block = new TopicListBlock( $workflow, Container::get( 'storage' ) );
 			$block->init( $context, 'view-topiclist' );
-			$block->setBenchmarkReuseSerializedUsers( $reuseSerializedUsers );
 			$phases = [];
 			$formatDetails = [];
 			$formatCalls = [];
@@ -202,7 +196,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'limit' => $limit,
 			'offset_id' => $offsetId,
 			'html_dom_reuse' => $reuseHtmlDom ? 'enabled' : 'disabled',
-			'serialized_user_reuse' => $reuseSerializedUsers ? 'enabled' : 'disabled',
 			'diagnose_digests' => $diagnoseDigests,
 			'peak_memory_bytes' => memory_get_peak_usage( true ),
 			'note' => 'In-process timings include database and conversion work; '
@@ -216,7 +209,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 				. 'per-revision content and formats (not action tokens). '
 				. '--reuse-html-dom is a maintenance-only override of the site-level DOM mode. '
 				. 'TopicListQuery skips redundant current-revision metadata preload by default. '
-				. '--reuse-serialized-users is an off-by-default, scoped maintenance A/B. '
 				. 'For newest sort, pass last_root_id as --offset-id to inspect older topics. '
 				. '--diagnose-digests includes canonical hashes and private HMACs by revision. '
 				. 'Compare independent PHP processes. '
