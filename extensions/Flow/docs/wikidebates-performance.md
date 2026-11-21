@@ -841,3 +841,31 @@ denial. These synthetic cases cannot replace the real-wiki
 comparison. If **any** content digest differs, do not adopt
 single-pass rendering without identifying and fixing the discrepancy.
 If performance is unchanged, remove the experimental switch.
+
+### Compare older topics on the same board
+
+The benchmark can follow the existing `newest`-sort paging contract to
+sample messages outside the first 50 topics, without changing the
+public renderer or expanding the request limit. After running the
+first page with `--sortby=newest`, copy the resulting
+`samples[0].last_root_id` to a new invocation as `--offset-id`.
+Pass the same cursor to **both** A/B variants and compare their
+`result_structure_sha256` and `result_content_sha256`.
+
+```sh
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
+	--wiki=fr --page='Wikidébats:Bistro' \
+	--runs=1 --limit=50 --sortby=newest \
+	--offset-id='ROOT_ID_FROM_PREVIOUS_PAGE'
+
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
+	--wiki=fr --page='Wikidébats:Bistro' \
+	--runs=1 --limit=50 --sortby=newest \
+	--offset-id='ROOT_ID_FROM_PREVIOUS_PAGE' --reuse-html-dom
+```
+
+`--offset-id` is rejected for `--sortby=updated`, which uses a different,
+composite paging cursor. The option and last-root metadata affect only
+the maintenance benchmark. Stop at an empty page or if the next cursor
+does not advance. Do not infer equivalence of full API responses from
+these two hashes alone.
