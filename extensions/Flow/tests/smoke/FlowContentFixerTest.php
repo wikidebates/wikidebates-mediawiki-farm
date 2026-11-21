@@ -157,7 +157,6 @@ namespace {
 	check( $fixer->getContent( $revision ) === $source,
 		'Disabling profiling restores the unchanged noninstrumented path' );
 
-	echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " HTML/link-batching assertions
-";
+	echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " HTML/link-batching assertions\n";
 
 }
