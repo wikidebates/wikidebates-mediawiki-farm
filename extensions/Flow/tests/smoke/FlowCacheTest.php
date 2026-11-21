@@ -194,6 +194,18 @@ check( $topicKeyMethod->invoke( $permissions, $missingRevision2 ) ===
 	$missingRevision2->getRevisionId()->getAlphadecimal(),
 	'Unresolved collection does not cause historical revision key collisions' );
 check( $missingCollection->rootLookups === 2, 'Failed topic lookups are not cached as successes' );
+$topicSummary = new TestSummary( $firstCollection );
+check( $topicKeyMethod->invoke( $permissions, $topicSummary ) === $otherTopicId->getAlphadecimal(),
+	'PostSummary keeps its summary-target key without a tree lookup' );
+check( $firstCollection->rootLookups === 3, 'Summary shortcut never consults the post collection tree' );
+
+$permissions->setUser( new User( [ 'read' ] ) );
+check( $topicKeyMethod->invoke( $permissions, $firstRevision ) === $otherTopicId->getAlphadecimal(),
+	'Changing the viewer keeps the same topic identity but recalculates it' );
+check( $firstCollection->rootLookups === 4,
+	'Viewer change clears the topic key cache with other permission caches' );
+$permissions->setUser( $reader );
+
 
  
 // The optional read-only profiler reports a miss only when a permission
