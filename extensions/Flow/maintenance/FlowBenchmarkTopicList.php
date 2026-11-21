@@ -35,10 +35,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'Maintenance-only A/B experiment: reuse the parsed HTML source DOM for fixers'
 		);
 		$this->addOption(
-			'reuse-wikilink-titles',
-			'Maintenance-only A/B experiment: reuse Title objects resolved during WikiLink preloading'
-		);
-		$this->addOption(
 			'offset-id',
 			'For --sortby=newest, continue after this topic root ID (read-only pagination)',
 			false,
@@ -54,7 +50,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$breakdown = $this->hasOption( 'breakdown' );
 		$diagnoseDigests = $this->hasOption( 'diagnose-digests' );
 		$reuseHtmlDom = $this->hasOption( 'reuse-html-dom' );
-		$reuseWikiLinkTitles = $this->hasOption( 'reuse-wikilink-titles' );
 		$offsetId = $this->hasOption( 'offset-id' )
 			? (string)$this->getOption( 'offset-id' )
 			: null;
@@ -129,15 +124,12 @@ class FlowBenchmarkTopicList extends Maintenance {
 			// calls in long-lived maintenance processes, even on exceptions.
 			$templating = Container::get( 'templating' );
 			$templating->setBenchmarkReuseDecodedDom( $reuseHtmlDom );
-			$templating->setBenchmarkReusePreloadedWikiLinkTitles( $reuseWikiLinkTitles );
 			$cpuBefore = getrusage();
 			$started = microtime( true );
 			try {
 				$topicList = $block->renderApi( $renderOptions );
 			} finally {
-				// Drop the benchmark-only WikiLink memo, even after an exception.
-				$templating->setBenchmarkReusePreloadedWikiLinkTitles( false );
-				// Restore the site-level DOM setting, not an unconditional false.
+				// Restore the site-level setting, not an unconditional false.
 				$templating->setBenchmarkReuseDecodedDom( null );
 			}
 			$wallMs = round( ( microtime( true ) - $started ) * 1000, 2 );
@@ -204,7 +196,6 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'limit' => $limit,
 			'offset_id' => $offsetId,
 			'html_dom_reuse' => $reuseHtmlDom ? 'enabled' : 'disabled',
-			'wikilink_title_reuse' => $reuseWikiLinkTitles ? 'enabled' : 'disabled',
 			'diagnose_digests' => $diagnoseDigests,
 			'peak_memory_bytes' => memory_get_peak_usage( true ),
 			'note' => 'In-process timings include database and conversion work; '
@@ -216,8 +207,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 				. 'result_structure_sha256 fingerprints visible root/post/revision identifiers, '
 				. 'not the full API payload. result_content_sha256 fingerprints exact '
 				. 'per-revision content and formats (not action tokens). '
-				. '--reuse-html-dom is a maintenance override of the site-level DOM setting. '
-				. '--reuse-wikilink-titles is a disabled-by-default maintenance-only experiment. '
+				. '--reuse-html-dom is maintenance-only; the normal renderer is unchanged. '
 				. 'For newest sort, pass last_root_id as --offset-id to inspect older topics. '
 				. '--diagnose-digests includes canonical hashes and private HMACs by revision. '
 				. 'Compare independent PHP processes. '
