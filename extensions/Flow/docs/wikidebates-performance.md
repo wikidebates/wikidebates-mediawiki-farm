@@ -249,3 +249,40 @@ compare three samples (especially runs 2–3) before and after the deploy.
 These wall-clock measurements include unrelated variability; do not infer
 a guaranteed improvement or an individual permission-manager cost without
 more granular profiling.
+
+## Decomposed revision-serialization costs (opt-in)
+
+A before/after comparison on the real Bistro board with 242 messages found
+**no clear speedup** from the batch-scoped workflow edit check introduced in
+PR #16: warm CPU time stayed close to 145 ms. The 2 warm wall-clock samples
+are too few to establish a regression or improvement. Continue profiling
+before changing permissions or the initial message rendering further.
+
+The existing `--breakdown` option now reports additional keys under
+`format_detail_ms`, summed across all serialized revisions:
+
+- `revision_view_permission`: the initial per-revision permission check
+  performed by `RevisionFormatter::formatApi()`
+- `moderated_revision_lookup`: lookup of the moderated/current revision
+- `revision_links`: generation of read links via `buildLinks()`
+- `revision_actions`: action permissions and write-link generation via
+  `buildActions()`
+- `user_serialization`: usernames, genders and user-page/contribution links,
+  for all user roles serialized in the output
+- `topic_title_params`: the two additional topic-title parameters, including
+  plaintext and wikitext conversions and the title permission checks
+
+These timers are nested within `revision_serialization`; do not add
+them to its duration or to `phases_ms.formatting`.
+`topic_title_params` contains additional content conversions **not counted**
+in `content_conversion` (which covers the main `getContent()` call in
+each formatted revision). Some permission checks also occur inside
+`revision_actions`, `user_serialization`, and `topic_title_params`;
+the categories describe code boundaries, not disjoint types of work.
+
+The benchmark reports wall-clock time measured in the same PHP process,
+not per-request browser latency or database query counts. Recording several
+small operations adds measurement overhead, so do not compare subphase runs
+directly to earlier uninstrumented baselines as a precise speedup estimate.
+The callback is used only by the read-only maintenance helper and cleaned up
+after each formatting batch. Regular Flow rendering does not create timers.
