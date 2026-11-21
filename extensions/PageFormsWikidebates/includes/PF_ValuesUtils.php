@@ -277,144 +277,20 @@ SERVICE wikibase:label { bd:serviceParam wikibase:language \"" . $wgLanguageCode
 	 * @return string[]
 	 */
 	public static function getAllPagesForCategory( $top_category, $num_levels, $substring = null ) {
-		if ( $num_levels == 0 ) {
+		if ( (int)$num_levels === 0 ) {
 			return [ $top_category ];
 		}
-		global $wgPageFormsUseDisplayTitle;
-
-		$db = PFUtils::getReadDB();
-		$top_category = str_replace( ' ', '_', $top_category );
-		$categories = [ $top_category ];
-		$checkcategories = [ $top_category ];
-		$seenCategories = [ $top_category => true ];
-		$pages = [];
-		$sortkeys = [];
-		$maxResults = self::getMaxValuesToRetrieve( $substring );
-		// The schema is the same for every category traversed in this request.
-		$hasCategoryTitle = $db->fieldExists( 'categorylinks', 'cl_to' );
-
-		for ( $level = $num_levels; $level > 0; $level-- ) {
-			$newcategories = [];
-			$newCategoryMap = [];
-
-			foreach ( $checkcategories as $category ) {
-				$tables = [ 'categorylinks', 'page' ];
-				$columns = [ 'page_title', 'page_namespace' ];
-				$conditions = [];
-				$join = [ 'categorylinks' => [ 'JOIN', 'cl_from = page_id' ] ];
-
-				if ( $hasCategoryTitle ) {
-					$conditions['cl_to'] = $category;
-				} else {
-					// MW 1.45+
-					$tables[] = 'linktarget';
-					$join['linktarget'] = [ 'JOIN', 'cl_target_id = lt_id' ];
-					$conditions['lt_title'] = $category;
-				}
-
-				if ( $wgPageFormsUseDisplayTitle ) {
-					$tables['pp_displaytitle'] = 'page_props';
-					$tables['pp_defaultsort'] = 'page_props';
-					$columns['pp_displaytitle_value'] = 'pp_displaytitle.pp_value';
-					$columns['pp_defaultsort_value'] = 'pp_defaultsort.pp_value';
-					$join['pp_displaytitle'] = [
-						'LEFT JOIN', [
-							'pp_displaytitle.pp_page = page_id',
-							'pp_displaytitle.pp_propname = \'displaytitle\''
-						]
-					];
-					$join['pp_defaultsort'] = [
-						'LEFT JOIN', [
-							'pp_defaultsort.pp_page = page_id',
-							'pp_defaultsort.pp_propname = \'defaultsort\''
-						]
-					];
-				}
-
-				if ( $substring !== null && $substring !== '' ) {
-					if ( $wgPageFormsUseDisplayTitle ) {
-						$conditions[] = '((pp_displaytitle.pp_value IS NULL OR pp_displaytitle.pp_value = \'\') AND (' .
-							self::getSQLConditionForAutocompleteAtStartOfColumn( 'page_title', $substring ) .
-							')) OR ' .
-							self::getSQLConditionForAutocompleteAtStartOfColumn( 'pp_displaytitle.pp_value', $substring, false ) .
-							' OR page_namespace = ' . NS_CATEGORY;
-					} else {
-						$conditions[] = self::getSQLConditionForAutocompleteAtStartOfColumn( 'page_title', $substring ) .
-							' OR page_namespace = ' . NS_CATEGORY;
-					}
-				}
-
-				$res = $db->select(
-					$tables,
-					$columns,
-					$conditions,
-					__METHOD__,
-					[
-						'ORDER BY' => 'cl_type, cl_sortkey',
-						'LIMIT' => $maxResults
-					],
-					$join
-				);
-
-				if ( !$res ) {
-					continue;
-				}
-
-				while ( $row = $res->fetchRow() ) {
-					if ( !array_key_exists( 'page_title', $row ) ) {
-						continue;
-					}
-
-					$page_namespace = $row['page_namespace'];
-					$page_name = $row['page_title'];
-
-					if ( $page_namespace == NS_CATEGORY ) {
-						if ( !isset( $seenCategories[$page_name] ) && !isset( $newCategoryMap[$page_name] ) ) {
-							$newcategories[] = $page_name;
-							$newCategoryMap[$page_name] = true;
-						}
-						continue;
-					}
-
-					$cur_title = Title::makeTitleSafe( $page_namespace, $page_name );
-					if ( $cur_title === null ) {
-						continue;
-					}
-
-					$cur_value = $cur_title->getPrefixedText();
-					if ( array_key_exists( $cur_value . '@', $pages ) ) {
-						continue;
-					}
-
-					if ( array_key_exists( 'pp_displaytitle_value', $row ) &&
-						$row['pp_displaytitle_value'] !== null &&
-						trim( str_replace( '&#160;', '', strip_tags( $row['pp_displaytitle_value'] ) ) ) !== '' ) {
-						$pages[ $cur_value . '@' ] = htmlspecialchars_decode( $row['pp_displaytitle_value'] );
-					} else {
-						$pages[ $cur_value . '@' ] = $cur_value;
-					}
-
-					if ( array_key_exists( 'pp_defaultsort_value', $row ) && $row['pp_defaultsort_value'] !== null ) {
-						$sortkeys[ $cur_value ] = $row['pp_defaultsort_value'];
-					} else {
-						$sortkeys[ $cur_value ] = $cur_value;
-					}
-				}
-				$res->free();
-			}
-
-			if ( count( $newcategories ) === 0 ) {
-				return self::fixedMultiSort( $sortkeys, $pages );
-			}
-
-			$categories = array_merge( $categories, $newcategories );
-			foreach ( $newcategories as $newcategory ) {
-				$seenCategories[$newcategory] = true;
-			}
-			$checkcategories = $newcategories;
+		if ( (int)$num_levels < 0 ) {
+			return [];
 		}
-
-		return self::fixedMultiSort( $sortkeys, $pages );
+		global $wgPageFormsUseDisplayTitle;
+		$search = new PFCategoryAutocomplete(
+			PFUtils::getReadDB(),
+			(bool)$wgPageFormsUseDisplayTitle,
+			(int)( $GLOBALS['wgPageFormsCategoryTraversalLimit'] ?? 2000 ),
+			(bool)( $GLOBALS['wgPageFormsAutocompleteWordFallback'] ?? true )
+		);
+		return $search->getPages( (string)$top_category, (int)$num_levels, $substring );
 	}
 
 	/**
@@ -456,7 +332,7 @@ SERVICE wikibase:label { bd:serviceParam wikibase:language \"" . $wgLanguageCode
 		$conceptTitle = Title::makeTitleSafe( SMW_NS_CONCEPT, $conceptName );
 
 		if ( $substring !== null ) {
-			$substring = strtolower( $substring );
+			$substring = mb_strtolower( $substring, 'UTF-8' );
 		}
 
 		// Escape if there's no such concept.
@@ -525,7 +401,7 @@ SERVICE wikibase:label { bd:serviceParam wikibase:language \"" . $wgLanguageCode
 				// concepts with > 1000 pages. Instead, this
 				// code should loop through all the pages,
 				// using "offset".
-				$lowercasePageName = strtolower( $pageName );
+				$lowercasePageName = mb_strtolower( $pageName, 'UTF-8' );
 				$position = strpos( $lowercasePageName, $substring );
 				if ( $position !== false ) {
 					if ( $wgPageFormsAutocompleteOnAllChars ) {
@@ -945,7 +821,7 @@ SERVICE wikibase:label { bd:serviceParam wikibase:language \"" . $wgLanguageCode
 			$column_value = "LOWER($column)";
 		}
 
-		$substring = strtolower( $substring );
+		$substring = mb_strtolower( $substring, 'UTF-8' );
 		if ( $replaceSpaces ) {
 			$substring = str_replace( ' ', '_', $substring );
 		}
@@ -966,7 +842,7 @@ SERVICE wikibase:label { bd:serviceParam wikibase:language \"" . $wgLanguageCode
 			$column_value = "LOWER($column)";
 		}
 
-		$substring = strtolower( $substring );
+		$substring = mb_strtolower( $substring, 'UTF-8' );
 		if ( $replaceSpaces ) {
 			$substring = str_replace( ' ', '_', $substring );
 		}

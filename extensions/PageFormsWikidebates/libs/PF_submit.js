@@ -132,11 +132,13 @@
 			}
 			version = editVersion;
 			const snapshot = submission.snapshot( $form );
+			const ticket = mw.pageFormsEditState.ticket( $form );
 			const savedUniqueValues = [];
 			$form.find( '.uniqueField:not(:disabled)' ).each( function () {
 				savedUniqueValues.push( [ $( this ), $( this ).val() ] );
 			} );
 			$form.find( '.pf-submission-status' ).text( mw.msg( 'pf-form-saving' ) );
+			mw.pageFormsEditState.phase( $form, 'saving' );
 			return Promise.resolve( $.ajax( {
 				type: 'POST',
 				url: mw.util.wikiScript( 'api' ),
@@ -153,6 +155,8 @@
 				storeHiddenValue( 'target', result.target );
 				storeHiddenValue( 'form', result.form.title );
 				savedUniqueValues.forEach( ( item ) => item[ 0 ].data( 'pfUniqueSavedValue', item[ 1 ] ) );
+				ticket.result = result;
+				changedDuringSave = mw.pageFormsEditState.saved( $form, ticket );
 				saved = true;
 				$sacButtons.toggleClass( 'pf-save_and_continue-ok', !changedDuringSave )
 					.toggleClass( 'pf-save_and_continue-changed', changedDuringSave );
@@ -179,6 +183,15 @@
 		$form = $( '#pfForm' );
 		$sacButtons = $form.find( '.pf-save_and_continue' );
 		$form.preventDoubleSubmission();
+		mw.pageFormsEditState.bind( $form );
+		$form.on( 'pfEditStateChange.pfSaveState', ( event, dirty ) => {
+			$sacButtons.toggleClass( 'pf-save_and_continue-changed', dirty );
+			if ( !$form.data( 'pfSubmissionPending' ) && !$form.data( 'submitted' ) ) {
+				if ( dirty || $form.data( 'pfEditState' ).savedAt ) {
+					enableButtons( dirty );
+				}
+			}
+		} );
 		$sacButtons.off( 'click.pfSaveContinue' ).on( 'click.pfSaveContinue', handleSaveAndContinue );
 		$form.off( '.pfSaveContinue' )
 			.on( 'input.pfSaveContinue change.pfSaveContinue', 'input, select, textarea', setChanged )

@@ -29,7 +29,7 @@ function markup() {
 
 async function setup( config = {} ) {
 	jest.resetModules();
-	$( window ).off( '.pfSubmission' );
+	$( window ).off( '.pfSubmission .pfEditWarning .pfDrafts' );
 	document.body.innerHTML = '';
 	global.jQuery = $;
 	global.$ = $;
@@ -74,6 +74,9 @@ async function setup( config = {} ) {
 		requests.push( { options, deferred, xhr } );
 		return xhr;
 	} );
+	for ( const module of [ 'PF_lazyWidgets', 'PF_dependentFields', 'PF_formErrors', 'PF_instances', 'PF_editState', 'PF_drafts' ] ) {
+		require( '../../../libs/' + module + '.js' );
+	}
 	require( '../../../libs/PF_formSubmission.js' );
 	require( '../../../libs/PageForms.js' );
 	// Let the normal DOM-ready initializer see an empty document. The tests bind
@@ -82,6 +85,8 @@ async function setup( config = {} ) {
 	document.body.innerHTML = markup();
 	const $form = $( '#pfForm' );
 	mediaWiki.pageFormsSubmission.bind( $form );
+	mediaWiki.pageFormsEditState.bind( $form );
+	mediaWiki.pageFormsErrors.bind( $form );
 	const submitted = [];
 	const requestSubmit = jest.spyOn( HTMLFormElement.prototype, 'requestSubmit' )
 		.mockImplementation( function ( submitter ) {

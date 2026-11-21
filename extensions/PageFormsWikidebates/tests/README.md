@@ -9,6 +9,74 @@ vendor/bin/phpunit --filter 'PF(Values|Mapping)UtilsRegressionTest' extensions/P
 vendor/bin/phpunit extensions/PageFormsWikidebates/tests/phpunit
 ```
 
+## Progressive editing and local recovery
+
+Run the Jest command above. The added suites exercise actual lazy/dependency,
+error-navigation, instance-undo, edit-state and draft modules. Network responses,
+revision checks and editor targets are controlled; they do not contact production.
+Existing Select2 composition tests are retained. Additional token/combobox tests
+keep real Select2 instances and focused composing inputs alive across refreshes.
+
+A real Chromium smoke test can be run with Python Playwright 1.57.0 and a local
+Chromium binary (override `CHROMIUM` as needed):
+
+```sh
+python extensions/PageFormsWikidebates/tests/browser/editing-smoke.py
+```
+
+It injects the tracked JavaScript into an empty local browser document, without
+an HTTP server. MediaWiki services are simulated. It tests visibility-based
+initialization, offscreen values, real focus, error correction, undo, synthetic
+composition events and native submission. It reproduced the ignored native
+submission before the new-task replay fix. This is not an operating-system
+keyboard/IME test or a live MediaWiki browser test.
+
+The `pageforms-integration-checks.yml` workflow bootstraps a disposable MediaWiki
+1.43 / PHP 8.4 SQLite wiki and runs the new category/ranking/tree tests plus the
+existing focused mapping/category regression tests. It does not change a deployed
+wiki, its database, configuration, Composer lockfile or submodules.
+
+### Configuration and intentionally bounded behavior
+
+`$wgPageFormsCategoryTraversalLimit` defaults to 2000 discovered categories.
+Discovery and page matches are separate; SQL category lists are batched in groups
+of 50. Results are ranked among bounded candidates, not an exhaustive search of
+all matching pages. `$wgPageFormsAutocompleteWordFallback` (default true) adds a
+category-local contains-words fallback when fewer than ten prefix matches are
+available, for queries of 3 to 128 characters (at most six terms). There is no
+new persistent cache. Existing autocomplete caches keep their configured TTL.
+
+`$wgPageFormsEnableLocalDrafts` (default true) offers the local-draft control; it
+NEVER enables storage until the contributor opts in. Local data expires after
+seven days (cleaned when a form is opened), with a 1 MiB record limit. Drafts are
+plain browser-profile data, not encrypted private storage. Other users of the same
+browser profile can read them; browser quota/privacy settings can prevent writes
+or erase them. Do not enable on shared devices. No API token, password, upload,
+or arbitrary hidden field is stored. Known tree/rating hidden user values can be
+exported, but automatic restoration of these rich widgets is conservatively
+refused. Nested repeating-template structures also remain export-only. Regular
+text/select/checkbox/radio fields, tokens, comboboxes, first-level repeating
+instances and VisualEditor wikitext are supported. File uploads themselves are
+never recoverable from a text draft. Schema/enum/count checks run before mutation;
+a separate local pre-restore backup protects against third-party initializer
+errors. Restoring never publishes a revision.
+
+The most recent matching draft is offered without replacing any current input.
+Other tabs have separate record keys. Current page/form revisions are checked
+before confirmation; reload is required if the open form became stale. An older
+draft requires a separate explicit conflict confirmation. Review the restored
+content before saving. This does not replace MediaWiki's edit-conflict checks.
+
+VisualEditor and FullCalendar initialization is unchanged; only tokens,
+comboboxes, auto-growing textareas, ratings and trees receive per-widget lazy
+initialization. No sticky toolbar is included. Measure real forms and database
+queries before attributing a performance gain; no production timing claim is made.
+
+Before deployment, exercise the real French/English forms: save/preview/diff,
+mandatory/unique/dependent fields, collapsed errors, two save-and-continue actions,
+undo and reorder, source/visual mode, generated page names, draft restore after a
+page revision changed, storage denial, and keyboard input on your actual devices.
+
 ## Safe labels and asynchronous submission (November 2026)
 
 The current JavaScript suite contains 92 tests across five suites. It runs the

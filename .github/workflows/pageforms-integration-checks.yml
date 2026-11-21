@@ -1,0 +1,76 @@
+{
+	"name": "PageForms editing integration",
+	"on": {
+		"push": {
+			"branches": [
+				"improve/pageforms-fluid-editing",
+				"wikidebates-REL1_43-stable-2026-07-11"
+			],
+			"paths": [
+				"extensions/PageFormsWikidebates/**",
+				".github/workflows/pageforms-integration-checks.yml"
+			]
+		},
+		"pull_request": {
+			"paths": [
+				"extensions/PageFormsWikidebates/**",
+				".github/workflows/pageforms-integration-checks.yml"
+			]
+		}
+	},
+	"permissions": {
+		"contents": "read"
+	},
+	"jobs": {
+		"php": {
+			"runs-on": "ubuntu-24.04",
+			"timeout-minutes": 20,
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false
+					}
+				},
+				{
+					"uses": "shivammathur/setup-php@v2",
+					"with": {
+						"php-version": "8.4",
+						"extensions": "mbstring,intl,sqlite3,pdo_sqlite,gd,zip,curl,xml",
+						"coverage": "none",
+						"tools": "composer:v2"
+					}
+				},
+				{
+					"name": "Lint PHP",
+					"run": "find extensions/PageFormsWikidebates/includes -name '*.php' -print0 | xargs -0 -n 1 php -l"
+				},
+				{
+					"name": "Run integration checks in a disposable MediaWiki 1.43 wiki",
+					"run": "bash extensions/PageFormsWikidebates/tests/ci/php-integration.sh"
+				}
+			]
+		},
+		"browser": {
+			"runs-on": "ubuntu-24.04",
+			"timeout-minutes": 10,
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"sparse-checkout": "extensions/PageFormsWikidebates\nresources/lib/jquery"
+					}
+				},
+				{
+					"name": "Install browser test driver",
+					"run": "python3 -m venv /tmp/pf-browser\n/tmp/pf-browser/bin/pip install playwright==1.57.0"
+				},
+				{
+					"name": "Exercise actual form JavaScript in Chromium",
+					"run": "export CHROMIUM=\"$(command -v google-chrome || command -v chromium)\"\n/tmp/pf-browser/bin/python extensions/PageFormsWikidebates/tests/browser/editing-smoke.py"
+				}
+			]
+		}
+	}
+}

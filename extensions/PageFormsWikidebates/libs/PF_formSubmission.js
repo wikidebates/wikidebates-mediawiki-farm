@@ -42,6 +42,9 @@
 			$widget.removeClass( 'oo-ui-widget-enabled' ).addClass( 'oo-ui-widget-disabled' );
 		} );
 		$form.data( 'pfSubmissionPending', state ).attr( 'aria-busy', 'true' );
+		if ( mw.pageFormsEditState ) {
+			mw.pageFormsEditState.phase( $form, 'validating' );
+		}
 		$( '<div>' ).addClass( 'pf-submission-status' ).attr( 'role', 'status' )
 			.text( mw.msg( 'pf-form-validating' ) ).appendTo( $form );
 		return true;
@@ -63,6 +66,9 @@
 			$form.attr( 'aria-busy', state.busy );
 		}
 		$form.removeData( 'pfSubmissionPending' ).find( '.pf-submission-status' ).remove();
+		if ( mw.pageFormsEditState ) {
+			mw.pageFormsEditState.phase( $form, null );
+		}
 	};
 
 	function editorFields( $form ) {
@@ -137,7 +143,9 @@
 				} );
 				reject( new Error( 'Form preparation timed out' ) );
 			}, 30000 );
-			mw.pageFormsActivateVEFields().then( () => active ? window.validateAll() : false )
+			mw.pageFormsActivateVEFields()
+				.then( () => active && mw.pageFormsDependencies ? mw.pageFormsDependencies.settle( $form ) : undefined )
+				.then( () => active ? window.validateAll() : false )
 				.then( resolve, reject );
 		} );
 		return preparation.then( ( valid ) => {
@@ -172,8 +180,18 @@
 			}
 			const nativeEvent = event.originalEvent || event;
 			const submitter = nativeEvent.submitter || $form.find( ':submit[name="wpSave"]' )[ 0 ] || $form.find( ':submit' )[ 0 ];
-			submission.prepare( $form ).then( ( valid ) => {
+			submission.prepare( $form ).then( async ( valid ) => {
 				if ( !valid || !document.documentElement.contains( form ) ) {
+					return;
+				}
+				// A resolved promise can run inside the browser's original submit
+				// dispatch microtask checkpoint. requestSubmit() is then ignored as
+				// reentrant. Resume in a new task, retaining the double-submit lock.
+				const validatedSnapshot = submission.snapshot( $form );
+				await new Promise( ( resolve ) => setTimeout( resolve, 0 ) );
+				if ( !document.documentElement.contains( form ) ) { return; }
+				if ( submission.snapshot( $form ) !== validatedSnapshot ) {
+					submission.showError( $form, mw.msg( 'pf-form-changed-during-validation' ) );
 					return;
 				}
 				// Restore the clicked button before submitting: its name/value matters.
