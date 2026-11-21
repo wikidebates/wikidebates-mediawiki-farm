@@ -5,6 +5,7 @@ use MediaWiki\WikiMap\WikiMap;
 /**
  * Guard against removed MediaWiki global helpers in the form-edit draft context.
  *
+ * @covers \PFAutoeditAPI
  * @group PageForms
  */
 class PFAutoeditAPICompatibilityTest extends MediaWikiIntegrationTestCase {
