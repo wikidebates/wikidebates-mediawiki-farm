@@ -51,3 +51,16 @@ test( 'ambiguous selection does not choose a random node', () => {
 	expect( widget.select_node ).not.toHaveBeenCalled();
 	expect( $hidden.val() ).toBe( 'Beta' );
 } );
+
+test( 'unknown deselection is ignored and single selection replaces old value', () => {
+	$tree.applyJSTree();
+	$tree.trigger( 'ready.jstree', [ { instance: widget } ] );
+	$tree.trigger( 'deselect_node.jstree', [ { node: { text: 'Unrelated' } } ] );
+	expect( $hidden.val() ).toBe( 'Beta' );
+	$tree.trigger( 'select_node.jstree', [ { node: { text: 'Alpha' } } ] );
+	expect( $hidden.val() ).toBe( 'Alpha' );
+	$tree.trigger( 'deselect_node.jstree', [ { node: { text: 'Beta' } } ] );
+	expect( $hidden.val() ).toBe( 'Alpha' );
+	$tree.trigger( 'deselect_node.jstree', [ { node: { text: 'Alpha' } } ] );
+	expect( $hidden.val() ).toBe( '' );
+} );
