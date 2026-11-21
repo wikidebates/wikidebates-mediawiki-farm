@@ -53,11 +53,13 @@
 		const $input = $(this.element).next('input.PFTree_data');
 
 		if ( this.multiple ) {
-			this.values.push( data );
+			if ( !this.values.includes( data ) ) {
+				this.values.push( data );
+			}
 			const data_string = this.values.join( this.delimiter );
 			$input.val( data_string ).attr( 'value', data_string ).trigger( 'change' );
 		} else {
-			this.values.push( data );
+			this.values = [ data ];
 			$input.val( data ).attr( 'value', data ).trigger( 'change' );
 		}
 	};
@@ -65,7 +67,11 @@
 	TreeInput_proto.uncheck = function( data ) {
 		const $input = $( this.element ).next( 'input.PFTree_data' );
 
-		this.values.splice( this.values.indexOf( data ), 1 );
+		const index = this.values.indexOf( data );
+		if ( index === -1 ) {
+			return;
+		}
+		this.values.splice( index, 1 );
 		const data_string = this.values.join( this.delimiter );
 		$input.val( data_string ).attr( 'value', data_string ).trigger( 'change' );
 	};
