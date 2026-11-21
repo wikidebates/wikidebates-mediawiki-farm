@@ -421,3 +421,74 @@ done
 
 Only optimize a permissions path after its measured cost is isolated,
 and retain the current moderation, user rights and invalidation behavior.
+
+## Cold permission-decision cost, beyond the action-loop timer
+
+The French Bistro (50 topics, 242 posts) gives **2,147**
+`action_specific_permission` calls per complete render. Across five
+independent PHP processes on the 2026-11-21 revision, the combined
+time of these permission calls averaged **150.98 ms**, compared with
+approximately **2.24 ms** for the second and third iterations within
+one PHP process. The workflow edit gate was much less costly:
+approximately **13.44 ms** cold and **6.54 ms** warm. This strongly
+suggests that filling `RevisionActionPermissions::isAllowed()` caches
+is a better investigation target than repeating the workflow-edit cache
+from withdrawn PR #16. It does **not** establish that the user rights
+or moderation checks can be safely skipped.
+
+With `--breakdown`, the permission service now reports the following
+additional events under `format_detail_ms` and `format_detail_calls`:
+
+- `permission_cache_hit`: a **counting-only** event with 0.0 ms;
+  it means a matching revision-ID, moderation-state and action key
+  already had a cached decision
+- `permission_cache_miss`: aggregate duration of actual
+  `computeIsAllowed()` calls (including refused decisions)
+- `permission_revision_rights`: first revision-level right check
+- `permission_root_lookup` and `permission_root_rights`:
+  locating the current topic root and checking applicable root rights
+- `permission_board_lookup` and `permission_board_rights`:
+  locating the board and checking its visibility
+- `permission_latest_revision` and `permission_latest_revision_rights`:
+  checking the current revision and, for historical revisions,
+  its permissions
+- `permission_write_flag_lookup`: retrieving whether a Flow action
+  performs a write
+- `permission_rule_lookup`: loading a moderation-specific rule
+- `permission_rule_closure`: evaluating any dynamic rule closure
+  (only emitted for closure-based rules)
+
+All these measurements are **nested** inside a parent
+`permission_cache_miss` or other measured permission work; some are
+nested further inside `action_specific_permission`,
+`revision_view_permission` or `content_conversion`.
+Do not add these values to `revision_actions`, `formatting`, or the
+total. Stage counts describe executed operations, not unique posts:
+one `isAllowed()` call can perform several rights and rule checks,
+while others return at an early denial.
+
+These measurements only run when the maintenance benchmark installs
+a timing observer. Outside `--breakdown`, the original permission
+methods execute directly and no authorization decisions are newly
+memoized. The permissions observer is removed with the formatter
+observer after rendering. The more fine-grained timings themselves
+have some overhead, especially with thousands of calls. Compare stages
+**within** a benchmark run, not absolute times across instrumentation
+versions. This profiling does not alter moderator rights, suppressions,
+deleted content, historical checks, user restrictions or cache
+invalidation.
+
+To identify the dominant cold path, run five separate PHP processes:
+
+```sh
+for i in 1 2 3 4 5; do
+	php maintenance/run.php Flow:FlowBenchmarkTopicList \
+		--wiki=fr --page='Wikidébats:Bistro' \
+		--runs=1 --limit=50 --sortby=updated --breakdown
+done
+```
+
+The permission cache is per process and checks changes in the
+collection generation, the viewer, and the revision moderation state.
+Before considering any permission shortcut, verify those conditions
+remain enforced and inspect the distribution of actual cold misses.
