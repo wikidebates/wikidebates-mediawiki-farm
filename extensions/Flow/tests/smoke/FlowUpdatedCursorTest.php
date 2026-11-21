@@ -150,10 +150,10 @@ namespace {
 	}
 	$checkIndexSelection = static function ( array $indexedSort, string $declaredOrder, $requestedSort ) {
 		// Only the index metadata is needed for selection; no cache or storage is touched.
-		$index = ( new \\ReflectionClass( \\Flow\\Data\\Index\\TopKIndex::class ) )->newInstanceWithoutConstructor();
-		( new \\ReflectionProperty( \\Flow\\Data\\Index\\FeatureIndex::class, 'indexedOrdered' ) )
+		$index = ( new \ReflectionClass( \Flow\Data\Index\TopKIndex::class ) )->newInstanceWithoutConstructor();
+		( new \ReflectionProperty( \Flow\Data\Index\FeatureIndex::class, 'indexedOrdered' ) )
 			->setValue( $index, [ 'topic_list_id' ] );
-		( new \\ReflectionProperty( \\Flow\\Data\\Index\\TopKIndex::class, 'options' ) )
+		( new \ReflectionProperty( \Flow\Data\Index\TopKIndex::class, 'options' ) )
 			->setValue( $index, [ 'sort' => $indexedSort, 'order' => $declaredOrder, 'limit' => 500 ] );
 		$manager = new CursorIndexSelectionManager( $index );
 		$pager = new Pager( $manager, [ 'topic_list_id' => 'board' ], [
