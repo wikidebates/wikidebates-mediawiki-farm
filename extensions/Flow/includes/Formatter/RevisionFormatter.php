@@ -122,6 +122,11 @@ class RevisionFormatter {
 
 	public function setBenchmarkTimer( ?callable $observer ): void {
 		$this->benchmarkTimer = $observer;
+		// The smoke tests may instantiate a formatter without its dependencies.
+		// Real rendering sets this on the fully constructed Templating service.
+		if ( isset( $this->templating ) ) {
+			$this->templating->setBenchmarkTimer( $observer );
+		}
 	}
 
 	/**
