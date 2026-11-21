@@ -183,4 +183,28 @@ check( $templating->getContent( $replyPost, 'html' ) === '<p>Readable reply</p>'
 check( $replyPost->rootLookups === 3 && $timedPermissions->checks === 7,
 	'The original two checks remain active when the observer is absent' );
 check( $timings === [], 'Uninstrumented content rendering records no benchmark events' );
+
+// The topic list has already fetched latest post revisions before
+// loadMetadataBatch(). This experiment skips ONLY that extra metadata
+// fetch, with the original path used by default and for other queries.
+$topicQuery = ( new ReflectionClass( \Flow\Formatter\TopicListQuery::class ) )
+	->newInstanceWithoutConstructor();
+$shouldPreload = new ReflectionMethod(
+	\Flow\Formatter\TopicListQuery::class, 'shouldPreloadCurrentRevisionsForMetadata'
+);
+check( $shouldPreload->invoke( $topicQuery ) === true,
+	'Default metadata collection still preloads current revisions' );
+$topicQuery->setBenchmarkSkipCurrentRevisionRefetch( true );
+check( $shouldPreload->invoke( $topicQuery ) === false,
+	'Maintenance-only variant can skip the redundant current revision lookup' );
+$topicQuery->setBenchmarkSkipCurrentRevisionRefetch( false );
+check( $shouldPreload->invoke( $topicQuery ) === true,
+	'Clearing the variant restores the original metadata read' );
+
+// Confirm the parent default still applies to other Flow query classes.
+$genericPreload = new ReflectionMethod(
+	\Flow\Formatter\AbstractQuery::class, 'shouldPreloadCurrentRevisionsForMetadata'
+);
+check( $genericPreload->invoke( $topicQuery ) === true,
+	'The generic query implementation always preserves current revision fetching' );
 echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " benchmark timing assertions\n";
