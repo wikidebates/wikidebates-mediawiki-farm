@@ -245,7 +245,7 @@ abstract class RevisionStorage extends DbStorage {
 
 		$dbr = $this->dbFactory->getDB( DB_REPLICA );
 		$res = $dbr->newSelectQueryBuilder()
-			->select( [ 'rev_id' => "MAX( 'rev_id' )" ] )
+			->select( [ 'rev_id' => 'MAX(rev_id)' ] )
 			->from( 'flow_revision' )
 			->where( [ 'rev_type' => $this->getRevType() ] )
 			->andWhere( $this->buildCompositeInCondition( $dbr, $duplicator->getUniqueQueries() ) )
