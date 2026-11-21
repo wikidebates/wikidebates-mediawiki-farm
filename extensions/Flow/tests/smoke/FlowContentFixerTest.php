@@ -207,7 +207,11 @@ namespace {
 	class SafetyCheckedHtmlRevision extends \Flow\Model\PostRevision {
 		public function __construct( private \MediaWiki\Title\Title $title, private string $raw ) {
 			$this->content = $raw;
-			$this->revId = \Flow\Model\UUID::create( '0000000000000101' );
+			$this->revId = new class {
+				public function getAlphadecimal() {
+					return 'test-revision';
+				}
+			};
 		}
 		public function getContentRaw() {
 			return $this->raw;
