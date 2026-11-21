@@ -36,3 +36,18 @@ export MW_CONFIG_FILE="$config/LocalSettings.php"
 php maintenance/run.php update --quick
 vendor/bin/phpunit --filter 'PF(FluidEditing|ValuesUtilsRegression|MappingUtilsRegression)Test' \
 	extensions/PageFormsWikidebates/tests/phpunit
+
+# Exercise the actual single-line eval bridge, not just PHP syntax.
+# The benchmark is read-only, and the test wiki/category contain no real data.
+echo "=== PageForms benchmark CLI regression ==="
+benchmark_output="$(
+	PF_BENCH_WIKI=pf_ci \
+	PF_BENCH_CATEGORY='PFBenchmarkNonexistentCategory' \
+	PF_BENCH_QUERY='UnlikelyBenchmarkTerm' \
+	PF_BENCH_DEPTH=1 \
+	PF_BENCH_ROUNDS=1 \
+	sh extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh
+)"
+printf '%s\n' "$benchmark_output"
+printf '%s\n' "$benchmark_output" | grep -q 'runs=1'
+printf '%s\n' "$benchmark_output" | grep -q 'median='
