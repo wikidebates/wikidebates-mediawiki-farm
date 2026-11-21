@@ -1042,3 +1042,44 @@ memo, maintenance option, and A/B-only tests were removed. Original
 The separately confirmed default HTML DOM reuse is retained.
 Do not reintroduce the Title memo without a new specific bottleneck
 and repeatable overall performance evidence.
+
+## Read-only per-link HTML fragment timing
+
+The HTML-fixer breakdown for Wikidébats:Bistro (50 topics, 242 posts,
+192 fixed HTML contents) found that WikiLink preloading and replacement
+were the largest individual fixer stages: ~10.66 ms preload and 9.18 ms
+apply on the first render; ~2.93 ms preload and 5.36 ms apply on later
+renders. The attempted memo of preloaded Title objects in PR #46 was
+removed because its A/B comparison showed no whole-render improvement.
+
+Before considering a different change, measure the per-link HTML fragment
+parse already performed by `WikiLinkFixer::apply()` when it turns
+`LinkRenderer::makeLink()` output into a DOM node.
+
+The optional `--breakdown` observer emits the following counters and
+timings (all under `format_detail_`):
+
+- `content_wikilink_candidate`: counting-only (0 ms) for each
+  XPath-selected DOMElement handed to WikiLinkFixer, even if the
+  link is skipped because it has an empty or unresolvable href.
+- `content_wikilink_render_html`: time spent generating the link
+  HTML with LinkRenderer and serializing the link label.
+- `content_wikilink_parse_fragment`: time spent parsing that generated
+  HTML into a temporary DOM and selecting its `<a>` node.
+- `content_wikilink_insert_node`: import and replacement of the node
+  inside the original document.
+- `content_wikilink_transformed`: counting-only (0 ms), emitted only
+  after a link has actually been replaced.
+
+`format_detail_calls` gives the number of candidate and transformed
+links or timed operations. These stages nest within
+`content_fixer_wikilinkfixer_apply`, which itself nests in
+`content_dom_fixers`; do not add them to their parent duration.
+No link text or target URLs are reported. The per-link profiler is
+disabled in normal requests and cleared with the parent observer.
+Every existing resolver, XSS check, LinkBatch operation, rendered
+fragment parse, DOM insertion and permission check remains unchanged.
+
+Run the existing read-only benchmark with `--reuse-html-dom --breakdown`
+and inspect the new values in the first and subsequent renders before
+deciding whether HTML-fragment reparsing is worth a separate A/B trial.
