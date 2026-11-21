@@ -69,6 +69,38 @@
 		};
 	};
 
+	function treeElement( element ) {
+		const $field = $( element );
+		return element.type === 'hidden' && $field.hasClass( 'PFTree_data' ) ?
+			$field.prev( '.pfTreeInput' ) : $();
+	}
+
+	function treeChoices( $tree ) {
+		const params = JSON.parse( $tree.attr( 'params' ) || 'null' );
+		const source = JSON.parse( $tree.attr( 'data' ) || 'null' );
+		if ( !params || !Array.isArray( source ) || typeof params.delimiter !== 'string' || !params.delimiter ) {
+			throw new Error( 'Invalid tree schema' );
+		}
+		const labels = new Map();
+		let remaining = 2500;
+		function visit( nodes, depth ) {
+			if ( depth > 30 || !Array.isArray( nodes ) ) {
+				throw new Error( 'Invalid tree depth' );
+			}
+			nodes.forEach( ( node ) => {
+				if ( !node || typeof node.text !== 'string' || --remaining < 0 ) {
+					throw new Error( 'Invalid tree node' );
+				}
+				labels.set( node.text, ( labels.get( node.text ) || 0 ) + 1 );
+				if ( node.children !== undefined ) {
+					visit( node.children, depth + 1 );
+				}
+			} );
+		}
+		visit( source, 0 );
+		return { params, labels };
+	}
+
 	function ratingElement( element ) {
 		const $field = $( element );
 		return element.type === 'hidden' && $field.parent().hasClass( 'pfRatingWrapper' ) ?
@@ -91,8 +123,18 @@
 					throw new Error( 'Invalid rating value' );
 				}
 			} else {
-				// Tree and other rich widgets need verified visual restore adapters.
-				throw new Error( 'This widget requires manual draft recovery' );
+				const $tree = treeElement( element );
+				if ( !$tree.length || typeof saved.value !== 'string' ) {
+					throw new Error( 'This widget requires manual draft recovery' );
+				}
+				const choices = treeChoices( $tree );
+				const values = saved.value === '' ? [] : saved.value.split( choices.params.delimiter );
+				if ( ( !choices.params.multiple && values.length > 1 ) ||
+					values.some( ( value ) => choices.labels.get( value ) !== 1 ) ||
+					new Set( values ).size !== values.length ) {
+					// Ambiguous names, renamed nodes and invalid values stay export-only.
+					throw new Error( 'Draft tree selection cannot be restored safely' );
+				}
 			}
 		}
 		if ( element.type === 'checkbox' || element.type === 'radio' ) {
@@ -195,6 +237,23 @@
 					} );
 				}
 				$field.val( item.value );
+				const $tree = treeElement( this );
+				if ( $tree.length ) {
+					const choices = treeChoices( $tree );
+					choices.params.cur_value = item.value;
+					$tree.attr( 'params', JSON.stringify( choices.params ) );
+					const widget = $tree.data( 'jstree' );
+					if ( widget && typeof widget.get_json === 'function' &&
+						typeof widget.deselect_all === 'function' && typeof widget.select_node === 'function' ) {
+						const nodes = widget.get_json( '#', { flat: true } );
+						const values = item.value === '' ? [] : item.value.split( choices.params.delimiter );
+						widget.deselect_all( true );
+						values.forEach( ( label ) => {
+							const node = nodes.find( ( candidate ) => candidate.text === label );
+							widget.select_node( node.id, true, true );
+						} );
+					}
+				}
 				const $rating = ratingElement( this );
 				if ( $rating.length ) {
 					$rating.attr( 'data-curvalue', item.value );
