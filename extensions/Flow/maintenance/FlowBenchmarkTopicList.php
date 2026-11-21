@@ -28,6 +28,10 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$this->addOption( 'limit', 'Topics per render (1..50; default 10)', false, true );
 		$this->addOption( 'sortby', 'newest or updated (default updated)', false, true );
 		$this->addOption( 'breakdown', 'Include read-only phase timings for the renderer' );
+		$this->addOption(
+			'reuse-html-dom',
+			'Maintenance-only A/B experiment: reuse the parsed HTML source DOM for fixers'
+		);
 		$this->requireExtension( 'Flow' );
 	}
 
@@ -36,6 +40,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$limit = (int)$this->getOption( 'limit', 10 );
 		$sortby = $this->getOption( 'sortby', 'updated' );
 		$breakdown = $this->hasOption( 'breakdown' );
+		$reuseHtmlDom = $this->hasOption( 'reuse-html-dom' );
 		if ( $runs < 1 || $runs > 3 || $limit < 1 || $limit > 50 ||
 			!in_array( $sortby, [ 'newest', 'updated' ], true )
 		) {
@@ -84,13 +89,21 @@ class FlowBenchmarkTopicList extends Maintenance {
 					}
 				);
 			}
+			// Never let the experimental renderer leak into subsequent web/API
+			// calls in long-lived maintenance processes, even on exceptions.
+			$templating = Container::get( 'templating' );
+			$templating->setBenchmarkReuseDecodedDom( $reuseHtmlDom );
 			$cpuBefore = getrusage();
 			$started = microtime( true );
-			$topicList = $block->renderApi( [
-				'sortby' => $sortby,
-				'limit' => $limit,
-				'format' => 'fixed-html',
-			] );
+			try {
+				$topicList = $block->renderApi( [
+					'sortby' => $sortby,
+					'limit' => $limit,
+					'format' => 'fixed-html',
+				] );
+			} finally {
+				$templating->setBenchmarkReuseDecodedDom( false );
+			}
 			$wallMs = round( ( microtime( true ) - $started ) * 1000, 2 );
 			$cpuAfter = getrusage();
 			$cpuMs = round( (
@@ -99,6 +112,12 @@ class FlowBenchmarkTopicList extends Maintenance {
 				( $cpuAfter['ru_stime.tv_sec'] - $cpuBefore['ru_stime.tv_sec'] ) * 1000000 +
 				$cpuAfter['ru_stime.tv_usec'] - $cpuBefore['ru_stime.tv_usec']
 			) / 1000, 2 );
+			// Exact serialized HTML + format per revision, in output order.
+			// The identity digest alone cannot detect altered content.
+			$revisionContent = [];
+			foreach ( $topicList['revisions'] ?? [] as $revisionId => $revision ) {
+				$revisionContent[$revisionId] = $revision['content'] ?? null;
+			}
 			$sample = [
 				'run' => $i + 1,
 				'wall_ms' => $wallMs,
@@ -113,6 +132,9 @@ class FlowBenchmarkTopicList extends Maintenance {
 					$topicList['posts'] ?? [],
 					array_keys( $topicList['revisions'] ?? [] ),
 				], JSON_UNESCAPED_SLASHES ) ),
+				'result_content_sha256' => hash( 'sha256', json_encode(
+					$revisionContent, JSON_UNESCAPED_SLASHES
+				) ),
 			];
 			if ( $breakdown ) {
 				$sample['phases_ms'] = $phases;
@@ -132,6 +154,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'page' => $title->getPrefixedText(),
 			'sortby' => $sortby,
 			'limit' => $limit,
+			'html_dom_reuse' => $reuseHtmlDom ? 'enabled' : 'disabled',
 			'peak_memory_bytes' => memory_get_peak_usage( true ),
 			'note' => 'In-process timings include database and conversion work; '
 				. 'later samples may benefit from warmed request caches. '
@@ -140,7 +163,10 @@ class FlowBenchmarkTopicList extends Maintenance {
 				. 'query_detail_ms is nested inside messages_and_permissions. '
 				. '*_detail_calls counts measured operations rather than messages. '
 				. 'result_structure_sha256 fingerprints visible root/post/revision identifiers, '
-				. 'not the full API payload. Compare independent PHP processes. '
+				. 'not the full API payload. result_content_sha256 fingerprints exact '
+				. 'per-revision content and formats (not action tokens). '
+				. '--reuse-html-dom is maintenance-only; the normal renderer is unchanged. '
+				. 'Compare independent PHP processes. '
 				. 'Use MediaWiki database profiling for SQL counts.',
 			'samples' => $samples,
 		], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" );
