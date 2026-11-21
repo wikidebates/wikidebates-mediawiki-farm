@@ -19,15 +19,29 @@ namespace {
 			}
 		}
 	} );
+	/**
+	 * Simulate a capacity-limited LRU for Flow smoke tests. The old unbounded
+	 * double concealed evictions and let small production cache sizes pass.
+	 */
 	class MapCacheLRU {
 		private array $values = [];
-		public function __construct( $size ) {
+		public function __construct( private int $size ) {
 		}
 		public function get( $key ) {
-			return $this->values[$key] ?? null;
+			if ( !array_key_exists( $key, $this->values ) ) {
+				return null;
+			}
+			$value = $this->values[$key];
+			unset( $this->values[$key] );
+			$this->values[$key] = $value;
+			return $value;
 		}
 		public function set( $key, $value ) {
+			unset( $this->values[$key] );
 			$this->values[$key] = $value;
+			if ( count( $this->values ) > $this->size ) {
+				array_shift( $this->values );
+			}
 		}
 		public function clear( $key ) {
 			unset( $this->values[$key] );
