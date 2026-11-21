@@ -238,6 +238,36 @@ namespace {
 		new \Flow\Parsoid\Fixer\BaseHrefFixer( '/wiki/$1', $urlUtils ),
 		new \Flow\Parsoid\Fixer\ExtLinkFixer( $urlUtils )
 	);
+	// The optional benchmark attributes XPath, WikiLink preloading and fixer
+	// application separately, while preserving the original HTML and fallback.
+	$profileFixture = '<body><p><a href="./Existing" rel="mw:WikiLink">Lien</a> ' .
+		'<a href="./External" rel="mw:ExtLink">Externe</a> ' .
+		'<a href="./Relative">Relatif</a></p>' .
+		'<figure typeof="mw:File"><img resource="./Allowed" src="./allowed.png"></figure></body>';
+	$profileBaseline = $fullFixer->apply( $profileFixture, $title );
+	$fixerEvents = [];
+	$fullFixer->setBenchmarkTimer(
+		static function ( string $phase, float $milliseconds ) use ( &$fixerEvents ): void {
+			$fixerEvents[$phase] = $milliseconds;
+		}
+	);
+	check( $fullFixer->apply( $profileFixture, $title ) === $profileBaseline,
+		'Per-fixer profiling leaves the generated HTML unchanged' );
+	foreach ( [ 'wikilinkfixer', 'badimageremover', 'basehreffixer', 'extlinkfixer' ] as $name ) {
+		foreach ( [ 'xpath', 'apply' ] as $operation ) {
+			$key = 'format_detail_content_fixer_' . $name . '_' . $operation;
+			check( isset( $fixerEvents[$key] ) && $fixerEvents[$key] >= 0,
+				'Per-fixer profiler records a nonnegative ' . $key );
+		}
+	}
+	check( isset( $fixerEvents['format_detail_content_fixer_wikilinkfixer_preload'] ),
+		'WikiLink preloading is timed independently of XPath and link conversion' );
+	$fullFixer->setBenchmarkTimer( null );
+	$fixerEvents = [];
+	check( $fullFixer->apply( $profileFixture, $title ) === $profileBaseline,
+		'Disabling per-fixer profiling restores the normal HTML rendering' );
+	check( $fixerEvents === [], 'Normal HTML rendering emits no per-fixer measurements' );
+
 	$fixtures = [
 		'<body><p>Bonjour <strong>Wikidébats</strong> &amp; Flow.</p></body>',
 		'<body base-url="//example.org/wiki/"><p><a href="./Existing" rel="mw:WikiLink">Lien</a></p></body>',
