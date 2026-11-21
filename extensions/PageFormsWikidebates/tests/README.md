@@ -97,9 +97,11 @@ seven days (cleaned when a form is opened), with a 1 MiB record limit. Drafts ar
 plain browser-profile data, not encrypted private storage. Other users of the same
 browser profile can read them; browser quota/privacy settings can prevent writes
 or erase them. Do not enable on shared devices. No API token, password, upload,
-or arbitrary hidden field is stored. Tree and other unsupported hidden rich widget values can be
-exported but are not restored automatically. Ratings and nested repeating-template
-structures now support validated restoration up to a global instance budget. Regular
+or arbitrary hidden field is stored. Tree choices are restored only when all saved labels are unique in the current
+server-provided tree; ambiguous, missing or restructured selections remain
+export-only. Already-active jsTree instances and not-yet-initialized lazy trees
+both receive the restored selections. Ratings and nested repeating-template
+structures also support validated restoration up to a global instance budget. Regular
 text/select/checkbox/radio fields, tokens, comboboxes, first-level repeating
 instances and VisualEditor wikitext are supported. File uploads themselves are
 never recoverable from a text draft. Schema/enum/count checks run before mutation;
