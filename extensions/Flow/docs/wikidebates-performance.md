@@ -1020,32 +1020,25 @@ Compare cold and warm runs and decide whether **any single fixer** merits
 a follow-up optimization; do not skip security checks or change the
 returned HTML based on profiling alone.
 
-## A/B experiment: reuse link targets already resolved for LinkBatch
+## A/B result: WikiLink title reuse rejected (2026-11-21)
 
-Profiling 192 HTML contents on the French Bistro found the WikiLinkFixer
-preload and apply stages consume about 10.7 ms and 9.2 ms in the first
-render, and about 2.9 ms and 5.4 ms in warm renders. The original
-WikiLinkFixer resolves every link target twice: once before LinkBatch
-and again when invoking MediaWiki LinkRenderer. This may be redundant,
-but its actual cost had not been measured.
+The maintenance-only `--reuse-wikilink-titles` experiment in PR #46
+reused `Title` objects that `WikiLinkFixer::preload()` had already
+resolved, instead of resolving the same href again during `apply()`.
+Six alternated independent PHP processes per variant rendered the
+same 50 French Bistro topics and 242 posts with `--reuse-html-dom`.
+Exact canonical content, post associations and root sets remained
+identical across all twelve runs.
 
-An opt-in `Flow:FlowBenchmarkTopicList --reuse-wikilink-titles` flag
-temporarily reuses only successfully resolved Title objects for the
-same href and same page context within the current document. The next
-document resets the memo. An unrecognized href or page context falls
-back to the original resolution. The original LinkBatch, LinkRenderer,
-HTML serialization, red-link handling, DOM fixers and XSS checks
-continue to run. The flag is **disabled in normal web/API rendering**
-and does not add a new site configuration option.
+| Measure (median of 6) | Original | Target reuse |
+| --- | ---: | ---: |
+| Wall time | 331.545 ms | 333.115 ms |
+| CPU time | 300.40 ms | 304.43 ms |
 
-Benchmark tests compare exact fixed HTML on two different board titles,
-repeated links, missing links, fragment links and percent-encoded hrefs.
-The benchmark always resets this opt-in variant in a `finally` block.
-
-Compare 6 pairs of independent `--runs=1 --reuse-html-dom` processes,
-alternating the presence of `--reuse-wikilink-titles`, without
-`--breakdown` in the primary timings. The benchmark emits
-`wikilink_title_reuse: enabled|disabled`. Confirm identical canonical
-content, roots and associations via `--diagnose-digests`; do not
-promote to ordinary rendering without both parity and a reproducible
-performance benefit. If there is no benefit, remove the experiment.
+The experiment did **not** demonstrate a performance benefit (wall
++1.57 ms; CPU +4.03 ms, both within plausible noise), so its extra
+memo, maintenance option, and A/B-only tests were removed. Original
+`LinkBatch` batching and link transformation continue unchanged.
+The separately confirmed default HTML DOM reuse is retained.
+Do not reintroduce the Title memo without a new specific bottleneck
+and repeatable overall performance evidence.

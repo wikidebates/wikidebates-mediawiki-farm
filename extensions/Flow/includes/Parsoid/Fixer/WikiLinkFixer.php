@@ -26,25 +26,6 @@ class WikiLinkFixer implements Fixer {
 	 */
 	protected $batch;
 
-	/** @var bool Maintenance-only A/B experiment, disabled for ordinary page rendering. */
-	private bool $benchmarkReusePreloadedTitles = false;
-
-	/** @var array<string,Title> Resolved targets for the current document only. */
-	private array $preloadedTitles = [];
-
-	/** @var Title|null Page context for the per-document target memo. */
-	private ?Title $preloadedPageTitle = null;
-
-	/**
-	 * Enable or disable the temporary benchmark experiment; reset cached
-	 * targets so this service cannot carry them into another measurement.
-	 */
-	public function setBenchmarkReusePreloadedTitles( bool $reuse ): void {
-		$this->benchmarkReusePreloadedTitles = $reuse;
-		$this->preloadedTitles = [];
-		$this->preloadedPageTitle = null;
-	}
-
 	/**
 	 * @param LinkBatch $batch
 	 */
@@ -67,11 +48,6 @@ class WikiLinkFixer implements Fixer {
 	 * @param Title $pageTitle
 	 */
 	public function preload( iterable $nodes, Title $pageTitle ): void {
-		if ( $this->benchmarkReusePreloadedTitles ) {
-			// Scope resolution results to this document and its page context.
-			$this->preloadedTitles = [];
-			$this->preloadedPageTitle = $pageTitle;
-		}
 		foreach ( $nodes as $node ) {
 			if ( !$node instanceof DOMElement ) {
 				continue;
@@ -82,9 +58,6 @@ class WikiLinkFixer implements Fixer {
 			}
 			$target = Utils::createRelativeTitle( rawurldecode( $href ), $pageTitle );
 			if ( $target !== null ) {
-				if ( $this->benchmarkReusePreloadedTitles ) {
-					$this->preloadedTitles[$href] = $target;
-				}
 				$this->batch->addObj( $target );
 			}
 		}
@@ -122,14 +95,7 @@ class WikiLinkFixer implements Fixer {
 			return;
 		}
 
-		// The maintenance A/B variant reuses a Title already resolved during
-		// LinkBatch preloading. A different page context or an uncached href
-		// must still take the unchanged, safe resolution path.
-		$preloaded = $this->benchmarkReusePreloadedTitles &&
-			$this->preloadedPageTitle === $title &&
-			isset( $this->preloadedTitles[$href] );
-		$title = $preloaded ? $this->preloadedTitles[$href] :
-			Utils::createRelativeTitle( rawurldecode( $href ), $title );
+		$title = Utils::createRelativeTitle( rawurldecode( $href ), $title );
 		if ( $title === null ) {
 			return;
 		}
