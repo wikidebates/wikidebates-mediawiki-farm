@@ -45,6 +45,19 @@ class TopicListQuery extends AbstractQuery {
 	/** @var callable|null Read-only profiling, enabled only for the maintenance benchmark. */
 	private $benchmarkTimer;
 
+	/** @var bool Maintenance-only A/B; never enabled for normal Flow rendering. */
+	private bool $benchmarkSkipCurrentRevisionRefetch = false;
+
+	public function setBenchmarkSkipCurrentRevisionRefetch( bool $skip ): void {
+		$this->benchmarkSkipCurrentRevisionRefetch = $skip;
+	}
+
+	protected function shouldPreloadCurrentRevisionsForMetadata(): bool {
+		// collectRevisions() already fetched latest PostRevision objects.
+		// Preserve the generic parent path for every unprofiled request.
+		return !$this->benchmarkSkipCurrentRevisionRefetch;
+	}
+
 	public function setBenchmarkTimer( ?callable $observer ): void {
 		$this->benchmarkTimer = $observer;
 		// Keep query prefetch timings distinct from the formatter's

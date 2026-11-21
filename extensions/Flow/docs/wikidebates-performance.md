@@ -1128,3 +1128,38 @@ After deploying, run `Flow:FlowBenchmarkTopicList --wiki=fr` with
 `--reuse-html-dom --breakdown`. Compare the new subphases at cold
 and warm passes, and use an independent-process A/B experiment
 before retaining any future functional performance change.
+
+## A/B experiment: duplicate current-revision metadata retrieval
+
+First renders of the French Bistro (50 topics, 242 posts) spent
+11.80 ms in `load_metadata`, versus ~7.76 ms on subsequent in-process
+renders. The topic query already calls `collectRevisions()` with
+`findMulti( 'PostRevision', ..., sort rev_id DESC, limit 1 )` to load
+each post's latest revision. Next, `AbstractQuery::loadMetadataBatch()`
+unconditionally loads latest revisions for every collection again.
+
+`TopicListQuery::getCurrentRevision()` returns the provided revision
+unchanged because its inputs are already latest revisions. This makes
+the second current-revision retrieval a plausible avoidable cost.
+Other metadata loading (root identity maps, workflows, previous
+revisions and summaries) is unaffected by this experiment.
+
+The new **maintenance-only** `--skip-current-revision-refetch` flag
+skips only the `AbstractQuery` current-revision preload stage for
+`TopicListQuery`. All other query subclasses retain the original
+behavior. The flag is false by default, passed through the benchmark
+block, and cleared on the shared query service in a `finally` block.
+No production configuration or rendered API/HTML output changes.
+
+The experiment's JSON result reports
+`current_revision_refetch_skipped: enabled|disabled`. Test the same
+50 topics with 12 independent `--runs=1 --reuse-html-dom` processes
+alternating this flag. Confirm exact
+`diagnostic.content_sorted_by_revision_id_sha256`,
+`diagnostic.posts_sorted_by_id_sha256`, and
+`diagnostic.roots_sorted_sha256` parity, plus 242 posts, before
+interpreting the time difference. Collect medians without
+`--breakdown` for the primary A/B, and optionally use the breakdown
+to isolate whether `load_metadata` falls. Do **not** activate for
+regular traffic before confirming semantic parity, tests and
+a reproducible whole-render benefit.
