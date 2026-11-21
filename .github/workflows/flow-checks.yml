@@ -60,7 +60,7 @@
 				},
 				{
 					"name": "Flow caching, formatter, HTML and paging regressions",
-					"run": "php extensions/Flow/tests/smoke/FlowCacheTest.php\nphp extensions/Flow/tests/smoke/FlowFormatterOptimizationTest.php\nphp extensions/Flow/tests/smoke/FlowContentFixerTest.php\nphp extensions/Flow/tests/smoke/FlowPrefetchedRootsTest.php\nphp extensions/Flow/tests/smoke/FlowUpdatedCursorTest.php\nphp extensions/Flow/tests/smoke/FlowBenchmarkTimingTest.php\nphp extensions/Flow/tests/smoke/FlowLastRevisionCacheCapacityTest.php"
+					"run": "php extensions/Flow/tests/smoke/FlowCacheTest.php\nphp extensions/Flow/tests/smoke/FlowFormatterOptimizationTest.php\nphp extensions/Flow/tests/smoke/FlowContentFixerTest.php\nphp extensions/Flow/tests/smoke/FlowPrefetchedRootsTest.php\nphp extensions/Flow/tests/smoke/FlowUpdatedCursorTest.php\nphp extensions/Flow/tests/smoke/FlowBenchmarkTimingTest.php\nphp extensions/Flow/tests/smoke/FlowBenchmarkFingerprintsTest.php\nphp extensions/Flow/tests/smoke/FlowLastRevisionCacheCapacityTest.php"
 				},
 				{
 					"name": "JavaScript syntax, topic batch cleanup and pagination",
