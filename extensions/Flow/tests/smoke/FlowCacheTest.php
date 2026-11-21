@@ -127,6 +127,35 @@ $permissions->setUser( $reader );
 check( $permissions->isAllowed( $post, 'view' ), 'Same user remains allowed' );
 check( MediaWikiServices::$checks === $checks, 'Same User object preserves memoization' );
 check( $postCollection->boardLookups === 1, 'One board lookup, not a lookup to compute the key' );
+ 
+// The optional read-only profiler reports a miss only when a permission
+// decision is calculated. Reusing that decision never skips the original
+// permission checks in later viewer or storage generations.
+$trace = [];
+$permissions->clearCache();
+$permissions->setBenchmarkTimer(
+	static function ( string $phase, float $milliseconds ) use ( &$trace ): void {
+		$trace[$phase][] = $milliseconds;
+	}
+);
+check( $permissions->isAllowed( $post, 'view' ), 'Profiling preserves an allowed read' );
+check( count( $trace['format_detail_permission_cache_miss'] ?? [] ) === 1,
+	'First read is a measured permission cache miss' );
+check( count( $trace['format_detail_permission_revision_rights'] ?? [] ) === 1,
+	'Cache miss includes initial revision rights' );
+check( isset( $trace['format_detail_permission_rule_lookup'][0] ),
+	'Rule lookup duration is measured during first rights check' );
+check( $permissions->isAllowed( $post, 'view' ), 'Cached read decision stays allowed' );
+check( count( $trace['format_detail_permission_cache_hit'] ?? [] ) === 1,
+	'Second read is a cache hit, not a second computation' );
+check( count( $trace['format_detail_permission_cache_miss'] ) === 1,
+	'Cache hit did not trigger a second permission computation' );
+$traceCount = array_sum( array_map( 'count', $trace ) );
+$permissions->setBenchmarkTimer( null );
+check( $permissions->isAllowed( $post, 'view' ), 'Disabling profiling preserves cached permission' );
+check( array_sum( array_map( 'count', $trace ) ) === $traceCount,
+	'Disabling profiling stops all permission metrics' );
+
 
 $permissions->setUser( new User( [] ) );
 check( !$permissions->isAllowed( $post, 'view' ), 'User change invalidates positive decisions' );
