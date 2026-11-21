@@ -286,3 +286,52 @@ small operations adds measurement overhead, so do not compare subphase runs
 directly to earlier uninstrumented baselines as a precise speedup estimate.
 The callback is used only by the read-only maintenance helper and cleaned up
 after each formatting batch. Regular Flow rendering does not create timers.
+
+## Bounded last-revision cache: avoid warm-render thrashing
+
+Real measurements on the French Bistro board with 50 topics / 242 posts
+showed that `format_detail_ms.moderated_revision_lookup` jumped from
+0.50 ms on the initial benchmark iteration to 51.80 and 54.13 ms on
+the next two iterations, while the initial per-revision permission
+checks dropped from 100.28 ms to about 0.4 ms. This is not evidence
+of a change in moderation state: it is consistent with an LRU capacity
+problem.
+
+`CollectionCache::getLastRevisionFor()` uses a per-process
+`MapCacheLRU`. Previously its capacity was only **50 entries**.
+The topic-list serializer visits **242 different post collections**
+in a single 50-topic render. As separate Flow permissions caches warm,
+the latest revisions stop being prefetched by those permission checks,
+and an ordered second pass can repeatedly evict and reload nearly
+every last revision. This is an avoidable cost, not a reason to skip
+the safety-critical `getModeratedRevision()` lookup.
+
+Increase the bounded last-revision cache from 50 to **512 entries**.
+The existing key remains per collection and revision type; model
+insert/update/remove events still clear the entry and advance cache
+generation, and explicit clears replace the entire LRU. There is no
+shared cache or cross-request data, no new bypass of moderation checks,
+and no schema, configuration, API or HTML change. The maximum number
+of cached references increases; benchmark peak memory after deployment
+to check the actual overhead in the target environment.
+
+The old CLI smoke double for `MapCacheLRU` ignored its capacity,
+so it could not detect this. It now simulates a bounded LRU.
+A new test checks that 242 distinct last revisions remain cached
+on a second full pass, confirms that insert/update/remove/clear
+re-fetch current revisions, and verifies eviction beyond 512 entries.
+
+Re-run the read-only benchmark on a real board:
+
+```sh
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
+	--wiki=fr --page='Wikidébats:Bistro' \
+	--runs=3 --limit=50 --sortby=updated --breakdown
+```
+
+Compare the two warm `moderated_revision_lookup` times against
+51.80 ms and 54.13 ms before the patch, as well as wall, CPU and peak
+memory. This maintenance benchmark reuses process-local caches and
+**does not directly prove** an equal improvement for independent HTTP
+requests. Check real logged-in and anonymous page loads, and include
+a moderation/restore test on the actual wiki before declaring a gain.

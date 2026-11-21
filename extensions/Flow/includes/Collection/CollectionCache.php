@@ -14,9 +14,15 @@ use MapCacheLRU;
 class CollectionCache extends AbstractListener {
 
 	/**
-	 * Max to cache collection's last revision
+	 * Bound the per-process cache above the number of posts commonly rendered
+	 * on a complete topic-list page. With 50 slots, formatting 242 unique posts
+	 * evicts earlier last revisions, causing repeated lookups on subsequent
+	 * renders in the same process even when other permission caches are warm.
+	 *
+	 * This is a bounded LRU, never a shared or cross-request permission cache.
+	 * Existing insert/update/remove/clear listeners still invalidate entries.
 	 */
-	private const LAST_REV_CACHE_MAX = 50;
+	private const LAST_REV_CACHE_MAX = 512;
 
 	/**
 	 * The last revision for a collection
