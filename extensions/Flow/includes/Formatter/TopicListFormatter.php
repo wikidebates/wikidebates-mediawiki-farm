@@ -31,6 +31,14 @@ class TopicListFormatter extends BaseTopicListFormatter {
 		$this->serializer->setBenchmarkTimer( $observer );
 	}
 
+	/**
+	 * Maintenance-only A/B. No change to normal HTML or API calls.
+	 * RevisionFormatter clears its memo before and after every topic batch.
+	 */
+	public function setBenchmarkReuseSerializedUsers( bool $reuse ): void {
+		$this->serializer->setBenchmarkReuseSerializedUsers( $reuse );
+	}
+
 	public function __construct( UrlGenerator $urlGenerator, RevisionFormatter $serializer ) {
 		$this->urlGenerator = $urlGenerator;
 		$this->serializer = $serializer;
