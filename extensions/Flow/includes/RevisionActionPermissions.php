@@ -65,6 +65,31 @@ class RevisionActionPermissions {
 	/** @var int|null Generation of the collection cache used by these decisions. */
 	private $cacheGeneration;
 
+	/** @var callable|null Opt-in read-only benchmark timing observer. */
+	private $benchmarkTimer;
+
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+	}
+
+	/**
+	 * Measure only during the explicit maintenance benchmark.
+	 * Timings are nested and must never be added to their parent stages.
+	 *
+	 * @return mixed
+	 */
+	private function timePermissionOperation( string $phase, callable $operation ) {
+		$started = hrtime( true );
+		try {
+			return $operation();
+		} finally {
+			( $this->benchmarkTimer )(
+				'format_detail_permission_' . $phase,
+				round( ( hrtime( true ) - $started ) / 1000000, 3 )
+			);
+		}
+	}
+
 	/**
 	 * @param FlowActions $actions
 	 * @param User $user
@@ -102,10 +127,19 @@ class RevisionActionPermissions {
 		$revisionId = $revision->getRevisionId()->getAlphadecimal();
 		$cacheKey = $revisionId . ':' . $revision->getModerationState() . ':' . $action;
 		if ( array_key_exists( $cacheKey, $this->isAllowedCache ) ) {
+			if ( $this->benchmarkTimer !== null ) {
+				// A zero duration is a counter event; the underlying cache lookup
+				// and key construction remain included in their parent phase.
+				( $this->benchmarkTimer )( 'format_detail_permission_cache_hit', 0.0 );
+			}
 			return $this->isAllowedCache[$cacheKey];
 		}
 
-		$result = $this->computeIsAllowed( $revision, $action );
+		$result = $this->benchmarkTimer === null
+			? $this->computeIsAllowed( $revision, $action )
+			: $this->timePermissionOperation(
+				'cache_miss', fn () => $this->computeIsAllowed( $revision, $action )
+			);
 		$this->isAllowedCache[$cacheKey] = $result;
 
 		return $result;
@@ -117,35 +151,65 @@ class RevisionActionPermissions {
 	 * @return bool
 	 */
 	protected function computeIsAllowed( AbstractRevision $revision, $action ) {
-		// check if we're allowed to $action on this revision
-		if ( !$this->isRevisionAllowed( $revision, $action ) ) {
+		// Check the requested revision before consulting its topic or board.
+		$revisionAllowed = $this->benchmarkTimer === null
+			? $this->isRevisionAllowed( $revision, $action )
+			: $this->timePermissionOperation(
+				'revision_rights', fn () => $this->isRevisionAllowed( $revision, $action )
+			);
+		if ( !$revisionAllowed ) {
 			return false;
 		}
 
-		$root = $this->getCachedRoot( $revision );
-		// see if we're allowed to perform $action on anything inside this root
-		if ( !$revision->getRevisionId()->equals( $root->getRevisionId() ) &&
-			!$this->isRootAllowedCached( $root, $action )
-		) {
-			return false;
+		$root = $this->benchmarkTimer === null
+			? $this->getCachedRoot( $revision )
+			: $this->timePermissionOperation(
+				'root_lookup', fn () => $this->getCachedRoot( $revision )
+			);
+		// Replies must still be governed by the current root moderation state.
+		if ( !$revision->getRevisionId()->equals( $root->getRevisionId() ) ) {
+			$rootAllowed = $this->benchmarkTimer === null
+				? $this->isRootAllowedCached( $root, $action )
+				: $this->timePermissionOperation(
+					'root_rights', fn () => $this->isRootAllowedCached( $root, $action )
+				);
+			if ( !$rootAllowed ) {
+				return false;
+			}
 		}
 
-		$workflow = $this->getCachedBoardWorkflow( $revision );
-		// see if we're allowed to perform $action on anything inside this board
-		if ( !$this->isBoardAllowedCached( $workflow, $action ) ) {
+		$workflow = $this->benchmarkTimer === null
+			? $this->getCachedBoardWorkflow( $revision )
+			: $this->timePermissionOperation(
+				'board_lookup', fn () => $this->getCachedBoardWorkflow( $revision )
+			);
+		$boardAllowed = $this->benchmarkTimer === null
+			? $this->isBoardAllowedCached( $workflow, $action )
+			: $this->timePermissionOperation(
+				'board_rights', fn () => $this->isBoardAllowedCached( $workflow, $action )
+			);
+		if ( !$boardAllowed ) {
 			return false;
 		}
 
 		/** @var CollectionCache $cache */
 		$cache = Container::get( 'collection.cache' );
-		$last = $cache->getLastRevisionFor( $revision );
-		// Also check if the user would be allowed to perform this
-		// against the most recent revision - the last revision is the
-		// current state of an object, so checking against a revision at
-		// one point in time alone isn't enough.
+		$last = $this->benchmarkTimer === null
+			? $cache->getLastRevisionFor( $revision )
+			: $this->timePermissionOperation(
+				'latest_revision', fn () => $cache->getLastRevisionFor( $revision )
+			);
+		// Historical entries must still be checked against the current state.
 		$isLastRevision = $last->getRevisionId()->equals( $revision->getRevisionId() );
-		if ( !$isLastRevision && !$this->isRevisionAllowed( $last, $action ) ) {
-			return false;
+		if ( !$isLastRevision ) {
+			$lastAllowed = $this->benchmarkTimer === null
+				? $this->isRevisionAllowed( $last, $action )
+				: $this->timePermissionOperation(
+					'latest_revision_rights', fn () => $this->isRevisionAllowed( $last, $action )
+				);
+			if ( !$lastAllowed ) {
+				return false;
+			}
 		}
 
 		return true;
@@ -232,7 +296,11 @@ class RevisionActionPermissions {
 	 */
 	public function isRevisionAllowed( ?AbstractRevision $revision, $action ) {
 		// Users must have the core 'edit' permission to perform any write action in flow
-		$performsWrites = $this->actions->getValue( $action, 'performs-writes' );
+		$performsWrites = $this->benchmarkTimer === null
+			? $this->actions->getValue( $action, 'performs-writes' )
+			: $this->timePermissionOperation(
+				'write_flag_lookup', fn () => $this->actions->getValue( $action, 'performs-writes' )
+			);
 		$pm = MediaWikiServices::getInstance()->getPermissionManager();
 		if ( $performsWrites && !$pm->userHasRight( $this->user, 'edit' ) ) {
 			return false;
@@ -265,13 +333,22 @@ class RevisionActionPermissions {
 		if ( $revision !== null ) {
 			$moderationState = $revision->getModerationState();
 		}
-		$permission = $this->actions->getValue( $action, $type, $moderationState );
+		$permission = $this->benchmarkTimer === null
+			? $this->actions->getValue( $action, $type, $moderationState )
+			: $this->timePermissionOperation(
+				'rule_lookup',
+				fn () => $this->actions->getValue( $action, $type, $moderationState )
+			);
 
 		// Some permissions may be more complex to be defined as simple array
 		// values, in which case they're a Closure (which will accept
 		// AbstractRevision & FlowActionPermissions as arguments)
 		if ( $permission instanceof Closure ) {
-			$permission = $permission( $revision, $this );
+			$permission = $this->benchmarkTimer === null
+				? $permission( $revision, $this )
+				: $this->timePermissionOperation(
+					'rule_closure', fn () => $permission( $revision, $this )
+				);
 		}
 
 		return $permission;
