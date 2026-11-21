@@ -117,6 +117,21 @@ class RevisionFormatter {
 
 	private $availablePostRevisions = [];
 
+	/** @var bool Maintenance-only A/B: memoize complete user serialization per topic batch. */
+	private bool $benchmarkReuseSerializedUsers = false;
+
+	/** @var array<string,array> User payloads indexed by exact serialized input tuple. */
+	private array $benchmarkSerializedUsers = [];
+
+	/** @var object|null Current viewer; never reuse viewer-dependent links for another viewer. */
+	private $benchmarkSerializedUsersViewer;
+
+	public function setBenchmarkReuseSerializedUsers( bool $reuse ): void {
+		$this->benchmarkReuseSerializedUsers = $reuse;
+		$this->benchmarkSerializedUsers = [];
+		$this->benchmarkSerializedUsersViewer = null;
+	}
+
 	/** @var callable|null Optional aggregate timer for the read-only benchmark. */
 	private $benchmarkTimer;
 
@@ -550,19 +565,37 @@ class RevisionFormatter {
 
 	public function serializeUser( $userWiki, $userId, $userIp ) {
 		$userStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
-		$res = [
-			'name' => $this->usernames->get( $userWiki, $userId, $userIp ),
-			'wiki' => $userWiki,
-			'gender' => 'unknown',
-			'links' => [],
-			'id' => $userId
-		];
-		// Only works for the local wiki
-		if ( $res['name'] && WikiMap::getCurrentWikiId() === $userWiki ) {
-			$res['gender'] = $this->genderCache->getGenderOf( $res['name'], __METHOD__ );
+		$cacheKey = null;
+		if ( $this->benchmarkReuseSerializedUsers ) {
+			$viewer = $this->permissions->getUser();
+			if ( $viewer !== $this->benchmarkSerializedUsersViewer ) {
+				$this->benchmarkSerializedUsers = [];
+				$this->benchmarkSerializedUsersViewer = $viewer;
+			}
+			// Include the originating wiki, ID and IP (including false/null) to
+			// avoid sharing suppressed or anonymous identities by displayed name.
+			$cacheKey = serialize( [ $userWiki, $userId, $userIp ] );
 		}
-		if ( $res['name'] ) {
-			$res['links'] = $this->serializeUserLinks( $res );
+		if ( $cacheKey !== null && array_key_exists( $cacheKey, $this->benchmarkSerializedUsers ) ) {
+			$res = $this->benchmarkSerializedUsers[$cacheKey];
+		} else {
+			$res = [
+				'name' => $this->usernames->get( $userWiki, $userId, $userIp ),
+				'wiki' => $userWiki,
+				'gender' => 'unknown',
+				'links' => [],
+				'id' => $userId
+			];
+			// Only works for the local wiki
+			if ( $res['name'] && WikiMap::getCurrentWikiId() === $userWiki ) {
+				$res['gender'] = $this->genderCache->getGenderOf( $res['name'], __METHOD__ );
+			}
+			if ( $res['name'] ) {
+				$res['links'] = $this->serializeUserLinks( $res );
+			}
+			if ( $cacheKey !== null ) {
+				$this->benchmarkSerializedUsers[$cacheKey] = $res;
+			}
 		}
 
 		if ( $userStarted !== null ) {
@@ -605,6 +638,8 @@ class RevisionFormatter {
 	 */
 	public function primePostRevisions( array $rows ): void {
 		$this->availablePostRevisions = [];
+		$this->benchmarkSerializedUsers = [];
+		$this->benchmarkSerializedUsersViewer = null;
 		foreach ( $rows as $row ) {
 			$revision = $row->currentRevision;
 			if ( $revision instanceof PostRevision ) {
@@ -615,6 +650,8 @@ class RevisionFormatter {
 
 	public function clearPrimedPostRevisions(): void {
 		$this->availablePostRevisions = [];
+		$this->benchmarkSerializedUsers = [];
+		$this->benchmarkSerializedUsersViewer = null;
 	}
 
 	private function getReplyParentRevision( UUID $postId ): PostRevision {
