@@ -41,9 +41,11 @@ class PrefetchedTestStorage extends ManagerGroup {
 }
 class PrefetchedTestPermissions extends RevisionActionPermissions {
 	public array $hidden = [];
+	public int $primeCalls = 0;
 	public function __construct() {
 	}
 	public function primeCacheForView( array $revisions ) {
+		$this->primeCalls++;
 	}
 	public function isAllowed( AbstractRevision $revision, $action ) {
 		return !isset( $this->hidden[$revision->getRevisionId()->getAlphadecimal()] );
@@ -107,6 +109,20 @@ check( count( $storage->requests[0] ) === 1, 'Already loaded root is absent from
 check( $storage->requests[0][0]['rev_type_id'] === $replyId, 'Only reply is fetched' );
 check( $rows[0]->revision === $root && $rows[1]->revision === $reply, 'Same root and reply objects rendered' );
 check( $rows[0]->replies === [ $replyId->getAlphadecimal() ], 'Replies remain attached to root' );
+check( $perms->primeCalls === 1, 'Normal query eagerly warms the permissions cache' );
+$visibleIds = static function ( array $rows ): array {
+	return array_map(
+		static function ( FormatterRow $row ): array {
+			return [
+				$row->revision->getPostId()->getAlphadecimal(),
+				$row->revision->getRevisionId()->getAlphadecimal(),
+				$row->replies,
+			];
+		},
+		$rows
+	);
+};
+$originalIds = $visibleIds( $rows );
 foreach ( [
 	'prepare_roots', 'collect_post_ids', 'collect_revisions', 'load_metadata',
 	'prime_topic_keys', 'prime_permissions', 'filter_visible_topics',
@@ -123,6 +139,31 @@ $query->setBenchmarkTimer( null );
 check( $primeObserver->getValue( $perms ) === null,
 	'Query observer removal also clears the permission priming callback' );
 $queryTimingCount = array_sum( array_map( 'count', $queryTiming ) );
+
+// A/B mode must perform exactly the same view checks and emit the same
+// structural rows, but skip *only* the optional cache warming pass.
+$query->setBenchmarkSkipPermissionPrewarm( true );
+$lazyRows = $query->getResults( [ $rootId ], [ $rootId->getAlphadecimal() => $root ] );
+check( $visibleIds( $lazyRows ) === $originalIds,
+	'Benchmark lazy prewarm mode preserves the same visible root, post and replies' );
+check( $perms->primeCalls === 1, 'Benchmark lazy mode does not invoke eager priming' );
+$query->setBenchmarkSkipPermissionPrewarm( false );
+$normalRows = $query->getResults( [ $rootId ], [ $rootId->getAlphadecimal() => $root ] );
+check( $visibleIds( $normalRows ) === $originalIds,
+	'Restoring eager mode preserves the original structural output' );
+check( $perms->primeCalls === 2, 'Eager prewarm is restored after the benchmark switch is cleared' );
+
+// Hidden content must not become visible when priming is disabled.
+$perms->hidden[$root->getRevisionId()->getAlphadecimal()] = true;
+$query->setBenchmarkSkipPermissionPrewarm( true );
+$lazyHiddenRows = $query->getResults( [ $rootId ], [ $rootId->getAlphadecimal() => $root ] );
+check( count( $lazyHiddenRows ) === 1 && $lazyHiddenRows[0]->revision === $reply,
+	'Lazy prewarm mode still excludes a hidden topic root' );
+$query->setBenchmarkSkipPermissionPrewarm( false );
+$eagerHiddenRows = $query->getResults( [ $rootId ], [ $rootId->getAlphadecimal() => $root ] );
+check( $visibleIds( $eagerHiddenRows ) === $visibleIds( $lazyHiddenRows ),
+	'Hidden-root behavior remains identical in both prewarm modes' );
+$perms->hidden = [];
 
 // A root from another page (or keyed to the wrong topic) must never be
 // trusted merely because it was passed into this method.
