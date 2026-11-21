@@ -669,3 +669,63 @@ Do not compare absolute timings with precision finer than the
 variation between processes. This instrumentation is diagnostic,
 not an optimization: identify the dominant stage before changing
 tree, metadata, permission or summary loading.
+
+
+## Distinguish view checks, row-building overhead and prewarm work
+
+Five independent cold PHP processes after PR #29 (50 Bistro topics,
+242 messages) averaged 367.75 ms wall-clock, 336.29 ms CPU and
+120.04 ms in `messages_and_permissions`. Within that query phase:
+
+- `build_visible_rows`: **45.85 ms**, including the per-post visibility
+  check and `AbstractQuery::buildResult()` row construction
+- `filter_visible_topics`: **24.31 ms** for filtering the 50 topic
+  titles before fetching visible summaries
+- `prime_permissions`: **23.99 ms** for prewarming the root and board
+  data needed by later permission checks
+- `load_metadata`: **11.87 ms** for metadata batch loading
+
+The first three together account for approximately 78.4% of the query
+phase, but do **not** establish how much time is actual rights evaluation
+versus building the visible rows. To diagnose the distinction before
+modifying any permission behavior, the read-only `--breakdown` mode
+adds three nested `query_detail_ms` measurements:
+
+- `visible_row_permissions`: total time spent in
+  `RevisionActionPermissions::isAllowed( $post, 'view' )` inside
+  `build_visible_rows`; the difference between the two stages
+  includes row creation, metadata attachment and loop overhead
+- `prime_root_revisions`: time spent retrieving cached or missing
+  current root revisions inside `primeCacheForView()`
+- `prime_board_workflows`: time spent retrieving cached or missing
+  board workflows inside `primeCacheForView()`
+
+The last two stages are nested inside `prime_permissions`. Each is
+reported **once per query**, as an aggregated timing for all posts,
+rather than as one event per post. `query_detail_calls` therefore
+reports 1 for each aggregation, not 242 actual lookups. No new
+`format_detail_ms` measurements are introduced, and previous
+permission-count meanings remain unchanged.
+
+This instrumentation never caches a new authorization decision, nor
+skips the existing view check. The query-only observer is distinct from
+the formatter's permission observer, and is cleared at query completion
+(including errors). Outside the benchmark there are no observers and
+the original operations run in the same order. In particular, do not
+delete `primeCacheForView()` merely because the new timing is large:
+without it, the cost may simply shift to a later permission check.
+
+After deployment, run the standard independent cold benchmark:
+
+```sh
+for i in 1 2 3 4 5; do
+	php maintenance/run.php Flow:FlowBenchmarkTopicList \
+		--wiki=fr --page='Wikidébats:Bistro' \
+		--runs=1 --limit=50 --sortby=updated --breakdown
+done
+```
+
+The timings include SQL and caches. Do not add nested phases to their
+parents, and compare with the same instrumented version when making
+small relative timing claims. The PR is a diagnostic step, not a
+performance improvement in itself.
