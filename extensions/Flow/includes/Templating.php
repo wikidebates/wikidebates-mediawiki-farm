@@ -33,6 +33,9 @@ class Templating {
 	 */
 	private $contentFixer;
 
+	/** @var callable|null Optional read-only benchmark observer; disabled in normal rendering. */
+	private $benchmarkTimer;
+
 	/**
 	 * @param UserNameBatch $usernames
 	 * @param ContentFixer $contentFixer
@@ -53,6 +56,7 @@ class Templating {
 	 * The content fixer is shared by rendering helpers in this process.
 	 */
 	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
 		$this->contentFixer->setBenchmarkTimer( $observer );
 	}
 
@@ -130,10 +134,27 @@ class Templating {
 		$allowed = $this->permissions->isAllowed( $revision, $mainPermissionAction );
 		// Posts require view access to the topic title as well
 		if ( $allowed && $revision instanceof PostRevision && !$revision->isTopicTitle() ) {
-			$allowed = $this->permissions->isAllowed(
-				$revision->getRootPost(),
-				'view'
-			);
+			if ( $this->benchmarkTimer === null ) {
+				$allowed = $this->permissions->isAllowed(
+					$revision->getRootPost(),
+					'view'
+				);
+			} else {
+				// Measure the existing safety-critical root lookup and check separately.
+				// Keep the direct uninstrumented path identical to production.
+				$started = hrtime( true );
+				$root = $revision->getRootPost();
+				( $this->benchmarkTimer )(
+					'format_detail_content_root_lookup',
+					round( ( hrtime( true ) - $started ) / 1000000, 3 )
+				);
+				$started = hrtime( true );
+				$allowed = $this->permissions->isAllowed( $root, 'view' );
+				( $this->benchmarkTimer )(
+					'format_detail_content_root_view_permission',
+					round( ( hrtime( true ) - $started ) / 1000000, 3 )
+				);
+			}
 		}
 
 		if ( !$allowed ) {
