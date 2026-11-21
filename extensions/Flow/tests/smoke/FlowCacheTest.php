@@ -431,4 +431,37 @@ foreach ( [ $topic, $post, $second ] as $revision ) {
 $rows = $siblings->getResults( [ $topicId ] );
 check( $rows[0]->replies === [ $post->getPostId()->getAlphadecimal(), $second->getPostId()->getAlphadecimal() ], 'Sibling replies are appended, not overwritten' );
 check( $rows[1]->replies === [] && $rows[2]->replies === [], 'Leaf replies remain arrays' );
+
+// Exercise the benchmark-only A/B switch with the real permission service,
+// including a hidden reply and a cache-generation invalidation. The eager
+// and lazy paths must reach the same access decisions.
+$getVisiblePostIds = static function ( array $rows ): array {
+	return array_map(
+		static fn ( $row ) => $row->revision->getPostId()->getAlphadecimal(),
+		$rows
+	);
+};
+$permissions->clearCache();
+$siblings->setBenchmarkSkipPermissionPrewarm( true );
+$lazyVisibleIds = $getVisiblePostIds( $siblings->getResults( [ $topicId ] ) );
+$permissions->clearCache();
+$siblings->setBenchmarkSkipPermissionPrewarm( false );
+$eagerVisibleIds = $getVisiblePostIds( $siblings->getResults( [ $topicId ] ) );
+check( $lazyVisibleIds === $eagerVisibleIds,
+	'Disabling eager prewarm does not alter actual reader permissions' );
+
+$post->changeState( 'hide' );
+$cache->onAfterUpdate( $post, [], [], [] );
+$permissions->clearCache();
+$siblings->setBenchmarkSkipPermissionPrewarm( true );
+$lazyHiddenIds = $getVisiblePostIds( $siblings->getResults( [ $topicId ] ) );
+$permissions->clearCache();
+$siblings->setBenchmarkSkipPermissionPrewarm( false );
+$eagerHiddenIds = $getVisiblePostIds( $siblings->getResults( [ $topicId ] ) );
+check( $lazyHiddenIds === $eagerHiddenIds &&
+	!in_array( $post->getPostId()->getAlphadecimal(), $lazyHiddenIds, true ),
+	'Both prewarm modes protect a hidden reply after storage invalidation' );
+$post->changeState( '' );
+$cache->onAfterClear();
+
 echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " total cache and reply assertions\n";
