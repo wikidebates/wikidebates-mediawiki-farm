@@ -383,7 +383,16 @@ class TopicListBlock extends AbstractBlock {
 		}, $workflowIds ) ) );
 
 		$phaseStarted = $this->beginBenchmarkPhase();
-		$formatted = $serializer->formatApi( $this->workflow, $workflows, $found, $page, $this->context );
+		if ( $this->benchmarkTimer !== null ) {
+			$serializer->setBenchmarkTimer( $this->benchmarkTimer );
+		}
+		try {
+			$formatted = $serializer->formatApi( $this->workflow, $workflows, $found, $page, $this->context );
+		} finally {
+			if ( $this->benchmarkTimer !== null ) {
+				$serializer->setBenchmarkTimer( null );
+			}
+		}
 		$this->endBenchmarkPhase( 'formatting', $phaseStarted );
 		return $response + $formatted;
 	}
