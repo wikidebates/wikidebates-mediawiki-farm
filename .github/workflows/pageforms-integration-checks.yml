@@ -46,8 +46,8 @@
 					"run": "find extensions/PageFormsWikidebates/includes -name '*.php' -print0 | xargs -0 -n 1 php -l"
 				},
 				{
-					"name": "Validate benchmark shell and embedded PHP",
-					"run": "sh -n extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh\npython3 - <<'PY'\nfrom pathlib import Path\nsrc = Path('extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh').read_text()\nbody = src.split(\"<<'PHP'\\n\", 1)[1].rsplit('\\nPHP\\n', 1)[0]\nPath('/tmp/pageforms-benchmark-syntax.php').write_text('<?php\\n' + body)\nPY\nphp -l /tmp/pageforms-benchmark-syntax.php"
+					"name": "Validate benchmark shell and PHP entrypoint",
+					"run": "sh -n extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh\nphp -l extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.php"
 				},
 				{
 					"name": "Run integration checks in a disposable MediaWiki 1.43 wiki",
@@ -112,8 +112,8 @@
 					"run": "find extensions/PageFormsWikidebates/includes -name '*.php' -print0 | xargs -0 -n 1 php -l"
 				},
 				{
-					"name": "Validate benchmark shell and embedded PHP",
-					"run": "sh -n extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh\npython3 - <<'PY'\nfrom pathlib import Path\nsrc = Path('extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh').read_text()\nbody = src.split(\"<<'PHP'\\n\", 1)[1].rsplit('\\nPHP\\n', 1)[0]\nPath('/tmp/pageforms-benchmark-syntax.php').write_text('<?php\\n' + body)\nPY\nphp -l /tmp/pageforms-benchmark-syntax.php"
+					"name": "Validate benchmark shell and PHP entrypoint",
+					"run": "sh -n extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh\nphp -l extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.php"
 				},
 				{
 					"name": "Exercise real SMW store on a disposable wiki",
