@@ -633,7 +633,13 @@ class RevisionFormatter {
 
 		// If a user does not have rights to perform actions on this page return
 		// an empty array of actions.
-		if ( !$workflow->userCan( 'edit', $user ) ) {
+		$canEdit = $this->benchmarkTimer === null
+			? $workflow->userCan( 'edit', $user )
+			: $this->timeFormattingOperation(
+				'action_workflow_edit_permission',
+				fn () => $workflow->userCan( 'edit', $user )
+			);
+		if ( !$canEdit ) {
 			return [];
 		}
 
@@ -652,7 +658,13 @@ class RevisionFormatter {
 		// actions primarily vary by revision type...
 		$links = [];
 		foreach ( $actionTypes as $type ) {
-			if ( !$this->permissions->isAllowed( $revision, $type ) ) {
+			$canPerform = $this->benchmarkTimer === null
+				? $this->permissions->isAllowed( $revision, $type )
+				: $this->timeFormattingOperation(
+					'action_specific_permission',
+					fn () => $this->permissions->isAllowed( $revision, $type )
+				);
+			if ( !$canPerform ) {
 				continue;
 			}
 			switch ( $type ) {

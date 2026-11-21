@@ -127,6 +127,82 @@ namespace {
 	check( $renderer->buildActions( $checkRow ) === [], 'After the batch, edit checks still run' );
 	check( $checkWorkflow->checks === 3, 'Edit checks are not retained outside the batch' );
 
+	// The opt-in action profiler records the workflow gate without changing
+	// permissions or retaining a decision. Normal rendering records nothing.
+	$timings = [];
+	$renderer->setBenchmarkTimer(
+		static function ( string $phase, float $milliseconds ) use ( &$timings ): void {
+			$timings[$phase][] = $milliseconds;
+		}
+	);
+	check( $renderer->buildActions( $checkRow ) === [], 'Profiling retains the edit denial' );
+	check( $checkWorkflow->checks === 4, 'Profiling reevaluates the workflow gate' );
+	check( isset( $timings['format_detail_action_workflow_edit_permission'][0] ) &&
+		$timings['format_detail_action_workflow_edit_permission'][0] >= 0,
+		'Profiling records a nonnegative workflow gate duration' );
+	$renderer->setBenchmarkTimer( null );
+	check( $renderer->buildActions( $checkRow ) === [], 'Nonprofiled denial stays unchanged' );
+	check( $checkWorkflow->checks === 5, 'Disabling profiling never caches an edit decision' );
+	check( count( $timings['format_detail_action_workflow_edit_permission'] ) === 1,
+		'Disabled action profiler records no further measurements' );
+
+	// The same profiler must preserve the per-action permission check path.
+	class TestActionPost extends IndexPost {
+		public function getRevisionId() {
+			return UUID::create( '0000000000000066' );
+		}
+		public function getChangeType() {
+			return 'test-action';
+		}
+	}
+	class AllowedActionWorkflow extends CountedEditWorkflow {
+		public function userCan( $permission, $user ) {
+			$this->checks++;
+			return true;
+		}
+		public function getId() {
+			return UUID::create( '0000000000000033' );
+		}
+	}
+	$allowedWorkflow = new AllowedActionWorkflow;
+	$actionRow = new FormatterRow;
+	$actionRow->workflow = $allowedWorkflow;
+	$actionRow->revision = new TestActionPost( '0000000000000066' );
+	$actionPermissions = new class( new FlowActions( [
+		'test-action' => [ 'actions' => [ 'reply' ] ],
+	] ), $reader ) extends RevisionActionPermissions {
+		public int $checks = 0;
+		public function isAllowed( \Flow\Model\AbstractRevision $revision, $action ) {
+			check( $action === 'reply', 'The original action permission is evaluated' );
+			$this->checks++;
+			return false;
+		}
+	};
+	( new \ReflectionProperty( RevisionFormatter::class, 'permissions' ) )
+		->setValue( $renderer, $actionPermissions );
+	$actionTimings = [];
+	$renderer->setBenchmarkTimer(
+		static function ( string $phase, float $milliseconds ) use ( &$actionTimings ): void {
+			$actionTimings[$phase][] = $milliseconds;
+		}
+	);
+	check( $renderer->buildActions( $actionRow ) === [],
+		'Profiled action permission denial produces the same empty links' );
+	check( $actionPermissions->checks === 1,
+		'Profiled per-action permission is checked exactly once' );
+	check( isset( $actionTimings['format_detail_action_specific_permission'][0] ) &&
+		$actionTimings['format_detail_action_specific_permission'][0] >= 0,
+		'Profiled per-action permission produces a nonnegative duration' );
+	$renderer->setBenchmarkTimer( null );
+	check( $renderer->buildActions( $actionRow ) === [],
+		'Nonprofiled action permission denial remains unchanged' );
+	check( $actionPermissions->checks === 2,
+		'Nonprofiled action permission is checked again' );
+	check( count( $actionTimings['format_detail_action_specific_permission'] ) === 1,
+		'Nonprofiled action permission does not emit new metrics' );
+	( new \ReflectionProperty( RevisionFormatter::class, 'permissions' ) )
+		->setValue( $renderer, $permissions );
+
 	class SpyFormatter extends RevisionFormatter {
 		public int $primeCount = 0;
 		public int $clearCount = 0;
