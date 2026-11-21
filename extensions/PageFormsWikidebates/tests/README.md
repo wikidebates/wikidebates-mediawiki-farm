@@ -9,6 +9,51 @@ vendor/bin/phpunit --filter 'PF(Values|Mapping)UtilsRegressionTest' extensions/P
 vendor/bin/phpunit extensions/PageFormsWikidebates/tests/phpunit
 ```
 
+## VEForAll, deeper drafts, measurements and SMW checks (November 2026)
+
+This pass adds a coordinated VEForAll change in the separate repository:
+https://github.com/wikidebates/wikidebates-veforall/pull/1
+The parent farm pull request pins the matching submodule revision. To enable the
+new behavior in production, update both the farm's files and the VEForAll
+submodule. `$wgVEForAllLazyPageForms = false;` restores eager initialization
+in Page Forms; all other VEForAll contexts remain eager by default.
+Offscreen uninitialized textareas are already native wikitext. Saving waits
+only for editors whose startup has begun. A failed startup keeps the textarea
+editable and a subsequent focus can retry it.
+
+New draft support includes nested repeating instances with schema preflight
+and a global cap of 500 captured/restored instances. Ratings are restored both
+to their hidden input and to the visual rating widget, including when it lazily
+initializes. Trees and other rich hidden controls remain export-only: writing
+a hidden value without updating the visible tree is not safe. Other privacy,
+revision and export limitations below are unchanged.
+
+The browser CI now runs in Chromium and Firefox. A separate disposable
+MediaWiki 1.43 PHP job activates SMW, alongside the existing no-SMW suite.
+The browser runs still simulate MediaWiki, and none tests the contributor's
+real keyboard layout or deployed server.
+
+For reproducible **read-only** autocomplete and optional mapping measurements,
+run this on a test wiki or production at a quiet period:
+
+```sh
+PF_BENCH_WIKI=fr PF_BENCH_CATEGORY='Débats' PF_BENCH_QUERY='Dieu' \
+	sh extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh
+
+# Optional: also measure mapping with a known property and real titles:
+PF_BENCH_WIKI=fr PF_BENCH_CATEGORY='Débats' PF_BENCH_QUERY='Dieu' \
+	PF_BENCH_PROPERTY='Exemple propriété' PF_BENCH_VALUES='Titre A,Titre B,Titre A' \
+	sh extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh
+```
+
+Compare runs with identical wiki, category, query, cache state and number of
+iterations. The first run may warm DB or application caches; the script prints
+first/median/maximum timings and a result count, never edits a page.
+For browser timings, paste the source of
+`tests/benchmarks/form-performance.js` into DevTools on a form. It shows
+navigation and ResourceLoader transfer metrics and VE startup marks where
+available. It does not send performance data to a server.
+
 ## Progressive editing and local recovery
 
 Run the Jest command above. The added suites exercise actual lazy/dependency,
@@ -52,9 +97,9 @@ seven days (cleaned when a form is opened), with a 1 MiB record limit. Drafts ar
 plain browser-profile data, not encrypted private storage. Other users of the same
 browser profile can read them; browser quota/privacy settings can prevent writes
 or erase them. Do not enable on shared devices. No API token, password, upload,
-or arbitrary hidden field is stored. Known tree/rating hidden user values can be
-exported, but automatic restoration of these rich widgets is conservatively
-refused. Nested repeating-template structures also remain export-only. Regular
+or arbitrary hidden field is stored. Tree and other unsupported hidden rich widget values can be
+exported but are not restored automatically. Ratings and nested repeating-template
+structures now support validated restoration up to a global instance budget. Regular
 text/select/checkbox/radio fields, tokens, comboboxes, first-level repeating
 instances and VisualEditor wikitext are supported. File uploads themselves are
 never recoverable from a text draft. Schema/enum/count checks run before mutation;
