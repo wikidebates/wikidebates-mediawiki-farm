@@ -127,6 +127,25 @@ namespace {
 	check( $renderer->buildActions( $checkRow ) === [], 'After the batch, edit checks still run' );
 	check( $checkWorkflow->checks === 3, 'Edit checks are not retained outside the batch' );
 
+	// The opt-in action profiler records the workflow gate without changing
+	// permissions or retaining a decision. Normal rendering records nothing.
+	$timings = [];
+	$renderer->setBenchmarkTimer(
+		static function ( string $phase, float $milliseconds ) use ( &$timings ): void {
+			$timings[$phase][] = $milliseconds;
+		}
+	);
+	check( $renderer->buildActions( $checkRow ) === [], 'Profiling retains the edit denial' );
+	check( $checkWorkflow->checks === 4, 'Profiling reevaluates the workflow gate' );
+	check( isset( $timings['format_detail_action_workflow_edit_permission'][0] ) &&
+		$timings['format_detail_action_workflow_edit_permission'][0] >= 0,
+		'Profiling records a nonnegative workflow gate duration' );
+	$renderer->setBenchmarkTimer( null );
+	check( $renderer->buildActions( $checkRow ) === [], 'Nonprofiled denial stays unchanged' );
+	check( $checkWorkflow->checks === 5, 'Disabling profiling never caches an edit decision' );
+	check( count( $timings['format_detail_action_workflow_edit_permission'] ) === 1,
+		'Disabled action profiler records no further measurements' );
+
 	class SpyFormatter extends RevisionFormatter {
 		public int $primeCount = 0;
 		public int $clearCount = 0;
