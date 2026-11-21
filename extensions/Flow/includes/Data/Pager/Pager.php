@@ -76,7 +76,8 @@ class Pager {
 		];
 		if ( isset( $this->options['sort'] ) && isset( $this->options['order'] ) ) {
 			$indexOptions += [
-				'sort' => [ $this->options['sort'] ],
+				// Accept both a single column and an ordered list of columns.
+				'sort' => ObjectManager::makeArray( $this->options['sort'] ),
 				'order' => $this->options['order'],
 			];
 		}
