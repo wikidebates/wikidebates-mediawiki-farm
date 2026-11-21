@@ -45,6 +45,17 @@ class TopicListQuery extends AbstractQuery {
 	/** @var callable|null Read-only profiling, enabled only for the maintenance benchmark. */
 	private $benchmarkTimer;
 
+	/** @var bool Maintenance-only A/B switch; normal rendering always prewarms. */
+	private $benchmarkSkipPermissionPrewarm = false;
+
+	/**
+	 * Compare lazy versus eager permission cache filling in the read-only
+	 * maintenance benchmark. Never enable this switch for normal rendering.
+	 */
+	public function setBenchmarkSkipPermissionPrewarm( bool $skip ): void {
+		$this->benchmarkSkipPermissionPrewarm = $skip;
+	}
+
 	public function setBenchmarkTimer( ?callable $observer ): void {
 		$this->benchmarkTimer = $observer;
 		// Keep query prefetch timings distinct from the formatter's
@@ -147,7 +158,9 @@ class TopicListQuery extends AbstractQuery {
 		$this->endBenchmarkStep( 'prime_topic_keys', $started );
 
 		$started = $this->beginBenchmarkStep();
-		$this->permissions->primeCacheForView( $posts );
+		if ( !$this->benchmarkSkipPermissionPrewarm ) {
+			$this->permissions->primeCacheForView( $posts );
+		}
 		$this->endBenchmarkStep( 'prime_permissions', $started );
 
 		$started = $this->beginBenchmarkStep();

@@ -729,3 +729,87 @@ The timings include SQL and caches. Do not add nested phases to their
 parents, and compare with the same instrumented version when making
 small relative timing claims. The PR is a diagnostic step, not a
 performance improvement in itself.
+
+
+## A/B check: does eager permission prewarming still help?
+
+After PR #30, five independent cold PHP CLI processes on the French
+Bistro (50 topics, 242 posts) averaged **359.64 ms wall-clock** and
+**331.07 ms CPU** with `--breakdown`. The topic-query phase averaged
+**116.41 ms**. Its eager permission prewarm measured **23.47 ms**,
+split into **12.29 ms** for root revisions and **11.14 ms** for board
+workflows. The subsequent visible-topic checks averaged **24.13 ms**;
+checking visibility inside `build_visible_rows` averaged **38.74 ms**,
+leaving only **4.49 ms** for non-permission row construction.
+
+The current prewarm traverses 242 revisions, caching current roots
+and board workflows. Simply removing it is **not** known to save
+23.47 ms: later `isAllowed( 'view' )` checks may perform exactly the
+same work, possibly more slowly. To test rather than speculate, the
+read-only maintenance benchmark now supports an experimental flag:
+
+`--skip-permission-prewarm`
+
+This flag only omits the eager `primeCacheForView( $posts )` call in
+the benchmark's `TopicListQuery`. It **never** skips view permission
+checks, moderation checks, current-revision checks or any action
+permissions. The flag defaults to **off**, including for normal web
+and API traffic. The block restores the shared query's normal mode in
+a `finally` block, even if the query fails. It is not an extension
+configuration option and must not be used in web/API rendering.
+
+Run **paired, independent PHP processes** to control for server
+load changes. Alternate the order of both variants (AB/BA) so the
+second measurement is not always the lazy variant. Prefer the
+unprofiled measurements for overall speed:
+
+```sh
+run_flow_variant() {
+	mode=$1
+	echo "Variant: $mode"
+	if [ "$mode" = lazy ]; then
+		php maintenance/run.php Flow:FlowBenchmarkTopicList \
+			--wiki=fr --page='Wikidébats:Bistro' \
+			--runs=1 --limit=50 --sortby=updated \
+			--skip-permission-prewarm
+	else
+		php maintenance/run.php Flow:FlowBenchmarkTopicList \
+			--wiki=fr --page='Wikidébats:Bistro' \
+			--runs=1 --limit=50 --sortby=updated
+	fi
+}
+
+for i in 1 2 3 4 5 6; do
+	if [ $((i % 2)) -eq 0 ]; then
+		run_flow_variant lazy
+		run_flow_variant eager
+	else
+		run_flow_variant eager
+		run_flow_variant lazy
+	fi
+done
+```
+
+For phase attribution, repeat at least three pairs using
+`--breakdown` on *both* variants. In the lazy mode,
+`query_detail_ms.prime_permissions` should be almost zero, while
+`filter_visible_topics` or `build_visible_rows` may become more
+expensive. The `prime_root_revisions` and
+`prime_board_workflows` events are absent because that phase was
+not executed.
+
+Each sample now contains `result_structure_sha256`, a digest over
+the ordered visible root IDs, the post-to-revision-ID mapping and
+the revision IDs. Compare these between variants; **a matching digest
+proves only that the same IDs were emitted**, not that all text,
+action links or moderation decisions are equivalent. Full permission
+behavior is also covered by smoke tests that use both a mocked
+visibility service and real Flow permission checks after hiding
+a post and invalidating storage caches. If the digest differs,
+investigate before deciding on any production optimization.
+
+The output field `permission_prewarm` labels `enabled` (default)
+or `disabled` (A/B experiment). No permanent change to normal
+prewarming should be made until the paired benchmarks establish a
+repeatable improvement without breaking the visible structure or
+authorization tests. This option is intentionally diagnostic.

@@ -13,6 +13,15 @@ $end = new ReflectionMethod( TopicListBlock::class, 'endBenchmarkPhase' );
 $timings = [];
 
 check( $begin->invoke( $block ) === null, 'Uninstrumented rendering has no timestamp' );
+$prewarmSwitch = new ReflectionProperty( TopicListBlock::class, 'benchmarkSkipPermissionPrewarm' );
+check( $prewarmSwitch->getValue( $block ) === false,
+	'Default web/API rendering keeps eager permission prewarming enabled' );
+$block->setBenchmarkSkipPermissionPrewarm( true );
+check( $prewarmSwitch->getValue( $block ) === true,
+	'Only the explicit benchmark option selects lazy permission prewarm mode' );
+$block->setBenchmarkSkipPermissionPrewarm( false );
+check( $prewarmSwitch->getValue( $block ) === false,
+	'The benchmark can restore the normal prewarm behavior' );
 $end->invoke( $block, 'ignored', null );
 check( $timings === [], 'Uninstrumented rendering has no observer side effects' );
 
