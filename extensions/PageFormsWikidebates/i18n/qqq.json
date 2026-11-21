@@ -332,5 +332,13 @@
 	"pf-invalidexturl": "Error message.",
 	"pf-blankexturl": "Error message.",
 	"pf-externalpageempty": "Error message.",
-	"pf-externalpagebadjson": "Error message."
+	"pf-externalpagebadjson": "Error message.",
+	"pf-form-validating": "Status shown while a Page Forms submission is waiting for asynchronous validation.",
+	"pf-form-saving": "Status shown while a Page Forms save-and-continue request is pending.",
+	"pf-form-prepare-error": "Error shown when VisualEditor synchronization fails or times out before submitting the form.",
+	"pf-form-validation-error": "Error shown if a form validator or validation hook throws or rejects its promise.",
+	"pf-form-changed-during-validation": "Shown when form values change during an asynchronous validation. The obsolete result is not used.",
+	"pf-unique-check-error": "Field error for failed or malformed Semantic MediaWiki/Cargo uniqueness responses, distinct from a duplicate value.",
+	"pf-save-and-continue-error": "Fallback error when a save-and-continue request fails or its response cannot confirm success. A lost response may occur after the save completed on the server.",
+	"pf-preview-error": "Error shown when an AJAX form preview fails or returns an unexpected response."
 }

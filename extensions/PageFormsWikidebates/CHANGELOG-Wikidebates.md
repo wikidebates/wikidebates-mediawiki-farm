@@ -1,5 +1,22 @@
 # CHANGELOG Wikidebates
 
+## Safe labels, resilient saving and asynchronous validation
+- Restore Select2's default escaping for plain labels and selected values; render
+  only the extension's escaped match-highlighting markup as a DOM fragment.
+- Read `result.target`, preserve the generated target across subsequent saves,
+  encode submitted summaries and accept only well-formed successful responses.
+- Safely display HTTP/network/API errors, preserve edits, and distinguish an
+  unconfirmed save from a confirmed failure; do not automatically retry writes.
+- Replace blocking SMW/Cargo uniqueness requests with asynchronous checks that
+  distinguish duplicates from failed checks and ignore obsolete responses.
+- Share preparation, timeouts and a double-submit lock across native saves,
+  previews and save-and-continue. Preserve the clicked action and other submit
+  handlers; release the edit warning only on an accepted native submission.
+- Wait for editor conversions, reject edits made during validation/conversion,
+  and keep changes made during an in-flight AJAX save marked as unsaved.
+- Add regression coverage (92 JavaScript tests in total). See tests/README.md for
+  the promise-returning validation API and the live acceptance-test limitations.
+
 ## Preserve token input focus after deletion
 - Keep the inline search input attached while refreshing selected tokens instead
   of removing and refocusing it. An asynchronous refresh after deleting text or

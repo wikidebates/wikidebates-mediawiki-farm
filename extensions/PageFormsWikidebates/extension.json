@@ -176,6 +176,7 @@
     "ResourceModules": {
         "ext.pageforms.main": {
             "scripts": [
+				"libs/PF_formSubmission.js",
                 "libs/PageForms.js",
                 "libs/PF_preview.js"
             ],
@@ -186,6 +187,13 @@
             ],
             "messages": [
                 "pf_formerrors_header",
+				"pf-form-validating",
+				"pf-form-saving",
+				"pf-form-prepare-error",
+				"pf-form-validation-error",
+				"pf-form-changed-during-validation",
+				"pf-unique-check-error",
+				"pf-preview-error",
                 "pf_too_few_instances_error",
                 "pf_too_many_instances_error",
                 "pf_blank_error",
@@ -309,10 +317,12 @@
             ]
         },
         "ext.pageforms.submit": {
+			"dependencies": [ "ext.pageforms.main" ],
             "scripts": [
                 "libs/PF_submit.js"
             ],
             "messages": [
+				"pf-save-and-continue-error",
                 "pf_formedit_saveandcontinue_summary",
                 "pf_formedit_saveandcontinueediting"
             ],

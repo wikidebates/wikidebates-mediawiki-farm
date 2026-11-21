@@ -73,34 +73,10 @@ function getPFData() {
 }
 
 
-function createFormErrorHeader( message ) {
-	const scriptPath = mw.config.get( 'wgPageFormsScriptPath' );
-	const $icon = $( '<img>' ).attr( 'src', scriptPath + '/skins/MW-Icon-AlertMark.png' );
-	const $header = $( '<div>' )
-		.attr( 'id', 'form_error_header' )
-		.addClass( 'errorbox pf-form-error-header cdx-message cdx-message--block cdx-message--error' )
-		.append( $icon, ' ', message );
-	const $clear = $( '<div>' ).addClass( 'pf-form-clear' );
-
-	return $( '<div>' ).append( $header, $clear );
-}
-
 function ensureFormErrorHeader( message ) {
-	var $target;
-
-	if ( $( '#form_error_header' ).length !== 0 ) {
-		return;
+	if ( !$( '#form_error_header' ).length ) {
+		mw.pageFormsSubmission.showError( $( '#pfForm' ), message );
 	}
-
-	if ( $( '#contentSub' ).length ) {
-		$target = $( '#contentSub' );
-	} else if ( $( '.page-heading .tagline' ).length ) {
-		$target = $( '.page-heading .tagline' );
-	} else {
-		$target = $( '#firstHeading, .firstHeading' ).first().parent();
-	}
-
-	$target.append( createFormErrorHeader( message ).contents() );
 }
 
 const pfModulePromises = {};
@@ -719,143 +695,130 @@ $.fn.validateMandatoryField = function() {
 	}
 };
 
-$.fn.validateUniqueField = function() {
-
-	const UNDEFINED = "undefined";
-	const field = this.find(".uniqueField");
-	const fieldVal = field.val();
-
-	if (typeof fieldVal === UNDEFINED || fieldVal.replace(/\s+/, '') === '') {
-		return true;
+/**
+ * @param {Function} [isCurrent] Whether the containing validation is still current.
+ * @return {Promise<boolean>} Never interpret a failed request as a duplicate.
+ */
+$.fn.validateUniqueField = function( isCurrent ) {
+	const $wrapper = this;
+	const $field = this.find( '.uniqueField' ).first();
+	const $form = this.closest( 'form' );
+	const value = $field.val();
+	const previous = $field.data( 'pfUniqueRequest' );
+	const request = {};
+	$field.data( 'pfUniqueRequest', request );
+	if ( previous && previous.xhr ) {
+		previous.xhr.abort();
 	}
 
-	const fieldOrigVal = field.prop("defaultValue");
-	if (fieldVal === fieldOrigVal) {
-		return true;
+	if ( value === undefined || value === null || String( value ).trim() === '' ) {
+		return Promise.resolve( true );
+	}
+	const saved = $field.data( 'pfUniqueSavedValue' );
+	if ( value === ( saved === undefined ? $field.prop( 'defaultValue' ) : saved ) ) {
+		return Promise.resolve( true );
 	}
 
-	const categoryFieldName = field.prop("id") + "_unique_for_category";
-	const $categoryField = $("[name=" + categoryFieldName + "]");
-	let category = $categoryField.val();
+	function setting( suffix ) {
+		const name = $field.prop( 'id' ) + suffix;
+		return $form.find( 'input' ).filter( function () { return this.name === name; } ).val();
+	}
+	const category = setting( '_unique_for_category' );
+	const namespace = setting( '_unique_for_namespace' );
+	const property = setting( '_unique_property' );
+	const concept = setting( '_unique_for_concept' );
+	let cargoTable = setting( '_unique_cargo_table' );
+	const cargoField = setting( '_unique_cargo_field' );
+	const data = { format: 'json' };
 
-	const namespaceFieldName = field.prop("id") + "_unique_for_namespace";
-	const $namespaceField = $("[name=" + namespaceFieldName + "]");
-	const namespace = $namespaceField.val();
-
-	let url = mw.config.get( 'wgScriptPath' ) + "/api.php?format=json&action=";
-
-	let query,
-		isNotUnique;
-
-	// SMW
-	const propertyFieldName = field.prop("id") + "_unique_property",
-		$propertyField = $("[name=" + propertyFieldName + "]"),
-		property = $propertyField.val();
-	if (typeof property !== UNDEFINED && property.replace(/\s+/, '') !== '') {
-
-		query = "[[" + property + "::" + fieldVal + "]]";
-
-		if (typeof category !== UNDEFINED &&
-			category.replace(/\s+/, '') !== '') {
-			query += "[[Category:" + category + "]]";
+	if ( property && property.trim() !== '' ) {
+		data.action = 'ask';
+		data.query = '[[' + property + '::' + value + ']]';
+		if ( category && category.trim() !== '' ) {
+			data.query += '[[Category:' + category + ']]';
 		}
-
-		if (typeof namespace !== UNDEFINED) {
-			if (namespace.replace(/\s+/, '') !== '') {
-				query += "[[:" + namespace + ":+]]";
-			} else {
-				query += "[[:+]]";
+		if ( namespace !== undefined ) {
+			data.query += namespace.trim() !== '' ? '[[:' + namespace + ':+]]' : '[[:+]]';
+		}
+		if ( concept && concept.trim() !== '' ) {
+			data.query += '[[Concept:' + concept + ']]';
+		}
+		data.query += '|limit=1';
+	} else if ( cargoTable && cargoTable.trim() !== '' && cargoField && cargoField.trim() !== '' ) {
+		const quote = ( text ) => "'" + String( text ).replace( /\\/g, '\\\\' ).replace( /'/g, "''" ) + "'";
+		data.action = 'cargoquery';
+		data.fields = cargoField;
+		data.where = cargoField + ' = ' + quote( value );
+		if ( category && category.trim() !== '' ) {
+			data.where += ' AND cl_to = ' + quote( category.replace( / /g, '_' ) ) + ' AND cl_from = _pageID';
+			cargoTable += ',categorylinks';
+		}
+		if ( namespace !== undefined ) {
+			const namespaceIds = mw.config.get( 'wgNamespaceIds' ) || {};
+			const ns = namespace.trim() === '' ? 0 : namespaceIds[ namespace.toLowerCase() ];
+			if ( ns === undefined ) {
+				$wrapper.addErrorMessage( 'pf-unique-check-error' );
+				return Promise.resolve( false );
 			}
+			data.where += ' AND _pageNamespace = ' + ns;
 		}
+		data.tables = cargoTable;
+		data.limit = 1;
+	} else {
+		return Promise.resolve( true );
+	}
 
-		const conceptFieldName = field.prop("id") + "_unique_for_concept";
-		const $conceptField = $("[name=" + conceptFieldName + "]");
-		const concept = $conceptField.val();
-		if (typeof concept !== UNDEFINED &&
-			concept.replace(/\s+/, '') !== '') {
-			query += "[[Concept:" + concept + "]]";
+	function current() {
+		return $field.data( 'pfUniqueRequest' ) === request && $field.val() === value &&
+			document.documentElement.contains( $field[ 0 ] ) &&
+			!$field.closest( '.hiddenByPF, .multipleTemplateStarter' ).length &&
+			( !isCurrent || isCurrent() );
+	}
+	function fail() {
+		if ( current() ) {
+			$wrapper.addErrorMessage( 'pf-unique-check-error' );
 		}
+		return false;
+	}
 
-		query += "|limit=1";
-		query = encodeURIComponent(query);
-
-		url += "ask&query=" + query;
-		isNotUnique = true;
-		$.ajax({
-			url: url,
+	return new Promise( ( resolve ) => {
+		request.xhr = $.ajax( {
+			url: mw.util.wikiScript( 'api' ),
+			data: data,
 			dataType: 'json',
-			async: false,
-			success: function(data) {
-				if (data.query.meta.count === 0) {
-					isNotUnique = false;
+			timeout: 15000
+		} );
+		request.xhr.done( ( result ) => {
+			if ( !current() ) {
+				resolve( false );
+				return;
+			}
+			let count;
+			if ( result && !result.error && !result.errors ) {
+				if ( data.action === 'ask' && result.query && result.query.meta ) {
+					const rawCount = result.query.meta.count;
+					if ( ( typeof rawCount === 'number' || typeof rawCount === 'string' ) && /^\d+$/.test( String( rawCount ) ) ) {
+						count = Number( rawCount );
+					}
+				} else if ( data.action === 'cargoquery' && Array.isArray( result.cargoquery ) ) {
+					count = result.cargoquery.length;
 				}
 			}
-		});
-		if (isNotUnique) {
-			this.addErrorMessage( 'pf_not_unique_error' );
-			return false;
-		} else {
-			return true;
-		}
-	}
-
-	// Cargo
-	const cargoTableFieldName = field.prop("id") + "_unique_cargo_table";
-	const $cargoTableField = $("[name=" + cargoTableFieldName + "]");
-	let cargoTable = $cargoTableField.val();
-	const cargoFieldFieldName = field.prop("id") + "_unique_cargo_field";
-	const $cargoFieldField = $("[name=" + cargoFieldFieldName + "]");
-	const cargoField = $cargoFieldField.val();
-	if (typeof cargoTable !== UNDEFINED && cargoTable.replace(/\s+/, '') !== ''
-		&& typeof cargoField !== UNDEFINED
-		&& cargoField.replace(/\s+/, '') !== '') {
-
-		query = "&where=" + cargoField + "+=+'" + fieldVal + "'";
-
-		if (typeof category !== UNDEFINED &&
-			category.replace(/\s+/, '') !== '') {
-			category = category.replace(/\s/, '_');
-			query += "+AND+cl_to=" + category + "+AND+cl_from=_pageID";
-			cargoTable += ",categorylinks";
-		}
-
-		if (typeof namespace !== UNDEFINED) {
-			query += "+AND+_pageNamespace=";
-			if (namespace.replace(/\s+/, '') !== '') {
-				const ns = mw.config.get('wgNamespaceIds')[namespace.toLowerCase()];
-				if (typeof ns !== UNDEFINED) {
-					query += ns;
-				}
-			} else {
-				query += "0";
+			if ( !Number.isFinite( count ) ) {
+				resolve( fail() );
+				return;
 			}
-		}
-
-		query += "&limit=1";
-
-		url += "cargoquery&tables=" + cargoTable + "&fields=" + cargoField +
-			query;
-		isNotUnique = true;
-		$.ajax({
-			url: url,
-			dataType: 'json',
-			async: false,
-			success: function(data) {
-				if (data.cargoquery.length === 0) {
-					isNotUnique = false;
-				}
+			if ( count > 0 ) {
+				$wrapper.addErrorMessage( 'pf_not_unique_error' );
 			}
-		});
-		if (isNotUnique) {
-			this.addErrorMessage( 'pf_not_unique_error' );
-			return false;
-		} else {
-			return true;
-		}
-	}
-
-	return true;
-
+			resolve( count === 0 );
+		} ).fail( () => resolve( fail() ) ).always( () => {
+			// Do not remove a newer request started while this one was completing.
+			if ( $field.data( 'pfUniqueRequest' ) === request ) {
+				$field.removeData( 'pfUniqueRequest' );
+			}
+		} );
+	} );
 };
 
 $.fn.validateMandatoryComboBox = function() {
@@ -1039,13 +1002,13 @@ $.fn.checkForPipes = function() {
 			// startTag ... endTag | startTag ... endTag
 			if ( matches[1].includes( endTag ) &&
 				matches[2].includes( startTag ) ) {
-				fieldVal = fieldVal.replace( pattern, "$1" + "\2" + "$2");
+				fieldVal = fieldVal.replace( pattern, "$1" + "\u0002" + "$2");
 			} else {
-				fieldVal = fieldVal.replace( pattern, "$1" + "\1" + "$2" );
+				fieldVal = fieldVal.replace( pattern, "$1" + "\u0001" + "$2" );
 			}
 		}
 	}
-	fieldVal = fieldVal.replace( "\2", '|' );
+	fieldVal = fieldVal.replace( "\u0002", '|' );
 
 	// Now check for pipes outside of brackets.
 	let nextPipe,
@@ -1186,168 +1149,197 @@ function validateStartEndDateTimeField( startInput, endInput ) {
 
 }
 
+/**
+ * @return {Promise<boolean>} Callers must await validation before submitting.
+ */
 window.validateAll = function() {
-	const $pfForm = $( "#pfForm" );
+	const $form = $( '#pfForm' );
+	const generation = {};
+	$form.data( 'pfValidationGeneration', generation );
+	return Promise.resolve().then( () => {
+		if ( $form.data( 'pfValidationGeneration' ) !== generation ) {
+			return false;
+		}
+		const $pfForm = $form;
 
-	// Remove all old error messages.
-	$pfForm.find( ".errorMessage" ).remove();
+		// Remove all old error messages.
+		$pfForm.find( ".errorMessage" ).remove();
+		$pfForm.find( '.inputError' ).removeClass( 'inputError' );
+		$( '#form_error_header' ).remove();
+		const pendingValidations = [];
 
-	// Hook that fires on form submission, before the validation.
-	mw.hook('pf.formValidationBefore').fire();
+		// Hook that fires on form submission, before the validation.
+		mw.hook('pf.formValidationBefore').fire();
 
-	const args = {numErrors: 0};
-	mw.hook('pf.formValidation').fire( args );
-	let num_errors = args.numErrors;
+		const args = {numErrors: 0};
+		mw.hook('pf.formValidation').fire( args );
+		let num_errors = args.numErrors;
 
-	// Make sure all inputs are ignored in the "starter" instance
-	// of any multiple-instance template.
-	$pfForm.find( ".multipleTemplateStarter" ).find( "span, div" ).addClass( "hiddenByPF" );
+		// Make sure all inputs are ignored in the "starter" instance
+		// of any multiple-instance template.
+		$pfForm.find( ".multipleTemplateStarter" ).find( "span, div" ).addClass( "hiddenByPF" );
 
-	$pfForm.find( ".multipleTemplateList" ).each( function() {
-		if (! $(this).validateNumInstances() ) {
-			num_errors += 1;
-		}
-	});
+		$pfForm.find( ".multipleTemplateList" ).each( function() {
+			if (! $(this).validateNumInstances() ) {
+				num_errors += 1;
+			}
+		});
 
-	$pfForm.find( "span.inputSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryField() ) {
+		$pfForm.find( "span.inputSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.comboboxSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryComboBox() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.dateInput.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryDateField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.radioButtonSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryRadioButton() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.checkboxesSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryCheckboxes() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "div.pfTreeInputWrapper.mandatory" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryTree() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "div.pfPickerWrapper.mandatory" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).find('.pfPicker').validateMandatoryDatePicker() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.inputSpan, span.comboboxSpan" ).not( ".hiddenByPF, .freeText, .pageSection" ).each( function() {
+			if (! $(this).checkForPipes() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.URLInput" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateURLField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.emailInput" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateEmailField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.numberInput" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateNumberField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.integerInput" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateIntegerField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.dateInput" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateDateField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "input.modifiedInput" ).not( ".hiddenByPF" ).each( function() {
+			// No separate function needed.
+			$(this).parent().addErrorMessage( 'pf_modified_input_error' );
 			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.comboboxSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryComboBox() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.dateInput.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryDateField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.radioButtonSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryRadioButton() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.checkboxesSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryCheckboxes() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "div.pfTreeInputWrapper.mandatory" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryTree() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "div.pfPickerWrapper.mandatory" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).find('.pfPicker').validateMandatoryDatePicker() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.inputSpan.uniqueFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateUniqueField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.inputSpan, span.comboboxSpan" ).not( ".hiddenByPF, .freeText, .pageSection" ).each( function() {
-		if (! $(this).checkForPipes() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.URLInput" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateURLField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.emailInput" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateEmailField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.numberInput" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateNumberField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.integerInput" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateIntegerField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.dateInput" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateDateField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "input.modifiedInput" ).not( ".hiddenByPF" ).each( function() {
-		// No separate function needed.
-		$(this).parent().addErrorMessage( 'pf_modified_input_error' );
-		num_errors += 1;
-	});
+		});
 
-	const startDateInput = $pfForm.find( "span.startDateInput" ).not( ".hiddenByPF" )
-	const endDateInput = $pfForm.find( "span.endDateInput" ).not( ".hiddenByPF" )
+		const startDateInput = $pfForm.find( "span.startDateInput" ).not( ".hiddenByPF" )
+		const endDateInput = $pfForm.find( "span.endDateInput" ).not( ".hiddenByPF" )
 
-	if ( !validateStartEndDateField( startDateInput, endDateInput ) ) {
-		num_errors += 1;
-	}
+		if ( !validateStartEndDateField( startDateInput, endDateInput ) ) {
+			num_errors += 1;
+		}
 
-	const startDateTimeInput = $pfForm.find( "span.startDateTimeInput" ).not( ".hiddenByPF" )
-	const endDateTimeInput = $pfForm.find( "span.endDateTimeInput" ).not( ".hiddenByPF" )
+		const startDateTimeInput = $pfForm.find( "span.startDateTimeInput" ).not( ".hiddenByPF" )
+		const endDateTimeInput = $pfForm.find( "span.endDateTimeInput" ).not( ".hiddenByPF" )
 
-	if ( !validateStartEndDateTimeField( startDateTimeInput, endDateTimeInput ) ) {
-		num_errors += 1;
-	}
-	// call registered validation functions
-	const pfdata = $pfForm.data( 'PageForms' );
+		if ( !validateStartEndDateTimeField( startDateTimeInput, endDateTimeInput ) ) {
+			num_errors += 1;
+		}
+		// call registered validation functions
+		const pfdata = $pfForm.data( 'PageForms' );
 
-	if ( pfdata && pfdata.validationFunctions.length > 0 ) { // found data object?
+		if ( pfdata && pfdata.validationFunctions.length > 0 ) { // found data object?
 
-		// for every registered input
-		for ( let i = 0; i < pfdata.validationFunctions.length; i++ ) {
+			// for every registered input
+			for ( let i = 0; i < pfdata.validationFunctions.length; i++ ) {
 
-			// if input is not part of multipleTemplateStarter
-			if ( typeof pfdata.validationFunctions[i] !== 'undefined' &&
-				$("#" + pfdata.validationFunctions[i].input).closest(".multipleTemplateStarter").length === 0 &&
-				$("#" + pfdata.validationFunctions[i].input).closest(".hiddenByPF").length === 0 ) {
+				// if input is not part of multipleTemplateStarter
+				if ( typeof pfdata.validationFunctions[i] !== 'undefined' &&
+					$("#" + pfdata.validationFunctions[i].input).closest(".multipleTemplateStarter").length === 0 &&
+					$("#" + pfdata.validationFunctions[i].input).closest(".hiddenByPF").length === 0 ) {
 
-				if (! pfdata.validationFunctions[i].valfunction(
+					pendingValidations.push( Promise.resolve( pfdata.validationFunctions[i].valfunction(
 						pfdata.validationFunctions[i].input,
-						pfdata.validationFunctions[i].parameters)
-					) {
-					num_errors += 1;
+						pfdata.validationFunctions[i].parameters
+					) ) );
 				}
 			}
 		}
-	}
 
-	if (num_errors > 0) {
-		// add error header, if it's not there already
-		ensureFormErrorHeader( mw.message( 'pf_formerrors_header' ).escaped() );
-		// The "Save page", etc. buttons were disabled to prevent
-		// double-clicking; since there has been an error, re-enable
-		// them so that the form can be submitted again after the
-		// user tries to fix these errors.
-		$( '.editButtons > .oo-ui-buttonElement' ).removeClass( 'oo-ui-widget-disabled' ).addClass( 'oo-ui-widget-enabled' );
-		// Also undo the indicator that the form was submitted.
-		$pfForm.data( 'submitted', false );
-		scroll(0, 0);
-	} else {
-		// Disable inputs hidden due to either "show on select" or
-		// because they're part of the "starter" div for
-		// multiple-instance templates, so that they aren't
-		// submitted by the form.
-		$pfForm.find( '.hiddenByPF' ).find( "input, select, textarea" ).not( ':disabled' )
-		.prop('disabled', true)
-		.addClass('disabledByPF');
-		//remove error box if it exists because there are no errors in the form now
-		$("#contentSub").find(".errorbox").remove();
-	}
+		const snapshot = mw.pageFormsSubmission.snapshot( $pfForm );
+		const current = () => $pfForm.data( 'pfValidationGeneration' ) === generation &&
+			mw.pageFormsSubmission.snapshot( $pfForm ) === snapshot;
+		if ( num_errors === 0 ) {
+			$pfForm.find( 'span.inputSpan.uniqueFieldSpan' ).filter( function () {
+				return !$( this ).closest( '.hiddenByPF, .multipleTemplateStarter' ).length &&
+					!$( this ).find( '.uniqueField' ).prop( 'disabled' );
+			} ).each( function () {
+				pendingValidations.push( $( this ).validateUniqueField( current ) );
+			} );
+		}
+		return Promise.all( pendingValidations ).then( ( results ) => {
+			if ( $pfForm.data( 'pfValidationGeneration' ) !== generation ) {
+				return false;
+			}
+			if ( !current() ) {
+				mw.pageFormsSubmission.showError( $pfForm, mw.msg( 'pf-form-changed-during-validation' ) );
+				mw.hook( 'pf.formValidationAfter' ).fire();
+				return false;
+			}
+			num_errors += results.filter( ( valid ) => !valid ).length;
 
-	// Hook that fires on form submission, after the validation.
-	mw.hook('pf.formValidationAfter').fire();
+			if (num_errors > 0) {
+				// add error header, if it's not there already
+				ensureFormErrorHeader( mw.msg( 'pf_formerrors_header' ) );
+				scroll(0, 0);
+			} else {
+				// Disable inputs hidden due to either "show on select" or
+				// because they're part of the "starter" div for
+				// multiple-instance templates, so that they aren't
+				// submitted by the form.
+				$pfForm.find( '.hiddenByPF' ).find( "input, select, textarea" ).not( ':disabled' )
+				.prop('disabled', true)
+				.addClass('disabledByPF');
+				//remove error box if it exists because there are no errors in the form now
+				$( '#form_error_header' ).remove();
+			}
 
-	return (num_errors === 0);
+			// Hook that fires on form submission, after the validation.
+			mw.hook('pf.formValidationAfter').fire();
+
+			return (num_errors === 0);
+		} );
+	} ).catch( () => {
+		if ( $form.data( 'pfValidationGeneration' ) === generation ) {
+			$form.removeData( 'pfValidationGeneration' );
+			mw.pageFormsSubmission.showError( $form, mw.msg( 'pf-form-validation-error' ) );
+		}
+		return false;
+	} );
 };
 
 /**
@@ -2176,7 +2168,7 @@ $( () => {
 			}
 
 			// If the form is submitted, validate everything!
-			$pfForm.off( 'submit.pfValidate' ).on( 'submit.pfValidate', () => validateAll() );
+			mw.pageFormsSubmission.bind( $pfForm );
 
 			} finally {
 				$( '#loadingMask' ).removeClass( 'pf-loading-mask--active' );

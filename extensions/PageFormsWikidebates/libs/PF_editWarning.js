@@ -79,7 +79,7 @@
 		} );
 
 		// Add form submission handler
-		$( '#pfForm' ).on( 'submit', () => {
+		mw.hook( 'pf.formSubmit' ).add( () => {
 			allowCloseWindow.release();
 		} );
 	} );

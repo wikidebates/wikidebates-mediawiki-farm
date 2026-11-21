@@ -9,6 +9,50 @@ vendor/bin/phpunit --filter 'PF(Values|Mapping)UtilsRegressionTest' extensions/P
 vendor/bin/phpunit extensions/PageFormsWikidebates/tests/phpunit
 ```
 
+## Safe labels and asynchronous submission (November 2026)
+
+The current JavaScript suite contains 92 tests across five suites. It runs the
+actual PageForms main/submission/preview code, MediaWiki's bundled jQuery and the
+bundled Select2 in Jest/jsdom. The original 26 autocomplete/composition/focus
+regressions remain included. API requests and VisualEditor targets are controlled
+in these tests; no production API is called.
+
+Coverage includes plain-text local/remote/new-tag labels and safe highlighting;
+SMW/Cargo uniqueness response validation, cancellation, stale answers, parallel
+fields, retries and timeout recovery; normal save/preview/diff submitter
+preservation; jQuery synthetic submits, native fallback, third-party submit
+vetoes, back-forward restoration and a shared double-submit lock; and two AJAX
+saves using a generated target, malformed/HTML/core API errors, summary encoding,
+changes during saving, editor conversion failures and edits during conversion.
+
+`validateAll()` and `$.fn.validateUniqueField()` now return `Promise<boolean>`.
+All built-in callers have been adapted, including AJAX preview. Site scripts
+must await the result: `if (validateAll())` is no longer valid. Registered input
+validators may return either a boolean or a promise of a boolean; existing
+validation hooks remain synchronous. `pf.formValidationAfter` fires after the
+checks settle on the normal validation path. `pf.formSubmit` is fired only when
+the validated native submission has not been cancelled by another listener.
+`mw.pageFormsActivateVEFields()` returns a promise and retains its optional
+callback argument. Submission preparation has a 30-second upper bound;
+uniqueness requests have a 15-second timeout. A changed form is not submitted
+using an answer for its old values: the user is asked to submit again.
+
+Combobox labels, including display titles, are now plain text. Embedded HTML is
+not rendered; the extension's own match highlighting is retained. No bundled
+Select2 library or token-composition code was replaced.
+
+These checks do NOT constitute a live MediaWiki/SMW/Cargo or browser acceptance
+test. Before production deployment, use a test wiki with the site's real forms:
+check a new generated page followed by a second save, save/preview/diff, expired
+tokens, offline/timeouts, mandatory and unique fields, conditional/multiple
+instances, and VisualEditor in both source and visual modes. Verify that contents
+persist after reopening the page. Retest dead-key accents on the actual browsers
+and keyboards as described below. Uniqueness remains advisory: this change does
+not add a database uniqueness constraint or eliminate SMW indexing delays and
+concurrent-editor races. No PHP or database schema was changed in this pass.
+
+## Earlier autocomplete and composition checks
+
 The JavaScript tests use MediaWiki's jQuery, its Jest/jsdom development dependencies,
 and the Select2 version bundled with this extension. They exercise request races,
 cancellation, cache reuse, destruction, local option preservation and dependent
@@ -62,5 +106,6 @@ several assertions. The site's normal language need not be changed.
 
 These checks do not cover the full production forms, browser rendering on actual
 devices, or integrations with an active Semantic MediaWiki/Cargo installation.
-The synchronous uniqueness validation requests and bundled third-party library
-versions were not changed by this maintenance pass.
+The synchronous uniqueness requests were not changed by that earlier maintenance
+pass; they are replaced in the November 2026 changes documented above. Bundled
+third-party library versions remain unchanged.
