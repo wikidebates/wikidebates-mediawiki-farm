@@ -800,11 +800,12 @@ content, a custom revision, etc.) the original parsing path is used.
 DOM ownership transfers once and is cleared immediately, preventing
 cross-request or cross-user mutation.
 
-**This is not enabled for live web/API traffic.** The existing
-renderer remains the default. Reusing a DOM instead of reparsing
-serialized HTML might change the tree for malformed historical
-content, so real-wiki byte-level parity is required before any
-production change.
+**This experiment began as maintenance-only.** Following real-wiki
+A/B tests and opt-in production operation, single-pass rendering is
+now enabled by default via `FlowReuseDecodedDom`. Reusing a DOM rather
+than reparsing serialized HTML can produce a different tree on malformed
+historical content; keep the explicit legacy fallback and compare
+byte-for-byte output if any regression is suspected.
 
 Every sample now includes `result_content_sha256`, an ordered hash
 of every revision's exact HTML and content format, and the existing
@@ -838,9 +839,9 @@ The smoke suite compares byte-identical HTML for ordinary Parsoid,
 WikiLinks, blocked images, relative/external links, body-less legacy
 content, empty elements, cached HTML, overriding subclasses and XSS
 denial. These synthetic cases cannot replace the real-wiki
-comparison. If **any** content digest differs, do not adopt
-single-pass rendering without identifying and fixing the discrepancy.
-If performance is unchanged, remove the experimental switch.
+comparison. If canonical per-revision content **differs**, restore the
+legacy renderer on the affected wiki until the discrepancy is understood.
+Do not confuse insertion-order-only differences with HTML changes.
 
 ### Compare older topics on the same board
 
@@ -906,20 +907,27 @@ configured key.
 If only ordered hashes differ while sorted hashes match, investigate
 unstable ordering rather than a change of rendered content. If the
 canonical content digest changes, compare `content_hmac_by_revision_id`
-to identify the exact revision IDs; do not activate DOM reuse until
-the cause is understood. Also repeat **original vs original** to
-separate renderer differences from naturally unstable data, and retain
-the default read-only, unmodified web/API renderer.
+to identify the exact revision IDs; turn off the site-level optimization
+if a genuine content regression is discovered. Also repeat **original
+vs original** to separate renderer differences from naturally unstable
+data. The diagnostic remains maintenance-only and does not alter
+normal web/API rendering.
 
-### Opt-in single-pass Flow HTML rendering (default OFF)
+### Single-pass Flow HTML rendering (enabled by default)
 
-The `FlowReuseDecodedDom` extension configuration flag defaults to
-**false**. With that default the production web/API HTML path is
-unchanged. Set the flag to true for a specific wiki *only after*
-carefully reviewing real content, safety and parser compatibility:
+`FlowReuseDecodedDom` defaults to **true** in the Flow extension itself.
+Its runtime logic is unchanged: the optimized renderer is used for ordinary
+`fixed-html` content on each wiki without a `LocalSettings.php` override.
+The existing A/B comparisons cover the French Bistro and selected French
+and English boards; the measured gains are modest and individual results
+can vary due to database/cache conditions.
+
+If `LocalSettings.php` currently sets `$wgFlowReuseDecodedDom = true;`,
+remove that redundant override after deploying this new default. For
+an emergency rollback on one or all wikis, explicitly set it to false:
 
 ```php
-$wgFlowReuseDecodedDom = true;
+$wgFlowReuseDecodedDom = false;
 ```
 
 The flag is read when the FlowTemplating service is constructed, so it
@@ -929,11 +937,14 @@ All existing content/permission checks, the Flow HTML XSS hook,
 moderation and DOM fixers still execute. The optimized path falls
 back to original parsing if no decoded DOM is available.
 
-Rollback: set the flag back to false or remove the override,
-then restart/reload PHP workers as required by the deployment's
+Rollback: set the flag to false in the wiki configuration, or revert
+the extension default in the repository; removing the flag override now
+**enables**, rather than disables, the optimized rendering path.
+Restart/reload PHP workers as required by the deployment's
 configuration/OPcache setup. Verify the live site and API after
 configuration changes; do not assume cached HTML has been refreshed.
-Do not enable this configuration as part of the code-only deployment.
+Production was already enabled by explicit configuration during the A/B
+rollout; this change only makes that behavior the extension default.
 
 The read-only maintenance benchmark continues to compare both
 alternatives independently of the site flag. Its temporary override

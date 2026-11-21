@@ -281,14 +281,14 @@ namespace {
 	$fullFixer->setBenchmarkReuseDecodedDom( false );
 
 
-	// A site-level switch must default to off, be overridable for benchmark
+	// The extension enables reuse by default; benchmark may still override
 	// A/B checks, and recover its configured value when the override is cleared.
 	$manifest = json_decode( file_get_contents( __DIR__ . '/../../extension.json' ), true, 512, JSON_THROW_ON_ERROR );
-	check( ( $manifest['config']['FlowReuseDecodedDom']['value'] ?? null ) === false,
-		'Site-level DOM reuse must default to false' );
+	check( ( $manifest['config']['FlowReuseDecodedDom']['value'] ?? null ) === true,
+		'Site-level DOM reuse must default to true' );
 	$wiring = file_get_contents( __DIR__ . '/../../includes/ServiceWiring.php' );
 	check( str_contains( $wiring, "get( 'FlowReuseDecodedDom' ) === true" ),
-		'Service wiring explicitly reads the opt-in setting' );
+		'Service wiring explicitly reads the site configuration' );
 
 	$flagHtml = '<body><p>Feature <strong>flag</strong> &amp; fallback.</p></body>';
 	$flagEvents = [];
@@ -301,7 +301,7 @@ namespace {
 	$fullFixer->setReuseDecodedDom( false );
 	$flagBaseline = $fullFixer->getContent( new SafetyCheckedHtmlRevision( $title, $flagHtml ) );
 	check( in_array( 'format_detail_content_dom_parse', $flagEvents, true ),
-		'Default-off mode retains the original second DOM parse' );
+		'Explicitly disabled mode retains the original second DOM parse' );
 
 	$flagEvents = [];
 	$fullFixer->setReuseDecodedDom( true );

@@ -19,7 +19,7 @@ class ContentFixer {
 	/** @var callable|null Profiling observer, set only by the read-only benchmark. */
 	private $benchmarkTimer;
 
-	/** @var bool Site-level opt-in; disabled unless explicitly configured. */
+	/** @var bool Site-level renderer setting (the extension defaults to enabled). */
 	private bool $reuseDecodedDom = false;
 
 	/** @var bool|null Maintenance-only override; null follows the site-level setting. */
