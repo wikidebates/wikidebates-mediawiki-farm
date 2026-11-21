@@ -15,6 +15,7 @@ if [ -z "$CATEGORY" ] || [ -z "$QUERY" ]; then
 fi
 
 cd "$ROOT"
+export PF_BENCH_CATEGORY PF_BENCH_QUERY PF_BENCH_DEPTH PF_BENCH_ROUNDS
 php maintenance/run.php eval --wiki="$WIKI" <<'PHP'
 $category = getenv( 'PF_BENCH_CATEGORY' );
 $query = getenv( 'PF_BENCH_QUERY' );
@@ -35,7 +36,7 @@ for ( $i = 0; $i < $rounds; $i++ ) {
 $sorted = $durations;
 sort( $sorted, SORT_NUMERIC );
 printf( "wiki=%s category=%s query=%s depth=%d results=%d runs=%d\n",
-	MediaWikiMediaWikiServices::getInstance()->getMainConfig()->get( 'DBname' ),
+	\MediaWiki\MediaWikiServices::getInstance()->getMainConfig()->get( 'DBname' ),
 	$category, $query, $depth, $count, $rounds );
 printf( "cold=%.2f ms median=%.2f ms max=%.2f ms\n",
 	$durations[0], $sorted[(int)floor( ( $rounds - 1 ) / 2 )], max( $durations ) );
