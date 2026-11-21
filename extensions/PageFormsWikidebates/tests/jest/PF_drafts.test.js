@@ -264,3 +264,120 @@ test( 'the feature can be disabled by site configuration', () => {
 	expect( controller ).toBeUndefined();
 	expect( $( '.pf-drafts' ) ).toHaveLength( 0 );
 } );
+
+
+function nested() {
+	const $outer = multiple();
+	const $instance = $outer.find( '.multipleTemplateList > .multipleTemplateInstance' ).first();
+	const $inner = $( '<div class="multipleTemplateWrapper"><div class="multipleTemplateList" maximumInstances="3">' +
+		'<div class="multipleTemplateInstance"><div class="instanceMain">' +
+		'<textarea name="Citation[0a][Detail]" origname="Citation[Detail]">Nested original</textarea>' +
+		'</div><a class="removeButton"></a></div>' +
+		'<div class="multipleTemplateStarter pf-hidden"><div class="instanceMain">' +
+		'<textarea name="Citation[num][Detail]" origname="Citation[Detail]"></textarea>' +
+		'</div><a class="removeButton"></a></div></div>' +
+		'<button class="multipleTemplateAdder" type="button">Add</button></div>' );
+	$instance.children( '.multipleTemplateInstanceTable' ).find( '.instanceMain' ).first().append( $inner );
+	return $inner;
+}
+
+test( 'nested repeating instances can be restored without saved HTML', () => {
+	const $inner = nested();
+	const saved = mw.pageFormsDrafts.capture( context.$form );
+	const nestedInstances = saved.groups[ 0 ].instances[ 0 ].groups[ 0 ].instances;
+	expect( nestedInstances ).toHaveLength( 1 );
+	nestedInstances[ 0 ].fields[ 0 ].value = 'Restored nested value';
+	nestedInstances.push( JSON.parse( JSON.stringify( nestedInstances[ 0 ] ) ) );
+	nestedInstances[ 1 ].fields[ 0 ].value = 'Restored second nested value';
+	mw.pageFormsDrafts.restore( context.$form, saved );
+	const $items = $inner.children( '.multipleTemplateList' ).children( '.multipleTemplateInstance' );
+	expect( $items ).toHaveLength( 2 );
+	expect( $items.eq( 0 ).find( 'textarea' ).val() ).toBe( 'Restored nested value' );
+	expect( $items.eq( 1 ).find( 'textarea' ).val() ).toBe( 'Restored second nested value' );
+	expect( $items.eq( 1 ).find( 'textarea' ).attr( 'name' ) ).toMatch( /^Citation\[\d+[ab]\]\[Detail\]$/ );
+} );
+
+test( 'invalid nested schema rejects the entire restore without partial changes', () => {
+	nested();
+	const saved = mw.pageFormsDrafts.capture( context.$form );
+	saved.fields[ 0 ].value = 'Do not write this';
+	saved.groups[ 0 ].instances[ 0 ].groups[ 0 ].instances[ 0 ].fields[ 0 ].name = 'Different';
+	const before = context.$form.serialize();
+	expect( () => mw.pageFormsDrafts.restore( context.$form, saved ) ).toThrow();
+	expect( context.$form.serialize() ).toBe( before );
+} );
+
+test( 'rating draft restoration preserves both input and visual widget state', () => {
+	const $widget = $( '<div class="pfRatingWrapper"><div class="pfRating" data-curvalue="2" ' +
+		'data-numstars="5" data-starwidth="24px"></div>' +
+		'<input type="hidden" name="Item[Rating]" value="2"></div>' ).appendTo( context.$form );
+	const saved = mw.pageFormsDrafts.capture( context.$form );
+	const rating = saved.fields.find( ( field ) => field.name === 'Item[Rating]' );
+	expect( rating.value ).toBe( '2' );
+	rating.value = '4';
+	mw.pageFormsDrafts.restore( context.$form, saved );
+	expect( $widget.find( 'input' ).val() ).toBe( '4' );
+	expect( $widget.find( '.pfRating' ).attr( 'data-curvalue' ) ).toBe( '4' );
+} );
+
+test( 'invalid rating values fail closed before changing any field', () => {
+	$( '<div class="pfRatingWrapper"><div class="pfRating" data-curvalue="2" ' +
+		'data-numstars="5"></div><input type="hidden" name="Item[Rating]" value="2"></div>' )
+		.appendTo( context.$form );
+	const saved = mw.pageFormsDrafts.capture( context.$form );
+	saved.fields[ 0 ].value = 'Must remain unchanged';
+	saved.fields.find( ( field ) => field.name === 'Item[Rating]' ).value = '4.3';
+	expect( () => mw.pageFormsDrafts.restore( context.$form, saved ) ).toThrow();
+	expect( $( '#unique' ).val() ).toBe( 'Original' );
+} );
+
+
+function treeWidget( labels = [ 'Alpha', 'Beta' ], multiple = false ) {
+	const $wrapper = $( '<div class="pfTreeInputWrapper"></div>' ).appendTo( context.$form );
+	const $tree = $( '<div class="pfTreeInput"></div>' ).attr( {
+		data: JSON.stringify( labels.map( ( text ) => ( { text } ) ) ),
+		params: JSON.stringify( { delimiter: ',', multiple, cur_value: 'Alpha' } )
+	} ).appendTo( $wrapper );
+	const $hidden = $( '<input type="hidden" name="Item[Tree]" class="PFTree_data" value="Alpha">' ).appendTo( $wrapper );
+	return { $tree, $hidden };
+}
+
+test( 'restores an unambiguous tree selection and refreshes its lazy source parameters', () => {
+	const { $tree, $hidden } = treeWidget();
+	const draft = mw.pageFormsDrafts.capture( context.$form );
+	const item = draft.fields.find( ( field ) => field.name === 'Item[Tree]' );
+	expect( item.value ).toBe( 'Alpha' );
+	item.value = 'Beta';
+	mw.pageFormsDrafts.restore( context.$form, draft );
+	expect( $hidden.val() ).toBe( 'Beta' );
+	expect( JSON.parse( $tree.attr( 'params' ) ).cur_value ).toBe( 'Beta' );
+	expect( $tree.data( 'jstree' ) ).toBeUndefined();
+} );
+
+test( 'restoring a tree updates the already initialized visual selection', () => {
+	const { $tree, $hidden } = treeWidget();
+	const widget = {
+		get_json: jest.fn( () => [ { id: 'a', text: 'Alpha' }, { id: 'b', text: 'Beta' } ] ),
+		deselect_all: jest.fn(),
+		select_node: jest.fn()
+	};
+	$tree.data( 'jstree', widget );
+	const draft = mw.pageFormsDrafts.capture( context.$form );
+	draft.fields.find( ( field ) => field.name === 'Item[Tree]' ).value = 'Beta';
+	mw.pageFormsDrafts.restore( context.$form, draft );
+	expect( $hidden.val() ).toBe( 'Beta' );
+	expect( widget.deselect_all ).toHaveBeenCalledWith( true );
+	expect( widget.select_node ).toHaveBeenCalledWith( 'b', true, true );
+} );
+
+test( 'unknown or ambiguous tree choices fail before modifying any fields', () => {
+	const { $hidden } = treeWidget( [ 'Alpha', 'Beta', 'Beta' ] );
+	const draft = mw.pageFormsDrafts.capture( context.$form );
+	draft.fields[ 0 ].value = 'Must remain unchanged';
+	draft.fields.find( ( field ) => field.name === 'Item[Tree]' ).value = 'Beta';
+	expect( () => mw.pageFormsDrafts.restore( context.$form, draft ) ).toThrow();
+	expect( $( '#unique' ).val() ).toBe( 'Original' );
+	expect( $hidden.val() ).toBe( 'Alpha' );
+	draft.fields.find( ( field ) => field.name === 'Item[Tree]' ).value = 'Missing';
+	expect( () => mw.pageFormsDrafts.restore( context.$form, draft ) ).toThrow();
+} );

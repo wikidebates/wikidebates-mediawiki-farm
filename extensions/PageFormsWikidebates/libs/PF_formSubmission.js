@@ -91,7 +91,12 @@
 
 	// Keep this public helper available without the optional save-and-continue module.
 	mw.pageFormsActivateVEFields = function ( callback ) {
+		// Only await editors whose lazy initialization has already started.
+		// Untouched offscreen textareas still contain valid native wikitext.
 		const promise = Promise.resolve().then( () => {
+			return typeof mw.veForAllWaitForPending === 'function' ?
+				mw.veForAllWaitForPending( $( '#pfForm' ) ) : undefined;
+		} ).then( () => {
 			const updates = [];
 			editorFields( $( '#pfForm' ) ).each( function () {
 				const $field = $( this );

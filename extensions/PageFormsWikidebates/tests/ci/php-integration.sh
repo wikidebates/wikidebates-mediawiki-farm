@@ -26,6 +26,12 @@ $wgMessageCacheType = CACHE_NONE;
 $wgJobRunRate = 0;
 wfLoadExtension( 'PageFormsWikidebates' );
 PHP
+if [ "${PF_CI_ENABLE_SMW:-}" = "1" ]; then
+	cat >> "$config/LocalSettings.php" <<'PHP'
+wfLoadExtension( 'SemanticMediaWiki' );
+enableSemantics( 'example.test' );
+PHP
+fi
 export MW_CONFIG_FILE="$config/LocalSettings.php"
 php maintenance/run.php update --quick
 vendor/bin/phpunit --filter 'PF(FluidEditing|ValuesUtilsRegression|MappingUtilsRegression)Test' \

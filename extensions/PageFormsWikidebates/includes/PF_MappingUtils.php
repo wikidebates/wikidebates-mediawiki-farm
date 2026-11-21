@@ -134,6 +134,10 @@ class PFMappingUtils {
 		}
 		$res = [];
 		foreach ( $values as $index => $value ) {
+			// Each result key is a value; repeated inputs require no second lookup.
+			if ( array_key_exists( $value, $res ) ) {
+				continue;
+			}
 			// @todo - does this make sense?
 			// if ( $useDisplayTitle ) {
 			// $value = $index;
@@ -176,6 +180,10 @@ class PFMappingUtils {
 		$templateExists = $title !== null && $title->exists();
 		$res = [];
 		foreach ( $values as $index => $value ) {
+			// Each result key is a value; repeated inputs require no second lookup.
+			if ( array_key_exists( $value, $res ) ) {
+				continue;
+			}
 			// if ( $useDisplayTitle ) {
 			// $value = $index;
 			// }

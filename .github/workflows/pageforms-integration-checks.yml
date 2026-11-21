@@ -46,6 +46,10 @@
 					"run": "find extensions/PageFormsWikidebates/includes -name '*.php' -print0 | xargs -0 -n 1 php -l"
 				},
 				{
+					"name": "Validate benchmark shell and embedded PHP",
+					"run": "sh -n extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh\npython3 - <<'PY'\nfrom pathlib import Path\nsrc = Path('extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh').read_text()\nbody = src.split(\"<<'PHP'\\n\", 1)[1].rsplit('\\nPHP\\n', 1)[0]\nPath('/tmp/pageforms-benchmark-syntax.php').write_text('<?php\\n' + body)\nPY\nphp -l /tmp/pageforms-benchmark-syntax.php"
+				},
+				{
 					"name": "Run integration checks in a disposable MediaWiki 1.43 wiki",
 					"run": "bash extensions/PageFormsWikidebates/tests/ci/php-integration.sh"
 				}
@@ -53,7 +57,7 @@
 		},
 		"browser": {
 			"runs-on": "ubuntu-24.04",
-			"timeout-minutes": 10,
+			"timeout-minutes": 20,
 			"steps": [
 				{
 					"uses": "actions/checkout@v5",
@@ -67,8 +71,56 @@
 					"run": "python3 -m venv /tmp/pf-browser\n/tmp/pf-browser/bin/pip install playwright==1.57.0"
 				},
 				{
-					"name": "Exercise actual form JavaScript in Chromium",
-					"run": "export CHROMIUM=\"$(command -v google-chrome || command -v chromium)\"\n/tmp/pf-browser/bin/python extensions/PageFormsWikidebates/tests/browser/editing-smoke.py"
+					"name": "Exercise form JavaScript in Chromium and Firefox",
+					"run": "if [ \"$PF_BROWSER\" = firefox ]; then\n\t/tmp/pf-browser/bin/python -m playwright install --with-deps firefox\nelse\n\texport CHROMIUM=\"$(command -v google-chrome || command -v chromium)\"\nfi\n/tmp/pf-browser/bin/python extensions/PageFormsWikidebates/tests/browser/editing-smoke.py",
+					"env": {
+						"PF_BROWSER": "${{ matrix.browser }}"
+					}
+				}
+			],
+			"strategy": {
+				"fail-fast": false,
+				"matrix": {
+					"browser": [
+						"chromium",
+						"firefox"
+					]
+				}
+			}
+		},
+		"php_smw": {
+			"runs-on": "ubuntu-24.04",
+			"timeout-minutes": 25,
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false
+					}
+				},
+				{
+					"uses": "shivammathur/setup-php@v2",
+					"with": {
+						"php-version": "8.4",
+						"extensions": "mbstring,intl,sqlite3,pdo_sqlite,gd,zip,curl,xml",
+						"coverage": "none",
+						"tools": "composer:v2"
+					}
+				},
+				{
+					"name": "Lint PHP",
+					"run": "find extensions/PageFormsWikidebates/includes -name '*.php' -print0 | xargs -0 -n 1 php -l"
+				},
+				{
+					"name": "Validate benchmark shell and embedded PHP",
+					"run": "sh -n extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh\npython3 - <<'PY'\nfrom pathlib import Path\nsrc = Path('extensions/PageFormsWikidebates/tests/benchmarks/autocomplete.sh').read_text()\nbody = src.split(\"<<'PHP'\\n\", 1)[1].rsplit('\\nPHP\\n', 1)[0]\nPath('/tmp/pageforms-benchmark-syntax.php').write_text('<?php\\n' + body)\nPY\nphp -l /tmp/pageforms-benchmark-syntax.php"
+				},
+				{
+					"name": "Exercise real SMW store on a disposable wiki",
+					"run": "bash extensions/PageFormsWikidebates/tests/ci/php-integration.sh",
+					"env": {
+						"PF_CI_ENABLE_SMW": "1"
+					}
 				}
 			]
 		}
