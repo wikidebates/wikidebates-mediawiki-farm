@@ -153,8 +153,20 @@ class ContentFixer {
 	 */
 	public function applyToDom( DOMDocument $dom, Title $title ) {
 		$xpath = new DOMXPath( $dom );
+		$profile = $this->benchmarkTimer !== null;
 		foreach ( $this->contentFixers as $i => $contentFixer ) {
+			if ( $profile ) {
+				// These names are used only by the read-only maintenance profiler.
+				$className = get_class( $contentFixer );
+				$separator = strrpos( $className, '\\' );
+				$name = strtolower( substr( $className, $separator === false ? 0 : $separator + 1 ) );
+				$phase = 'fixer_' . $name . '_';
+				$started = hrtime( true );
+			}
 			$found = $xpath->query( $contentFixer->getXPath() );
+			if ( $profile ) {
+				$this->recordBenchmarkStep( $phase . 'xpath', $started );
+			}
 			if ( !$found ) {
 				wfDebugLog( 'Flow', __METHOD__ . ': Invalid XPath from ' . get_class( $contentFixer ) . ' of: ' .
 					$contentFixer->getXPath() );
@@ -163,10 +175,22 @@ class ContentFixer {
 			}
 
 			if ( $contentFixer instanceof WikiLinkFixer ) {
+				if ( $profile ) {
+					$started = hrtime( true );
+				}
 				$contentFixer->preload( $found, $title );
+				if ( $profile ) {
+					$this->recordBenchmarkStep( $phase . 'preload', $started );
+				}
+			}
+			if ( $profile ) {
+				$started = hrtime( true );
 			}
 			foreach ( $found as $node ) {
 				$contentFixer->apply( $node, $title );
+			}
+			if ( $profile ) {
+				$this->recordBenchmarkStep( $phase . 'apply', $started );
 			}
 		}
 	}

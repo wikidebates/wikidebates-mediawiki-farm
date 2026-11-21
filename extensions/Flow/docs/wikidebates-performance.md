@@ -984,3 +984,38 @@ compare results from the same instrumentation version.
 Run the already-deployed read-only maintenance benchmark with
 `--reuse-html-dom --breakdown --runs=3` and inspect the new keys in each
 sample. Compare first and subsequent runs before proposing an optimization.
+
+## Per-fixer HTML diagnostics (read-only)
+
+After verifying that content root lookups take about 0.001 ms and current-root
+view checks only about 0.2 ms across 192 replies, leave the permission path
+unchanged. The next target is `format_detail_ms.content_dom_fixers`, which
+costs about 18.5 ms in the cold sample and 13.8 ms on warm rerenders.
+
+The existing `--breakdown` benchmark now includes the following nested
+`format_detail_ms` stages for each HTML fixer:
+
+- `content_fixer_wikilinkfixer_xpath`, `_preload`, `_apply`
+- `content_fixer_badimageremover_xpath`, `_apply`
+- `content_fixer_basehreffixer_xpath`, `_apply`
+- `content_fixer_extlinkfixer_xpath`, `_apply`
+
+`_xpath` includes evaluating the fixer's XPath; `_preload` includes the
+existing MediaWiki LinkBatch for WikiLinks; `_apply` includes the loop over
+matching nodes, which may include nested HTML processing.
+
+All these events are nested under `content_dom_fixers` and are **not**
+independent costs that should be added to it. The corresponding
+`format_detail_calls` count fixer invocations per HTML document, **not**
+the number of matched nodes or database queries. Results are aggregated
+across the whole topic list and may include profiling overhead.
+
+The normal web/API path does not install this observer, does not generate
+timings and retains the same XPath queries, fixer order, link batching,
+image checks and serializations. All changes are purely diagnostic.
+
+Run `Flow:FlowBenchmarkTopicList --wiki=fr --page='Wikidébats:Bistro'`
+with `--runs=3 --limit=50 --sortby=updated --reuse-html-dom --breakdown`.
+Compare cold and warm runs and decide whether **any single fixer** merits
+a follow-up optimization; do not skip security checks or change the
+returned HTML based on profiling alone.
