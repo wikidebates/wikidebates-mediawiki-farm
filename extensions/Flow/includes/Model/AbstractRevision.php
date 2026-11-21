@@ -2,6 +2,7 @@
 
 namespace Flow\Model;
 
+use DOMDocument;
 use Flow\Collection\AbstractCollection;
 use Flow\Conversion\Utils;
 use Flow\Exception\DataModelException;
@@ -91,6 +92,13 @@ abstract class AbstractRevision {
 	 * @var string[] Converted (wikitext|html) content, based off of $this->decompressedContent
 	 */
 	protected $convertedContent = [];
+
+	/**
+	 * Diagnostic-only temporary DOM capture. Do not retain a mutable DOM
+	 * across HTML renders, users, or moderation changes.
+	 */
+	private bool $captureDecodedHtmlDom = false;
+	private ?DOMDocument $capturedDecodedHtmlDom = null;
 
 	/**
 	 * html content has been allowed by the xss check.  When we find the next xss
@@ -387,6 +395,28 @@ abstract class AbstractRevision {
 	 * @throws InvalidDataException
 	 * @throws \Flow\Exception\WikitextException
 	 */
+	/**
+	 * Get HTML through the original security-checked method while optionally
+	 * taking ownership of the DOM already built by decodeHeadInfo().
+	 *
+	 * Used only to compare a potential one-pass rendering path in the
+	 * maintenance benchmark. No XSS hook, stub or conversion is bypassed.
+	 *
+	 * @param DOMDocument|null $dom Already parsed HTML source, if available
+	 * @return string HTML returned by the existing getContent() method
+	 */
+	public function getHtmlWithDecodedDom( ?DOMDocument &$dom ) {
+		$this->captureDecodedHtmlDom = true;
+		$this->capturedDecodedHtmlDom = null;
+		try {
+			return $this->getContent( 'html' );
+		} finally {
+			$dom = $this->capturedDecodedHtmlDom;
+			$this->capturedDecodedHtmlDom = null;
+			$this->captureDecodedHtmlDom = false;
+		}
+	}
+
 	public function getContent( $format = 'html' ) {
 		if ( !$this->isContentCurrentlyRetrievable() ) {
 			wfDebugLog( 'Flow', __METHOD__ . ': Failed to load the content of revision with rev_id ' .
@@ -423,7 +453,13 @@ abstract class AbstractRevision {
 					// For backwards compatibility wrap old content with body tag if necessary,
 					// and restore the <base> tag based on the base-url attribute on the body tag,
 					// if any. All of this is done by decodeHeadInfo().
-					$this->convertedContent[$format] = Utils::decodeHeadInfo( $raw );
+					if ( $this->captureDecodedHtmlDom && $format === 'html' ) {
+						$this->convertedContent[$format] = Utils::decodeHeadInfo(
+							$raw, $this->capturedDecodedHtmlDom
+						);
+					} else {
+						$this->convertedContent[$format] = Utils::decodeHeadInfo( $raw );
+					}
 				}
 			} else {
 				$this->convertedContent[$format] = Utils::convert(
