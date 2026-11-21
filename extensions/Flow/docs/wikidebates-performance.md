@@ -774,3 +774,70 @@ With that possibility ruled out, investigate the approximately
 `content_source_html`, DOM fixers, and serialization, before
 introducing any more permission cache changes. Maintain HTML safety
 and compare equivalent returned content, not just row counts.
+
+
+## Read-only A/B: reuse the parsed Parsoid HTML DOM
+
+Following PR #31, the default eager permission prewarm remains enabled.
+Our benchmark attributes about 75–80 ms to HTML content conversion for
+the 242-post Bistro list, including 192 HTML bodies.
+
+For replies stored as HTML, `AbstractRevision::getContent( 'html' )`
+normally invokes `Utils::decodeHeadInfo()`, which parses the stored
+Parsoid HTML, normalizes empty elements and serializes a body with
+restored head/base metadata. Immediately afterwards,
+`ContentFixer::apply()` parses the resulting HTML **again** before
+running WikiLink, bad-image, base-href and external-link fixers.
+
+The new **maintenance-only** `--reuse-html-dom` switch compares
+reusing the first parsed DOM to the original decode-then-reparse path.
+It still calls `AbstractRevision::getContent( 'html' )` *first*,
+retaining the original content decompression, XSS hook and denial,
+legacy stubs, conversion rules and cached-format handling. All
+`Templating` moderation checks, fixers and final XML serialization
+are retained. If the decoded DOM is unavailable (already converted
+content, a custom revision, etc.) the original parsing path is used.
+DOM ownership transfers once and is cleared immediately, preventing
+cross-request or cross-user mutation.
+
+**This is not enabled for live web/API traffic.** The existing
+renderer remains the default. Reusing a DOM instead of reparsing
+serialized HTML might change the tree for malformed historical
+content, so real-wiki byte-level parity is required before any
+production change.
+
+Every sample now includes `result_content_sha256`, an ordered hash
+of every revision's exact HTML and content format, and the existing
+`result_structure_sha256` for its IDs and relationships. Both
+must match between variants, but even matching hashes do not prove
+authorization or complete API equivalence. The output also labels
+`html_dom_reuse` as `enabled` or `disabled`.
+
+Run alternating **independent PHP processes**, six per variant,
+without detailed instrumentation first:
+
+```sh
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
+	--wiki=fr --page='Wikidébats:Bistro' \
+	--runs=1 --limit=50 --sortby=updated
+
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
+	--wiki=fr --page='Wikidébats:Bistro' \
+	--runs=1 --limit=50 --sortby=updated \
+	--reuse-html-dom
+```
+
+Repeat with `--breakdown` to attribute any improvement.
+In the reuse variant, `format_detail_calls.content_reused_dom`
+counts successful single-pass renders, and `content_dom_parse`
+counts fallback parses. `content_source_html` includes the first
+parse, and the others remain nested inside `content_conversion`.
+The per-operation measurements must not be added to the total.
+
+The smoke suite compares byte-identical HTML for ordinary Parsoid,
+WikiLinks, blocked images, relative/external links, body-less legacy
+content, empty elements, cached HTML, overriding subclasses and XSS
+denial. These synthetic cases cannot replace the real-wiki
+comparison. If **any** content digest differs, do not adopt
+single-pass rendering without identifying and fixing the discrepancy.
+If performance is unchanged, remove the experimental switch.
