@@ -83,6 +83,27 @@ class TopicListBlock extends AbstractBlock {
 	/** @var string|null Sort mode of the saved initial page. */
 	private $fullPageSortForToc;
 
+	/** @var callable|null Optional phase timing observer for read-only maintenance benchmarking. */
+	private $benchmarkTimer;
+
+	/**
+	 * Record timings only when explicitly requested by the maintenance benchmark.
+	 * Standard API and page rendering do not install an observer.
+	 */
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+	}
+
+	private function beginBenchmarkPhase(): ?int {
+		return $this->benchmarkTimer !== null ? hrtime( true ) : null;
+	}
+
+	private function endBenchmarkPhase( string $phase, ?int $started ): void {
+		if ( $started !== null && $this->benchmarkTimer !== null ) {
+			( $this->benchmarkTimer )( $phase, round( ( hrtime( true ) - $started ) / 1000000, 3 ) );
+		}
+	}
+
 	protected function validate() {
 		// for now, new topic is considered a new post; perhaps some day topic creation should get it's own permissions?
 		if (
@@ -276,6 +297,7 @@ class TopicListBlock extends AbstractBlock {
 	}
 
 	public function renderApi( array $options ) {
+		$phaseStarted = $this->beginBenchmarkPhase();
 		$options = $this->preloadTexts( $options );
 
 		$response = [
@@ -304,19 +326,24 @@ class TopicListBlock extends AbstractBlock {
 		// include the current sortby option.  Note that when 'user' is either
 		// submitted or defaulted to this is the resulting sort. ex: newest
 		$response['sortby'] = $findOptions['sortby'];
+		$this->endBenchmarkPhase( 'prepare', $phaseStarted );
 
 		if ( $this->workflow->isNew() ) {
 			return $response + $serializer->buildEmptyResult( $this->workflow );
 		}
 
+		$phaseStarted = $this->beginBenchmarkPhase();
 		$page = $this->getPage( $findOptions );
+		$this->endBenchmarkPhase( 'page_and_root_revisions', $phaseStarted );
 		$workflowIds = [];
 		/** @var TopicListEntry $topicListEntry */
 		foreach ( $page->getResults() as $topicListEntry ) {
 			$workflowIds[] = $topicListEntry->getId();
 		}
 
+		$phaseStarted = $this->beginBenchmarkPhase();
 		$workflows = $this->storage->getMulti( 'Workflow', $workflowIds );
+		$this->endBenchmarkPhase( 'workflows', $phaseStarted );
 
 		if ( !$isTocOnly ) {
 			$this->fullPageForToc = $page;
@@ -339,6 +366,7 @@ class TopicListBlock extends AbstractBlock {
 			return $response + $serializer->formatApi( $this->workflow, $topicRootRevisionsByWorkflowId, $workflowsByWorkflowId, $page );
 		}
 
+		$phaseStarted = $this->beginBenchmarkPhase();
 		/** @var TopicListQuery $query */
 		$query = Container::get( 'query.topiclist' );
 		$prefetchedRoots = [];
@@ -349,11 +377,15 @@ class TopicListBlock extends AbstractBlock {
 			}
 		}
 		$found = $query->getResults( $page->getResults(), $prefetchedRoots );
+		$this->endBenchmarkPhase( 'messages_and_permissions', $phaseStarted );
 		wfDebugLog( 'FlowDebug', 'Rendering topiclist for ids: ' . implode( ', ', array_map( static function ( UUID $id ) {
 			return $id->getAlphadecimal();
 		}, $workflowIds ) ) );
 
-		return $response + $serializer->formatApi( $this->workflow, $workflows, $found, $page, $this->context );
+		$phaseStarted = $this->beginBenchmarkPhase();
+		$formatted = $serializer->formatApi( $this->workflow, $workflows, $found, $page, $this->context );
+		$this->endBenchmarkPhase( 'formatting', $phaseStarted );
+		return $response + $formatted;
 	}
 
 	/**
