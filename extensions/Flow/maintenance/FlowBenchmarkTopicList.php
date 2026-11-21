@@ -129,7 +129,8 @@ class FlowBenchmarkTopicList extends Maintenance {
 			try {
 				$topicList = $block->renderApi( $renderOptions );
 			} finally {
-				$templating->setBenchmarkReuseDecodedDom( false );
+				// Restore the site-level setting, not an unconditional false.
+				$templating->setBenchmarkReuseDecodedDom( null );
 			}
 			$wallMs = round( ( microtime( true ) - $started ) * 1000, 2 );
 			$cpuAfter = getrusage();

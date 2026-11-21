@@ -19,10 +19,17 @@ class ContentFixer {
 	/** @var callable|null Profiling observer, set only by the read-only benchmark. */
 	private $benchmarkTimer;
 
-	/** @var bool Maintenance-only A/B experiment; normal HTML rendering is unchanged. */
-	private bool $benchmarkReuseDecodedDom = false;
+	/** @var bool Site-level opt-in; disabled unless explicitly configured. */
+	private bool $reuseDecodedDom = false;
 
-	public function setBenchmarkReuseDecodedDom( bool $reuse ): void {
+	/** @var bool|null Maintenance-only override; null follows the site-level setting. */
+	private ?bool $benchmarkReuseDecodedDom = null;
+
+	public function setReuseDecodedDom( bool $reuse ): void {
+		$this->reuseDecodedDom = $reuse;
+	}
+
+	public function setBenchmarkReuseDecodedDom( ?bool $reuse ): void {
 		$this->benchmarkReuseDecodedDom = $reuse;
 	}
 
@@ -59,9 +66,10 @@ class ContentFixer {
 	 * @return string
 	 */
 	public function getContent( AbstractRevision $revision ) {
-		if ( $this->benchmarkReuseDecodedDom ) {
+		if ( $this->benchmarkReuseDecodedDom ?? $this->reuseDecodedDom ) {
 			// First request the same HTML through AbstractRevision::getContent,
 			// including the existing XSS hook, legacy conversions and stubs.
+			// The maintenance override and configured path share identical logic.
 			$dom = null;
 			$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 			$html = $revision->getHtmlWithDecodedDom( $dom );

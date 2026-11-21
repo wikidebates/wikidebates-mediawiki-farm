@@ -57,10 +57,10 @@ class Templating {
 	}
 
 	/**
-	 * Enable a single-pass HTML experiment for the bounded, read-only
-	 * maintenance benchmark only. The normal web/API path stays unchanged.
+	 * Temporarily force an A/B variant inside the maintenance benchmark.
+	 * Null clears the override and restores the site configuration.
 	 */
-	public function setBenchmarkReuseDecodedDom( bool $reuse ): void {
+	public function setBenchmarkReuseDecodedDom( ?bool $reuse ): void {
 		$this->contentFixer->setBenchmarkReuseDecodedDom( $reuse );
 	}
 
