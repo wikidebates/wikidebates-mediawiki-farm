@@ -54,4 +54,35 @@ check( $topicProperty->getValue( $topicFormatter ) === null,
 check( $revisionProperty->getValue( $revisionFormatter ) === null,
 	'The revision formatter releases the callback after rendering' );
 
+// Time the exact call path used for links and actions; propagate values and
+// failures without writing to the normal API response.
+$revisionFormatter->setBenchmarkTimer( $observer );
+$operation = new ReflectionMethod( \Flow\Formatter\RevisionFormatter::class, 'timeFormattingOperation' );
+$calls = 0;
+$value = $operation->invoke( $revisionFormatter, 'revision_links', static function () use ( &$calls ) {
+	$calls++;
+	return [ 'topic' => '/wiki/Sujet:Example' ];
+} );
+check( $calls === 1, 'Benchmark helper invokes the wrapped operation exactly once' );
+check( $value === [ 'topic' => '/wiki/Sujet:Example' ],
+	'Benchmark helper returns the wrapped operation result unchanged' );
+check( isset( $timings['format_detail_revision_links'] ) &&
+	$timings['format_detail_revision_links'] >= 0,
+	'Benchmark helper records its named phase' );
+
+try {
+	$operation->invoke( $revisionFormatter, 'revision_actions', static function () {
+		throw new RuntimeException( 'action construction failed' );
+	} );
+	throw new LogicException( 'Expected the original formatter failure' );
+} catch ( RuntimeException $e ) {
+	check( $e->getMessage() === 'action construction failed',
+		'Benchmark helper propagates the original exception' );
+}
+check( isset( $timings['format_detail_revision_actions'] ),
+	'Benchmark helper also records failures' );
+$revisionFormatter->setBenchmarkTimer( null );
+check( $revisionProperty->getValue( $revisionFormatter ) === null,
+	'Instrumentation can be cleared after a failed operation' );
+
 echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " benchmark timing assertions\n";
