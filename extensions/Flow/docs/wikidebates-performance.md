@@ -731,85 +731,46 @@ small relative timing claims. The PR is a diagnostic step, not a
 performance improvement in itself.
 
 
-## A/B check: does eager permission prewarming still help?
+## A/B conclusion: retain eager permission prewarming (PR #31)
 
-After PR #30, five independent cold PHP CLI processes on the French
-Bistro (50 topics, 242 posts) averaged **359.64 ms wall-clock** and
-**331.07 ms CPU** with `--breakdown`. The topic-query phase averaged
-**116.41 ms**. Its eager permission prewarm measured **23.47 ms**,
-split into **12.29 ms** for root revisions and **11.14 ms** for board
-workflows. The subsequent visible-topic checks averaged **24.13 ms**;
-checking visibility inside `build_visible_rows` averaged **38.74 ms**,
-leaving only **4.49 ms** for non-permission row construction.
+Six alternating pairs of **independent PHP processes** compared the
+original eager `primeCacheForView( $posts )` with the maintenance-only
+lazy variant, for the same 50-topic / 242-post Bistro page. Neither
+variant used `--breakdown`.
 
-The current prewarm traverses 242 revisions, caching current roots
-and board workflows. Simply removing it is **not** known to save
-23.47 ms: later `isAllowed( 'view' )` checks may perform exactly the
-same work, possibly more slowly. To test rather than speculate, the
-read-only maintenance benchmark now supports an experimental flag:
+| Measure | Eager | Lazy |
+| --- | ---: | ---: |
+| Mean wall time | 341.01 ms | 341.25 ms |
+| Mean CPU time | 312.25 ms | 312.60 ms |
+| Median wall time | 346.31 ms | 341.26 ms |
+| Faster pairwise runs | 3 / 6 | 3 / 6 |
 
-`--skip-permission-prewarm`
+The lazy variant averaged **0.24 ms slower** (0.07%) in wall time,
+and **0.35 ms slower** (0.11%) in CPU time, far below the observed
+variation across runs. The paired wall-time differences (lazy minus
+eager) were -4.81, +0.62, +11.61, -1.23, +1.17 and -5.93 ms. The
+benchmark's structural SHA-256 digest and counts of 50 roots,
+242 posts and 242 revisions were identical for all twelve runs.
 
-This flag only omits the eager `primeCacheForView( $posts )` call in
-the benchmark's `TopicListQuery`. It **never** skips view permission
-checks, moderation checks, current-revision checks or any action
-permissions. The flag defaults to **off**, including for normal web
-and API traffic. The block restores the shared query's normal mode in
-a `finally` block, even if the query fails. It is not an extension
-configuration option and must not be used in web/API rendering.
+**Conclusion:** removing eager prewarm did not provide a measurable
+gain. Its apparent ~23 ms exclusive cost was deferred to the later
+permission checks rather than eliminated. The site retains the
+original eager prewarming, current-root and board permission checks,
+moderation checks and existing cache invalidation. The temporary
+`--skip-permission-prewarm` flag and its associated opt-in
+skip code were removed after the experiment. Do not use this now
+removed flag in subsequent benchmarks.
 
-Run **paired, independent PHP processes** to control for server
-load changes. Alternate the order of both variants (AB/BA) so the
-second measurement is not always the lazy variant. Prefer the
-unprofiled measurements for overall speed:
+The `result_structure_sha256` sample field remains available for
+future regression comparisons; it fingerprints visible IDs and
+relationships, not the entire API payload and not authorization
+equivalence. The remaining baseline for **unprofiled** cold
+rendering is approximately 341 ms wall / 312 ms CPU under the
+conditions of this paired experiment. These figures are from
+maintenance CLI, not real request latency.
 
-```sh
-run_flow_variant() {
-	mode=$1
-	echo "Variant: $mode"
-	if [ "$mode" = lazy ]; then
-		php maintenance/run.php Flow:FlowBenchmarkTopicList \
-			--wiki=fr --page='Wikidébats:Bistro' \
-			--runs=1 --limit=50 --sortby=updated \
-			--skip-permission-prewarm
-	else
-		php maintenance/run.php Flow:FlowBenchmarkTopicList \
-			--wiki=fr --page='Wikidébats:Bistro' \
-			--runs=1 --limit=50 --sortby=updated
-	fi
-}
-
-for i in 1 2 3 4 5 6; do
-	if [ $((i % 2)) -eq 0 ]; then
-		run_flow_variant lazy
-		run_flow_variant eager
-	else
-		run_flow_variant eager
-		run_flow_variant lazy
-	fi
-done
-```
-
-For phase attribution, repeat at least three pairs using
-`--breakdown` on *both* variants. In the lazy mode,
-`query_detail_ms.prime_permissions` should be almost zero, while
-`filter_visible_topics` or `build_visible_rows` may become more
-expensive. The `prime_root_revisions` and
-`prime_board_workflows` events are absent because that phase was
-not executed.
-
-Each sample now contains `result_structure_sha256`, a digest over
-the ordered visible root IDs, the post-to-revision-ID mapping and
-the revision IDs. Compare these between variants; **a matching digest
-proves only that the same IDs were emitted**, not that all text,
-action links or moderation decisions are equivalent. Full permission
-behavior is also covered by smoke tests that use both a mocked
-visibility service and real Flow permission checks after hiding
-a post and invalidating storage caches. If the digest differs,
-investigate before deciding on any production optimization.
-
-The output field `permission_prewarm` labels `enabled` (default)
-or `disabled` (A/B experiment). No permanent change to normal
-prewarming should be made until the paired benchmarks establish a
-repeatable improvement without breaking the visible structure or
-authorization tests. This option is intentionally diagnostic.
+With that possibility ruled out, investigate the approximately
+75–80 ms spent in `format_detail_ms.content_conversion`, including
+`content_source_html`, DOM fixers, and serialization, before
+introducing any more permission cache changes. Maintain HTML safety
+and compare equivalent returned content, not just row counts.
