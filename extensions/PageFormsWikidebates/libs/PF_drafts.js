@@ -43,7 +43,7 @@
 		} ).first();
 	}
 
-	drafts.capture = function ( $scope, depth = 0 ) {
+	drafts.capture = function ( $scope, depth = 0, quota = { remaining: maxInstances } ) {
 		if ( depth > maxDepth ) {
 			throw new Error( 'Draft nesting limit' );
 		}
@@ -60,22 +60,40 @@
 			groups: ownGroups( $scope ).map( function () {
 				const $list = listOf( $( this ) );
 				const $items = $list.children( '.multipleTemplateInstance' );
-				if ( $items.length > maxInstances ) {
+				if ( $items.length > maxInstances || $items.length > quota.remaining ) {
 					throw new Error( 'Draft instance limit' );
 				}
-				return { instances: $items.map( function () { return drafts.capture( $( this ), depth + 1 ); } ).get() };
+				quota.remaining -= $items.length;
+				return { instances: $items.map( function () { return drafts.capture( $( this ), depth + 1, quota ); } ).get() };
 			} ).get()
 		};
 	};
+
+	function ratingElement( element ) {
+		const $field = $( element );
+		return element.type === 'hidden' && $field.parent().hasClass( 'pfRatingWrapper' ) ?
+			$field.siblings( '.pfRating' ).first() : $();
+	}
 
 	function validateField( element, saved ) {
 		if ( !saved || saved.name !== nameOf( element ) || saved.type !== element.type ) {
 			throw new Error( 'Form field schema changed' );
 		}
 		if ( element.type === 'hidden' ) {
-			// Rich widgets need their own verified restore adapter. Never silently
-			// restore a hidden value while leaving a contradictory visible widget.
-			throw new Error( 'This widget requires manual draft recovery' );
+			const $rating = ratingElement( element );
+			if ( $rating.length ) {
+				const max = Number( $rating.attr( 'data-numstars' ) || 5 );
+				const value = saved.value === '' ? 0 : Number( saved.value );
+				const step = $rating.is( '[data-allows-half]' ) ? 2 : 1;
+				if ( typeof saved.value !== 'string' || !Number.isFinite( value ) ||
+					!Number.isFinite( max ) || max <= 0 || value < 0 || value > max ||
+					!Number.isInteger( value * step ) ) {
+					throw new Error( 'Invalid rating value' );
+				}
+			} else {
+				// Tree and other rich widgets need verified visual restore adapters.
+				throw new Error( 'This widget requires manual draft recovery' );
+			}
 		}
 		if ( element.type === 'checkbox' || element.type === 'radio' ) {
 			if ( !saved.value || typeof saved.value.checked !== 'boolean' || saved.value.value !== element.value ) {
@@ -101,15 +119,12 @@
 
 	// Preflight the entire tree before modifying a single value. New instances
 	// are validated against the current server-rendered starter, never saved HTML.
-	drafts.validate = function ( $scope, saved, depth = 0, starter = false ) {
+	drafts.validate = function ( $scope, saved, depth = 0, starter = false, quota = { remaining: maxInstances } ) {
 		if ( depth > maxDepth || !saved || !Array.isArray( saved.fields ) || !Array.isArray( saved.groups ) ) {
 			throw new Error( 'Invalid draft shape' );
 		}
 		const $fields = ownFields( $scope, starter );
 		const $groups = ownGroups( $scope );
-		// Nested repeating forms have extension-specific cloning rules. Keep their
-		// draft exportable, but do not attempt an unverified destructive restore.
-		if ( depth > 0 && $groups.length ) { throw new Error( 'Nested instance restoration is not supported' ); }
 		if ( $fields.length !== saved.fields.length || $groups.length !== saved.groups.length ) {
 			throw new Error( 'Form schema changed' );
 		}
@@ -118,7 +133,8 @@
 			const $list = listOf( $( this ) );
 			const group = saved.groups[ index ];
 			const maximum = Number( $list.attr( 'maximumInstances' ) ) || maxInstances;
-			if ( !group || !Array.isArray( group.instances ) || group.instances.length > Math.min( maxInstances, maximum ) ) {
+			if ( !group || !Array.isArray( group.instances ) ||
+				group.instances.length > Math.min( maxInstances, maximum ) || group.instances.length > quota.remaining ) {
 				throw new Error( 'Draft exceeds instance limit' );
 			}
 			const $items = $list.children( '.multipleTemplateInstance' );
@@ -129,12 +145,13 @@
 			if ( group.instances.length < $items.length && $items.slice( group.instances.length ).filter( function () { return !$( this ).find( '.removeButton' ).length; } ).length ) {
 				throw new Error( 'Form does not allow removing instances' );
 			}
+			quota.remaining -= group.instances.length;
 			group.instances.forEach( ( instance, i ) => {
 				const $target = $items.eq( i );
 				if ( !$target.length && !$starter.length ) {
 					throw new Error( 'No starter for missing instance' );
 				}
-				drafts.validate( $target.length ? $target : $starter, instance, depth + 1, !$target.length );
+				drafts.validate( $target.length ? $target : $starter, instance, depth + 1, !$target.length, quota );
 			} );
 		} );
 	};
@@ -178,6 +195,13 @@
 					} );
 				}
 				$field.val( item.value );
+				const $rating = ratingElement( this );
+				if ( $rating.length ) {
+					$rating.attr( 'data-curvalue', item.value );
+					if ( $rating.data( 'rateYo' ) && typeof $.fn.rateYo === 'function' ) {
+						$rating.rateYo( 'rating', Number( item.value || 0 ) );
+					}
+				}
 				if ( $field.hasClass( 'pfComboBox' ) ) {
 					$field.attr( { 'data-value': item.value || '', 'data-label': $field.find( 'option:selected' ).text() } );
 				}
