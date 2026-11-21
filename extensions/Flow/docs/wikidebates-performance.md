@@ -957,3 +957,30 @@ Do not confuse the benchmark's order-sensitive digests with a proven
 HTML difference. Inspect the sorted hashes, per-revision HMACs and
 root sets when comparing A/B output. Stabilizing visible reply
 ordering is a separate functional change that requires explicit tests.
+
+## Read-only profiling: content root-visibility checks
+
+First renders of the French Bistro (50 topics, 242 posts) showed 2,438
+initial permission-cache misses, followed by zero misses on the next
+render in the same PHP process. Since the caches work as designed,
+do not bypass view/root/moderation checks or extend permission decisions
+across viewers or requests merely to optimize the first render.
+
+To isolate one remaining cost inside `content_conversion`, the existing
+`--breakdown` option now measures two events for non-title posts:
+
+- `format_detail_ms.content_root_lookup`: time spent calling the existing
+  `PostRevision::getRootPost()` from `Templating::getContent()`.
+- `format_detail_ms.content_root_view_permission`: time spent checking
+  that root with `RevisionActionPermissions::isAllowed( $root, 'view' )`.
+
+The corresponding `format_detail_calls` count invocations. These two
+timings are nested in `content_conversion`, and are not additive to it.
+Ordinary web/API requests remain uninstrumented and invoke the same code.
+No permissions, cache policy, moderation checks, HTML rendering, or stored
+data change. Profiling these extra operations incurs measurement overhead;
+compare results from the same instrumentation version.
+
+Run the already-deployed read-only maintenance benchmark with
+`--reuse-html-dom --breakdown --runs=3` and inspect the new keys in each
+sample. Compare first and subsequent runs before proposing an optimization.
