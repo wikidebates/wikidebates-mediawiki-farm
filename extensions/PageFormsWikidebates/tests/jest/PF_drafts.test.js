@@ -294,7 +294,7 @@ test( 'nested repeating instances can be restored without saved HTML', () => {
 	expect( $items ).toHaveLength( 2 );
 	expect( $items.eq( 0 ).find( 'textarea' ).val() ).toBe( 'Restored nested value' );
 	expect( $items.eq( 1 ).find( 'textarea' ).val() ).toBe( 'Restored second nested value' );
-	expect( $items.eq( 1 ).find( 'textarea' ).attr( 'name' ) ).toMatch( /^Citation\\[\\d+[ab]\\]\\[Detail\\]$/ );
+	expect( $items.eq( 1 ).find( 'textarea' ).attr( 'name' ) ).toMatch( /^Citation\[\d+[ab]\]\[Detail\]$/ );
 } );
 
 test( 'invalid nested schema rejects the entire restore without partial changes', () => {
