@@ -194,6 +194,18 @@ check( $topicKeyMethod->invoke( $permissions, $missingRevision2 ) ===
 	$missingRevision2->getRevisionId()->getAlphadecimal(),
 	'Unresolved collection does not cause historical revision key collisions' );
 check( $missingCollection->rootLookups === 2, 'Failed topic lookups are not cached as successes' );
+class MissingCollectionIdPost extends TestPost {
+	public function getCollectionId() {
+		throw new \Flow\Exception\DataModelException( 'Missing collection ID', 'process-data' );
+	}
+}
+$idlessRevision = new MissingCollectionIdPost(
+	'00000000000000f0', '00000000000000f1', $missingCollection, $topicId
+);
+check( $topicKeyMethod->invoke( $permissions, $idlessRevision ) ===
+	$idlessRevision->getRevisionId()->getAlphadecimal(),
+	'Invalid collection ID preserves the original per-revision fallback' );
+
 $topicSummary = new TestSummary( $firstCollection );
 check( $topicKeyMethod->invoke( $permissions, $topicSummary ) === $otherTopicId->getAlphadecimal(),
 	'PostSummary keeps its summary-target key without a tree lookup' );
