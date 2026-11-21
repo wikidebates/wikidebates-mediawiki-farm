@@ -605,3 +605,67 @@ timing thousands of permission calls can itself be expensive.
 A production HTTP render and moderator/reply/locked-topic checks
 remain necessary for a full real-world validation. Do not assume
 any measurable speedup until these comparisons are performed.
+
+
+## Breakdown of the topic query's message loading and permissions
+
+Five independent cold CLI benchmark runs on Wikidébats:Bistro
+(50 topics, 242 posts) after PR #27 averaged 358.49 ms wall and
+330.49 ms CPU with `--breakdown`. The
+`messages_and_permissions` phase averaged **116.45 ms**, down from
+131.90 ms after PR #25; `formatting` remained stable at about
+225.69 ms. With no `--breakdown`, the five new independent runs
+averaged 328.56 ms wall / 305.20 ms CPU; there was no corresponding
+unprofiled before-PR #27 baseline, so avoid claiming an exact
+unprofiled speedup.
+
+Before another cache or SQL optimization, the `TopicListQuery::getResults()`
+process is now divided into nested read-only timings in a new
+`query_detail_ms` field when `--breakdown` is enabled:
+
+- `prepare_roots`: prepare requested IDs and reuse already fetched
+  current root revisions for this page
+- `collect_post_ids`: collect the full subtree of post IDs, including
+  the post-to-root membership reuse introduced by PR #27
+- `collect_revisions`: fetch remaining latest post revisions
+- `load_metadata`: `AbstractQuery::loadMetadataBatch()`, including
+  the batch tree, workflow, revision and metadata lookups
+- `prime_topic_keys`: reuse the subtree membership in permission cache keys
+- `prime_permissions`: prefetch root revisions and board workflows
+  used by the existing view checks
+- `filter_visible_topics`: check topic-title visibility before
+  requesting topic summaries and watch status
+- `collect_summaries`: fetch current visible topic summaries
+- `collect_watch_status`: request watched-state metadata
+- `build_visible_rows`: apply the original per-post visibility checks
+  and build the resulting formatter rows
+- `attach_replies`: populate reply lists from the visible rows
+
+`query_detail_calls` counts observer events for these stages. Durations
+are **nested within `phases_ms.messages_and_permissions`**. Do not
+add them to the total or to the independent `format_detail_ms`
+values, which describe formatting. A small portion of the parent
+phase also includes work in `TopicListBlock` before the query
+itself. Measurements include any SQL and request-cache effects.
+
+The query observer is installed **only** for the read-only maintenance
+benchmark and removed in a `finally` block, including on exceptions.
+Normal web and API rendering make the same data and permission calls
+with no timing observer. The smoke suite checks output preservation
+and verifies that the measured query stages have nonnegative timings
+and that measurements cease after disabling the observer.
+
+After deployment, run:
+
+```sh
+for i in 1 2 3 4 5; do
+	php maintenance/run.php Flow:FlowBenchmarkTopicList \
+		--wiki=fr --page='Wikidébats:Bistro' \
+		--runs=1 --limit=50 --sortby=updated --breakdown
+done
+```
+
+Do not compare absolute timings with precision finer than the
+variation between processes. This instrumentation is diagnostic,
+not an optimization: identify the dominant stage before changing
+tree, metadata, permission or summary loading.
