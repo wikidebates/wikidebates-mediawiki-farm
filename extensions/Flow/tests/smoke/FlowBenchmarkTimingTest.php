@@ -116,4 +116,71 @@ $revisionFormatter->setBenchmarkTimer( null );
 check( $revisionProperty->getValue( $revisionFormatter ) === null,
 	'Instrumentation can be cleared after a failed operation' );
 
+
+// Measure existing root visibility work inside Templating::getContent(),
+// without eliding either safety check or changing unprofiled behavior.
+class TimedContentPost extends \Flow\Model\PostRevision {
+	public int $rootLookups = 0;
+	public function __construct( private ?self $root = null ) {
+	}
+	public function isTopicTitle() {
+		return $this->root === null;
+	}
+	public function getRootPost() {
+		$this->rootLookups++;
+		return $this->root;
+	}
+	public function getContent( $format = 'html' ) {
+		check( $format === 'html', 'Unmodified HTML format passes through Templating' );
+		return '<p>Readable reply</p>';
+	}
+}
+class TimedContentPermissions extends \Flow\RevisionActionPermissions {
+	public int $checks = 0;
+	public bool $rootAllowed = true;
+	public $root;
+	public function __construct() {
+	}
+	public function isAllowed( \Flow\Model\AbstractRevision $revision, $action ) {
+		check( $action === 'view' || $action === 'view-topic-title',
+			'Templating checks only the original content viewing actions' );
+		$this->checks++;
+		return $revision !== $this->root || $this->rootAllowed;
+	}
+}
+$rootPost = new TimedContentPost;
+$replyPost = new TimedContentPost( $rootPost );
+$timedPermissions = new TimedContentPermissions;
+$timedPermissions->root = $rootPost;
+( new ReflectionProperty( \Flow\Templating::class, 'permissions' ) )
+	->setValue( $templating, $timedPermissions );
+$timings = [];
+$templating->setBenchmarkTimer( $observer );
+check( $templating->getContent( $replyPost, 'html' ) === '<p>Readable reply</p>',
+	'Profiled root checks preserve readable reply HTML' );
+check( $replyPost->rootLookups === 1 && $timedPermissions->checks === 2,
+	'Profiled content still checks reply and current root permissions exactly once' );
+foreach ( [ 'content_root_lookup', 'content_root_view_permission' ] as $phase ) {
+	$key = 'format_detail_' . $phase;
+	check( isset( $timings[$key] ) && $timings[$key] >= 0,
+		'Profiled content reports ' . $phase );
+}
+$timedPermissions->rootAllowed = false;
+check( $templating->getContent( $replyPost, 'html' ) === '',
+	'Denied root visibility remains enforced under profiling' );
+check( $replyPost->rootLookups === 2 && $timedPermissions->checks === 4,
+	'Profiler still performs both permission checks on denied content' );
+$timedPermissions->rootAllowed = true;
+$timings = [];
+check( $templating->getContent( $rootPost, 'html' ) === '<p>Readable reply</p>',
+	'Topic title rendering remains unchanged under profiling' );
+check( !isset( $timings['format_detail_content_root_lookup'] ),
+	'Topic titles do not trigger reply root lookups' );
+$templating->setBenchmarkTimer( null );
+$timings = [];
+check( $templating->getContent( $replyPost, 'html' ) === '<p>Readable reply</p>',
+	'Disabling profiling restores the original readable reply output' );
+check( $replyPost->rootLookups === 3 && $timedPermissions->checks === 7,
+	'The original two checks remain active when the observer is absent' );
+check( $timings === [], 'Uninstrumented content rendering records no benchmark events' );
 echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " benchmark timing assertions\n";
