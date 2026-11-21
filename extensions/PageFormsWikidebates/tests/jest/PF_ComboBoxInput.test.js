@@ -206,4 +206,61 @@ describe( 'with the bundled Select2 widget', () => {
 		expect( element.find( 'option[value="C"]' ) ).toHaveLength( 1 );
 		expect( $.fn.setAutocompleteForDependentField ).toHaveBeenCalledTimes( 1 );
 	} );
+
+	test( 'selected local and restored labels are text, never executable markup', () => {
+		const label = '<img src=x onerror="window.pfInjected=1"> & <b>label</b>';
+		const element = $( '<select id="safe" name="Form[Choice]"><option value=""></option></select>' ).appendTo( document.body );
+		element.append( new Option( label, 'safe', true, true ) );
+		const input = createInput();
+		input.apply( element );
+		for ( let i = 0; i < 2; i++ ) {
+			const $label = $( '.select2-selection__rendered' );
+			expect( $label.find( 'img, b, script' ) ).toHaveLength( 0 );
+			expect( $label.text() ).toContain( label );
+			input.refresh( element );
+		}
+	} );
+
+	test( 'local suggestions with an empty search escape HTML', () => {
+		const label = '<svg onload="window.pfInjected=1">x</svg>';
+		const element = $( '<select id="safe" name="Form[Choice]"><option value=""></option></select>' ).appendTo( document.body );
+		element.append( new Option( label, 'safe', false, false ) );
+		createInput().apply( element );
+		element.select2( 'open' );
+		const $results = $( '.select2-results' );
+		expect( $results.find( 'svg, script' ) ).toHaveLength( 0 );
+		expect( $results.text() ).toContain( label );
+	} );
+
+	test( 'remote results highlight text without interpreting the rest as HTML', () => {
+		const label = 'Example <img src=x onerror="window.pfInjected=1"> & <b>word</b>';
+		const element = $( '<select id="safe" name="Form[Choice]"><option value=""></option></select>' ).appendTo( document.body );
+		const input = createInput();
+		input.apply( element );
+		const widget = element.data( 'select2' );
+		widget.dropdown.$search.val( 'Example' );
+		widget.results.append( { results: [ { id: 'Page', text: label } ] } );
+		const $result = widget.$results.find( '.select2-results__option' ).last();
+		expect( $result.text() ).toBe( label );
+		expect( $result.find( 'img, script' ) ).toHaveLength( 0 );
+		expect( $result.find( 'b' ) ).toHaveLength( 1 );
+		expect( $result.find( 'b' ).text() ).toBe( 'Example' );
+		widget.trigger( 'select', { data: { id: 'Page', text: label } } );
+		expect( widget.selection.$selection.find( '.select2-selection__rendered' ).find( 'img, b, script' ) ).toHaveLength( 0 );
+		expect( widget.selection.$selection.text() ).toContain( label );
+	} );
+
+	test( 'a newly typed tag remains plain text when selected', () => {
+		const label = '<img src=x onerror="window.pfInjected=1">';
+		const element = $( '<select id="safe" name="Form[Choice]"><option value=""></option></select>' ).appendTo( document.body );
+		const input = createInput();
+		input.apply( element );
+		const widget = element.data( 'select2' );
+		const tag = widget.options.get( 'createTag' )( { term: label } );
+		widget.trigger( 'select', { data: tag } );
+		expect( element.val() ).toBe( label );
+		expect( widget.selection.$selection.find( 'img' ) ).toHaveLength( 0 );
+		expect( widget.selection.$selection.text() ).toContain( label );
+	} );
+
 } );

@@ -345,5 +345,13 @@
 	"pf-invalidexturl": "Valeur d’URL externe non valide.",
 	"pf-blankexturl": "Valeur d’URL externe vide.",
 	"pf-externalpageempty": "La page externe n’a aucun contenu.",
-	"pf-externalpagebadjson": "Impossible d’analyser les données JSON d’une page externe."
+	"pf-externalpagebadjson": "Impossible d’analyser les données JSON d’une page externe.",
+	"pf-form-validating": "Vérification du formulaire…",
+	"pf-form-saving": "Enregistrement…",
+	"pf-form-prepare-error": "Le formulaire n’a pas pu être préparé ou vérifié. Vos saisies sont conservées. Veuillez réessayer.",
+	"pf-form-validation-error": "Le formulaire n’a pas pu être vérifié. Vos saisies sont conservées. Veuillez réessayer.",
+	"pf-form-changed-during-validation": "Le formulaire a été modifié pendant la vérification. Veuillez le soumettre de nouveau pour vérifier les valeurs actuelles.",
+	"pf-unique-check-error": "L’unicité n’a pas pu être vérifiée. Veuillez réessayer : cela ne signifie pas que la valeur existe déjà.",
+	"pf-save-and-continue-error": "L’enregistrement n’a pas pu être confirmé. Vos saisies sont conservées. Vérifiez l’historique de la page avant de réessayer.",
+	"pf-preview-error": "L’aperçu n’a pas pu être chargé. Vos saisies sont conservées. Veuillez réessayer."
 }

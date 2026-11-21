@@ -449,10 +449,7 @@
 				if ( result.loading || term === '' ) {
 					return text;
 				}
-				return self.escapeMarkupAndAddHTML( self.textHighlight( text, term ) );
-			},
-			escapeMarkup: function ( markup ) {
-				return markup;
+				return $( self.escapeMarkupAndAddHTML( self.textHighlight( String( text ), term ) ) );
 			},
 			language: {
 				inputTooShort: function () {

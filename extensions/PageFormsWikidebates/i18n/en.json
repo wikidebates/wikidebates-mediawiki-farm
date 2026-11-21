@@ -312,5 +312,13 @@
 	"pf-invalidexturl": "Invalid external URL value.",
 	"pf-blankexturl": "Blank external URL value.",
 	"pf-externalpageempty": "External page contains no contents.",
-	"pf-externalpagebadjson": "Could not parse JSON in external page."
+	"pf-externalpagebadjson": "Could not parse JSON in external page.",
+	"pf-form-validating": "Checking the form…",
+	"pf-form-saving": "Saving…",
+	"pf-form-prepare-error": "The form could not be prepared or checked. Your entries have been kept. Please try again.",
+	"pf-form-validation-error": "The form could not be checked. Your entries have been kept. Please try again.",
+	"pf-form-changed-during-validation": "The form changed while it was being checked. Please submit it again to check the current values.",
+	"pf-unique-check-error": "Uniqueness could not be checked. Please try again; this does not mean that the value already exists.",
+	"pf-save-and-continue-error": "The save could not be confirmed. Your entries have been kept. Check the page history before trying again.",
+	"pf-preview-error": "The preview could not be loaded. Your entries have been kept. Please try again."
 }
