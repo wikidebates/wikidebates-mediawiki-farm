@@ -2,9 +2,11 @@
 /** Integration-style smoke checks with MediaWiki link boundary doubles; requires ext-dom. */
 namespace MediaWiki\Title {
 	class Title {
+		public static int $newFromTextCalls = 0;
 		public function __construct( private string $text ) {
 		}
 		public static function newFromText( $text, $namespace = null ) {
+			self::$newFromTextCalls++;
 			return $text !== '' ? new self( $text ) : null;
 		}
 		public static function newMainPage() {
@@ -221,16 +223,24 @@ namespace {
 			'<a rel="mw:WikiLink">Absent</a><a href="./Existing">Plain</a></body>',
 		'<body><p>Without wiki links &amp; with an entity.</p></body>',
 	];
+	$baselineTargetResolutions = 0;
+	$reusedTargetResolutions = 0;
 	foreach ( $boards as $board ) {
 		foreach ( $linkFixtures as $fixture ) {
 			$linkOnlyFixer->setBenchmarkReusePreloadedWikiLinkTitles( false );
+			$before = \MediaWiki\Title\Title::$newFromTextCalls;
 			$baseline = $linkOnlyFixer->apply( $fixture, $board );
+			$baselineTargetResolutions += \MediaWiki\Title\Title::$newFromTextCalls - $before;
 			$linkOnlyFixer->setBenchmarkReusePreloadedWikiLinkTitles( true );
+			$before = \MediaWiki\Title\Title::$newFromTextCalls;
 			$reused = $linkOnlyFixer->apply( $fixture, $board );
+			$reusedTargetResolutions += \MediaWiki\Title\Title::$newFromTextCalls - $before;
 			check( $baseline === $reused,
 				'Reusing preloaded link titles preserves exact HTML across pages and fixtures' );
 		}
 	}
+	check( $reusedTargetResolutions < $baselineTargetResolutions,
+		'Experimental title memo actually avoids duplicate Title resolution' );
 	$linkOnlyFixer->setBenchmarkReusePreloadedWikiLinkTitles( false );
 	check( $linkOnlyFixer->apply( $linkFixtures[0], $boards[0] ) !== '',
 		'Clearing benchmark-only WikiLink targets restores the ordinary path' );
