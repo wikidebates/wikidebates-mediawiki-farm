@@ -264,3 +264,69 @@ test( 'the feature can be disabled by site configuration', () => {
 	expect( controller ).toBeUndefined();
 	expect( $( '.pf-drafts' ) ).toHaveLength( 0 );
 } );
+
+
+function nested() {
+	const $outer = multiple();
+	const $instance = $outer.find( '.multipleTemplateList > .multipleTemplateInstance' ).first();
+	const $inner = $( '<div class="multipleTemplateWrapper"><div class="multipleTemplateList" maximumInstances="3">' +
+		'<div class="multipleTemplateInstance"><div class="instanceMain">' +
+		'<textarea name="Citation[0a][Detail]" origname="Citation[Detail]">Nested original</textarea>' +
+		'</div><a class="removeButton"></a></div>' +
+		'<div class="multipleTemplateStarter pf-hidden"><div class="instanceMain">' +
+		'<textarea name="Citation[num][Detail]" origname="Citation[Detail]"></textarea>' +
+		'</div><a class="removeButton"></a></div></div>' +
+		'<button class="multipleTemplateAdder" type="button">Add</button></div>' );
+	$instance.children( '.multipleTemplateInstanceTable' ).find( '.instanceMain' ).first().append( $inner );
+	return $inner;
+}
+
+test( 'nested repeating instances can be restored without saved HTML', () => {
+	const $inner = nested();
+	const saved = mw.pageFormsDrafts.capture( context.$form );
+	const nestedInstances = saved.groups[ 0 ].instances[ 0 ].groups[ 0 ].instances;
+	expect( nestedInstances ).toHaveLength( 1 );
+	nestedInstances[ 0 ].fields[ 0 ].value = 'Restored nested value';
+	nestedInstances.push( JSON.parse( JSON.stringify( nestedInstances[ 0 ] ) ) );
+	nestedInstances[ 1 ].fields[ 0 ].value = 'Restored second nested value';
+	mw.pageFormsDrafts.restore( context.$form, saved );
+	const $items = $inner.children( '.multipleTemplateList' ).children( '.multipleTemplateInstance' );
+	expect( $items ).toHaveLength( 2 );
+	expect( $items.eq( 0 ).find( 'textarea' ).val() ).toBe( 'Restored nested value' );
+	expect( $items.eq( 1 ).find( 'textarea' ).val() ).toBe( 'Restored second nested value' );
+	expect( $items.eq( 1 ).find( 'textarea' ).attr( 'name' ) ).toMatch( /^Citation\\[\\d+[ab]\\]\\[Detail\\]$/ );
+} );
+
+test( 'invalid nested schema rejects the entire restore without partial changes', () => {
+	nested();
+	const saved = mw.pageFormsDrafts.capture( context.$form );
+	saved.fields[ 0 ].value = 'Do not write this';
+	saved.groups[ 0 ].instances[ 0 ].groups[ 0 ].instances[ 0 ].fields[ 0 ].name = 'Different';
+	const before = context.$form.serialize();
+	expect( () => mw.pageFormsDrafts.restore( context.$form, saved ) ).toThrow();
+	expect( context.$form.serialize() ).toBe( before );
+} );
+
+test( 'rating draft restoration preserves both input and visual widget state', () => {
+	const $widget = $( '<div class="pfRatingWrapper"><div class="pfRating" data-curvalue="2" ' +
+		'data-numstars="5" data-starwidth="24px"></div>' +
+		'<input type="hidden" name="Item[Rating]" value="2"></div>' ).appendTo( context.$form );
+	const saved = mw.pageFormsDrafts.capture( context.$form );
+	const rating = saved.fields.find( ( field ) => field.name === 'Item[Rating]' );
+	expect( rating.value ).toBe( '2' );
+	rating.value = '4';
+	mw.pageFormsDrafts.restore( context.$form, saved );
+	expect( $widget.find( 'input' ).val() ).toBe( '4' );
+	expect( $widget.find( '.pfRating' ).attr( 'data-curvalue' ) ).toBe( '4' );
+} );
+
+test( 'invalid rating values fail closed before changing any field', () => {
+	$( '<div class="pfRatingWrapper"><div class="pfRating" data-curvalue="2" ' +
+		'data-numstars="5"></div><input type="hidden" name="Item[Rating]" value="2"></div>' )
+		.appendTo( context.$form );
+	const saved = mw.pageFormsDrafts.capture( context.$form );
+	saved.fields[ 0 ].value = 'Must remain unchanged';
+	saved.fields.find( ( field ) => field.name === 'Item[Rating]' ).value = '4.3';
+	expect( () => mw.pageFormsDrafts.restore( context.$form, saved ) ).toThrow();
+	expect( $( '#unique' ).val() ).toBe( 'Original' );
+} );
