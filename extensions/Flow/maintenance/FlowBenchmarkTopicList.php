@@ -13,6 +13,7 @@ if ( $IP === false ) {
 	$IP = __DIR__ . '/../../..';
 }
 require_once "$IP/maintenance/Maintenance.php";
+require_once __DIR__ . '/FlowBenchmarkFingerprints.php';
 
 /**
  * Read-only, bounded server-side timing for the complete Flow topic-list
@@ -28,6 +29,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$this->addOption( 'limit', 'Topics per render (1..50; default 10)', false, true );
 		$this->addOption( 'sortby', 'newest or updated (default updated)', false, true );
 		$this->addOption( 'breakdown', 'Include read-only phase timings for the renderer' );
+		$this->addOption( 'diagnose-digests', 'Inspect ordering, IDs and private per-revision HMACs' );
 		$this->addOption(
 			'reuse-html-dom',
 			'Maintenance-only A/B experiment: reuse the parsed HTML source DOM for fixers'
@@ -46,6 +48,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$limit = (int)$this->getOption( 'limit', 10 );
 		$sortby = $this->getOption( 'sortby', 'updated' );
 		$breakdown = $this->hasOption( 'breakdown' );
+		$diagnoseDigests = $this->hasOption( 'diagnose-digests' );
 		$reuseHtmlDom = $this->hasOption( 'reuse-html-dom' );
 		$offsetId = $this->hasOption( 'offset-id' )
 			? (string)$this->getOption( 'offset-id' )
@@ -71,6 +74,14 @@ class FlowBenchmarkTopicList extends Maintenance {
 
 		$context = RequestContext::getMain();
 		$context->setTitle( $title );
+		$diagnosticKey = null;
+		if ( $diagnoseDigests ) {
+			$diagnosticKey = \MediaWiki\MediaWikiServices::getInstance()
+				->getMainConfig()->get( 'SecretKey' );
+			if ( !is_string( $diagnosticKey ) || strlen( $diagnosticKey ) < 32 ) {
+				$this->fatalError( '--diagnose-digests requires a configured strong SecretKey' );
+			}
+		}
 		$samples = [];
 		$renderOptions = [
 			'sortby' => $sortby,
@@ -157,6 +168,13 @@ class FlowBenchmarkTopicList extends Maintenance {
 					$revisionContent, JSON_UNESCAPED_SLASHES
 				) ),
 			];
+			if ( $diagnoseDigests ) {
+				// Post-render diagnostics are outside the timed section. Never
+				// output the site key or the raw contents of any revision.
+				$sample['diagnostic'] = FlowBenchmarkFingerprints::inspect(
+					$topicList, $diagnosticKey
+				);
+			}
 			if ( $breakdown ) {
 				$sample['phases_ms'] = $phases;
 				// These timings nest inside 'formatting'; do not add them to phases_ms.
@@ -177,6 +195,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'limit' => $limit,
 			'offset_id' => $offsetId,
 			'html_dom_reuse' => $reuseHtmlDom ? 'enabled' : 'disabled',
+			'diagnose_digests' => $diagnoseDigests,
 			'peak_memory_bytes' => memory_get_peak_usage( true ),
 			'note' => 'In-process timings include database and conversion work; '
 				. 'later samples may benefit from warmed request caches. '
@@ -189,6 +208,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 				. 'per-revision content and formats (not action tokens). '
 				. '--reuse-html-dom is maintenance-only; the normal renderer is unchanged. '
 				. 'For newest sort, pass last_root_id as --offset-id to inspect older topics. '
+				. '--diagnose-digests includes canonical hashes and private HMACs by revision. '
 				. 'Compare independent PHP processes. '
 				. 'Use MediaWiki database profiling for SQL counts.',
 			'samples' => $samples,
