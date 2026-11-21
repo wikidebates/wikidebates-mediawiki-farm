@@ -127,6 +127,9 @@ class RevisionFormatter {
 		if ( isset( $this->templating ) ) {
 			$this->templating->setBenchmarkTimer( $observer );
 		}
+		if ( isset( $this->permissions ) ) {
+			$this->permissions->setBenchmarkTimer( $observer );
+		}
 	}
 
 	/**
