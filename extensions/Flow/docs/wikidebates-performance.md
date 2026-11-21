@@ -124,10 +124,10 @@ Run the bounded production renderer benchmark (requires an existing Flow board):
 
 ```sh
 php maintenance/run.php Flow:FlowBenchmarkTopicList \
-	--wiki=fr --page='Discussion:EXEMPLE' --runs=3 --limit=10 --sortby=updated
+	--wiki=fr --page='Wikidébats:Bistro' --runs=3 --limit=10 --sortby=updated
 ```
 
-Replace `Discussion:EXEMPLE` with an actual Flow board title (not an article or
+Replace `Wikidébats:Bistro` with an actual Flow board title (not an article or
 ordinary wikitext talk page). It reports wall time, process CPU time, peak
 memory, and topic/post/revision counts in JSON. This read-only tool does not
 warm a shared page cache on purpose, purge caches, log discussion content, or
@@ -143,7 +143,7 @@ select the updated sort:
 ```sh
 python3 extensions/Flow/scripts/benchmark-topiclist.py \
 	--api https://fr.wikidebates.org/w/api.php \
-	--page 'Discussion:EXEMPLE' --runs 3 --limit 10 --sortby updated
+	--page 'Wikidébats:Bistro' --runs 3 --limit 10 --sortby updated
 ```
 
 The HTTP benchmark includes network latency, does not authenticate or modify
@@ -152,3 +152,38 @@ It does **not** benchmark HTML rendering in the browser or report SQL counts.
 Full MediaWiki browser and SQL profiler tests still need to be run on the farm,
 including hidden/deleted/locked topics, same-second updates and links to
 specific comments. Do not infer production performance from isolated tests.
+
+## Opt-in renderer phase timing (read-only)
+
+The initial benchmarks of `Wikidébats:Bistro` showed approximately 49.5 ms
+per warmed render for 69 posts, 70.7 ms for 112 posts, and 156.2 ms for 242
+posts (three in-process samples per limit). These figures **are not** a
+cross-process or before/after speedup measurement and do not identify the
+source of CPU consumption.
+
+The new `--breakdown` switch adds non-invasive stage timings to the
+existing read-only maintenance command:
+
+```sh
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
+	--wiki=fr --page='Wikidébats:Bistro' \
+	--runs=3 --limit=50 --sortby=updated --breakdown
+```
+
+The optional `phases_ms` field contains wall-clock times for:
+
+- `prepare`: option processing and serializer setup
+- `page_and_root_revisions`: pagination, including root moderation filter
+  and root revisions
+- `workflows`: batch loading of topic workflows
+- `messages_and_permissions`: post tree, revisions, summaries, watches,
+  metadata and view permissions
+- `formatting`: API serialization, converted text, HTML and link handling
+
+`other_ms` is the remaining wall-clock time not included in those stages
+(including loop bookkeeping, JSON assembly and measurement rounding). The
+timings exclude the block's `init()`, run in one PHP process, and include
+any database work inside each stage. They are **not** SQL counts or HTML
+browser render times. This feature adds no database queries, cache purge,
+persistent state, API fields or public rendering changes. It only records
+stages when explicitly enabled on the maintenance-created block.

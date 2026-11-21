@@ -27,6 +27,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$this->addOption( 'runs', 'Number of consecutive renders (1..3; default 3)', false, true );
 		$this->addOption( 'limit', 'Topics per render (1..50; default 10)', false, true );
 		$this->addOption( 'sortby', 'newest or updated (default updated)', false, true );
+		$this->addOption( 'breakdown', 'Include read-only phase timings for the renderer' );
 		$this->requireExtension( 'Flow' );
 	}
 
@@ -34,6 +35,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$runs = (int)$this->getOption( 'runs', 3 );
 		$limit = (int)$this->getOption( 'limit', 10 );
 		$sortby = $this->getOption( 'sortby', 'updated' );
+		$breakdown = $this->hasOption( 'breakdown' );
 		if ( $runs < 1 || $runs > 3 || $limit < 1 || $limit > 50 ||
 			!in_array( $sortby, [ 'newest', 'updated' ], true )
 		) {
@@ -56,6 +58,12 @@ class FlowBenchmarkTopicList extends Maintenance {
 		for ( $i = 0; $i < $runs; $i++ ) {
 			$block = new TopicListBlock( $workflow, Container::get( 'storage' ) );
 			$block->init( $context, 'view-topiclist' );
+			$phases = [];
+			if ( $breakdown ) {
+				$block->setBenchmarkTimer( static function ( string $phase, float $milliseconds ) use ( &$phases ): void {
+					$phases[$phase] = $milliseconds;
+				} );
+			}
 			$cpuBefore = getrusage();
 			$started = microtime( true );
 			$topicList = $block->renderApi( [
@@ -71,7 +79,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 				( $cpuAfter['ru_stime.tv_sec'] - $cpuBefore['ru_stime.tv_sec'] ) * 1000000 +
 				$cpuAfter['ru_stime.tv_usec'] - $cpuBefore['ru_stime.tv_usec']
 			) / 1000, 2 );
-			$samples[] = [
+			$sample = [
 				'run' => $i + 1,
 				'wall_ms' => $wallMs,
 				'cpu_ms' => $cpuMs,
@@ -79,6 +87,12 @@ class FlowBenchmarkTopicList extends Maintenance {
 				'posts' => count( $topicList['posts'] ?? [] ),
 				'revisions' => count( $topicList['revisions'] ?? [] ),
 			];
+			if ( $breakdown ) {
+				$sample['phases_ms'] = $phases;
+				// The remaining time includes assembly and timing overhead.
+				$sample['other_ms'] = round( max( 0, $wallMs - array_sum( $phases ) ), 2 );
+			}
+			$samples[] = $sample;
 		}
 
 		$this->output( json_encode( [
@@ -88,7 +102,8 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'peak_memory_bytes' => memory_get_peak_usage( true ),
 			'note' => 'In-process timings include database and conversion work; '
 				. 'later samples may benefit from warmed request caches. '
-				. 'Use MediaWiki database query profiling separately for SQL counts.',
+				. 'Phase timings, when requested, are wall-clock time, may include SQL, '
+				. 'and exclude block init; use MediaWiki database profiling for SQL counts.',
 			'samples' => $samples,
 		], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" );
 	}
