@@ -33,15 +33,6 @@ class ContentFixer {
 		$this->benchmarkReuseDecodedDom = $reuse;
 	}
 
-	/** Toggle the WikiLink target memo exclusively for read-only maintenance A/B. */
-	public function setBenchmarkReusePreloadedWikiLinkTitles( bool $reuse ): void {
-		foreach ( $this->contentFixers as $fixer ) {
-			if ( $fixer instanceof WikiLinkFixer ) {
-				$fixer->setBenchmarkReusePreloadedTitles( $reuse );
-			}
-		}
-	}
-
 	public function setBenchmarkTimer( ?callable $observer ): void {
 		$this->benchmarkTimer = $observer;
 	}
