@@ -1,5 +1,32 @@
 # Regression checks
 
+## MediaWiki 1.43 ResourceLoader edit-state dependency
+
+The form bootstrapping code (`PageForms.js`) and unsaved-changes warning
+(`PF_editWarning.js`) require `mw.pageFormsEditState.bind()`. If that object
+is missing, `PageForms.js` can throw before finishing widget setup, including
+VisualEditor-related initialization. `PF_editState.js` is now declared as its
+own `ext.pageforms.editstate` module. `ext.pageforms.main` explicitly depends
+on it and `ext.pageforms.editwarning` depends on main; no duplicate inclusion
+of the edit-state script remains in main.
+
+The integration regression checks the actual MediaWiki 1.43
+ResourceLoader dependency graph and manifest paths, with and without SMW.
+The browser smoke suite still checks form behavior in Chromium and Firefox.
+These tests cannot prove what a production browser or reverse proxy has cached.
+
+After deployment, verify on the affected form:
+
+- `mw.loader.getState( 'ext.pageforms.editstate' )` is `ready`.
+- `typeof mw.pageFormsEditState` is `object`.
+- `mw.loader.getState( 'ext.pageforms.main' )` is `ready`.
+- VisualEditor initializes when a visible visual-editor textarea is focused.
+
+If these assertions fail, inspect the actual `load.php` responses and any
+custom `$wgResourceModules` overrides or fixed `$wgExtensionInfoMTime` setting
+before modifying or clearing shared production caches. A hard reload alone
+does not repair a stale server-side extension registry.
+
 Run these commands from the MediaWiki checkout root with its development
 dependencies installed and PageFormsWikidebates loaded in a development wiki.
 

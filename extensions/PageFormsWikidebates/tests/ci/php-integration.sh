@@ -34,7 +34,7 @@ PHP
 fi
 export MW_CONFIG_FILE="$config/LocalSettings.php"
 php maintenance/run.php update --quick
-vendor/bin/phpunit --filter 'PF(FluidEditing|ValuesUtilsRegression|MappingUtilsRegression|AutoeditAPICompatibility)Test' \
+vendor/bin/phpunit --filter 'PF(FluidEditing|ValuesUtilsRegression|MappingUtilsRegression|AutoeditAPICompatibility|ResourceLoaderDependency)Test' \
 	extensions/PageFormsWikidebates/tests/phpunit
 
 # Exercise the actual single-line eval bridge, not just PHP syntax.
