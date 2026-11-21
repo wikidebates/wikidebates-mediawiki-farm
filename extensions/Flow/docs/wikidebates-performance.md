@@ -544,3 +544,64 @@ The benchmark contains optional instrumentation overhead and does not
 perfectly model anonymous and logged-in HTTP responses. Compare
 un-instrumented `--breakdown`-free measurements and server-side
 requests if available.
+
+
+## Use the existing subtree membership to prime topic identities
+
+After PR #25, five independent cold CLI runs on Wikidébats:Bistro
+(50 topics, 242 posts) averaged 372.97 ms wall-clock and 341.77 ms CPU,
+down from 620.18 ms / 545.55 ms. The memoized topic key cut the
+`permission_root_lookup` stage from 97.47 to 29.64 ms and
+`permission_board_lookup` from 112.32 to 12.93 ms, without changing
+the 2,438 permission misses or 2,147 individual action checks.
+
+The query already calls `TreeRepository::fetchSubtreeNodeList()` to
+load the complete set of posts for a requested topic page. That result
+also identifies which root topic each reply belongs to. Rather than
+querying the tree again for the first permission check of **every post**,
+`TopicListQuery` now preserves the post-to-root association from this
+existing subtree result and primes the successful per-post topic-key
+memo in `RevisionActionPermissions` before its normal view checks.
+
+Only **non-title PostRevision objects** selected by the same query
+may be primed. Unrequested roots and posts appearing under multiple
+roots are excluded. On missing or ambiguous membership, other query
+types, or historical callers, the original lookup and
+`DataModelException` fallback remain in effect. A conflicting topic
+key that was already resolved is not overwritten by priming.
+
+This method does **not** prime permission decisions and it does not
+skip `isAllowed()`, the current root revision, board checks or
+moderation visibility. The memo remains per permission-service instance
+and is cleared on viewer change or a Flow storage generation change.
+The query's additional subtree-membership cache is cleared by the
+same generation listener as its existing post-ID cache.
+
+Standalone smoke tests check the ordinary permissions, invalidation,
+topic titles, conflicting keys, two-topic subtree mapping, repeat
+queries, reparenting after mutation and ambiguous membership.
+
+Benchmark both profiled and unprofiled output after deployment:
+
+```sh
+for i in 1 2 3 4 5; do
+	php maintenance/run.php Flow:FlowBenchmarkTopicList \
+		--wiki=fr --page='Wikidébats:Bistro' \
+		--runs=1 --limit=50 --sortby=updated --breakdown
+done
+
+for i in 1 2 3 4 5; do
+	php maintenance/run.php Flow:FlowBenchmarkTopicList \
+		--wiki=fr --page='Wikidébats:Bistro' \
+		--runs=1 --limit=50 --sortby=updated
+done
+```
+
+Compare the first set to the PR #25 baseline of 372.97 ms cold,
+29.64 ms `permission_root_lookup` and 12.93 ms
+`permission_board_lookup` (average of five processes). The
+unprofiled wall/CPU measurements are the stronger performance signal:
+timing thousands of permission calls can itself be expensive.
+A production HTTP render and moderator/reply/locked-topic checks
+remain necessary for a full real-world validation. Do not assume
+any measurable speedup until these comparisons are performed.
