@@ -35,6 +35,7 @@
 		events: {
 			apiPreHandlers: {},
 			apiHandlers: {},
+			interactiveHandlers: {},
 			loadHandlers: {}
 		}
 	};
@@ -157,6 +158,74 @@
 			} );
 	}
 	FlowBoardComponentLoadMoreFeatureMixin.prototype.jumpToTopic = flowBoardComponentLoadMoreFeatureJumpTo;
+
+	/**
+	 * Fetch one previewed thread. Real links remain usable without JavaScript;
+	 * after an API error the next click follows the original Topic: link.
+	 *
+	 * @param {Event} event
+	 * @return {jQuery.Promise|undefined}
+	 */
+	FlowBoardComponentLoadMoreFeatureMixin.UI.events.interactiveHandlers.loadLightTopic = function ( event ) {
+		if ( event.type !== 'click' ) {
+			return;
+		}
+
+		var $link = $( this ),
+			$preview = $link.closest( '.flow-light-topic' ),
+			topicId = $preview.data( 'flow-id' ),
+			board = mw.flow.getPrototypeMethod( 'board', 'getInstanceByElement' )( $preview );
+
+		if ( !$preview.length || !topicId || !board ) {
+			return;
+		}
+		event.preventDefault();
+		if ( $preview.data( 'flow-light-loading' ) ) {
+			return;
+		}
+		$preview.data( 'flow-light-loading', true );
+		$preview.find( '.flow-light-topic-loading' ).removeAttr( 'hidden' );
+
+		return ( new mw.Api() ).get( {
+			action: 'flow',
+			submodule: 'view-topic',
+			page: ( new mw.Title( topicId, 2600 ) ).getPrefixedDb(),
+			vtformat: 'fixed-html'
+		} ).then( function ( data ) {
+			var topic = data && data.flow && data.flow[ 'view-topic' ] &&
+				data.flow[ 'view-topic' ].result.topic,
+				$rendered;
+
+			if ( !topic || !topic.roots || topic.roots[ 0 ] !== topicId ||
+				!topic.posts || !topic.posts[ topicId ] ) {
+				throw new Error( 'Incomplete Flow topic API response' );
+			}
+
+			$rendered = $( board.constructor.static.TemplateEngine.processTemplateGetFragment(
+				'flow_topiclist_loop.partial', topic
+			) ).children( '.flow-topic' );
+			if ( !$rendered.length ) {
+				throw new Error( 'Failed to render Flow topic' );
+			}
+
+			$preview.replaceWith( $rendered );
+			board.renderedTopics[ topicId ] = $rendered;
+			board.emitWithReturn( 'makeContentInteractive', $rendered );
+			board.emit( 'loadmore', topic );
+			$rendered.find( '.flow-topic-title' ).first().attr( 'tabindex', '-1' ).trigger( 'focus' );
+		} ).fail( function () {
+			$preview.find( '.flow-light-topic-error' )
+				.text( mw.msg( 'flow-light-topic-failed' ) )
+				.removeAttr( 'hidden' );
+			// Restore browser-native navigation when the API is unavailable.
+			$preview.find( '.flow-light-topic-open' )
+				.removeAttr( 'data-flow-interactive-handler' )
+				.removeData( 'flow-interactive-handler' );
+		} ).always( function () {
+			$preview.removeData( 'flow-light-loading' );
+			$preview.find( '.flow-light-topic-loading' ).attr( 'hidden', 'hidden' );
+		} );
+	};
 
 	//
 	// API pre-handlers

@@ -182,6 +182,7 @@
 				"handlebars/flow_tooltip_subscribed.partial.handlebars",
 				"handlebars/flow_tooltip.handlebars",
 				"handlebars/flow_topic.partial.handlebars",
+				"handlebars/flow_topic_preview.partial.handlebars",
 				"handlebars/flow_topic_titlebar_content.partial.handlebars",
 				"handlebars/flow_topic_titlebar_lock.partial.handlebars",
 				"handlebars/flow_topic_titlebar_summary.partial.handlebars",
@@ -212,6 +213,8 @@
 				"flow-edit-post-submit",
 				"flow-edit-post-submit-anonymously",
 				"flow-load-more",
+				"flow-light-topic-open",
+				"flow-light-topic-loading",
 				"flow-newest-topics",
 				"flow-newtopic-content-placeholder",
 				"flow-newtopic-save",
@@ -536,6 +539,7 @@
 				"mediawiki.util"
 			],
 			"messages": [
+				"flow-light-topic-failed",
 				"flow-error-external",
 				"flow-error-http",
 				"mw-ui-unsubmitted-confirm",
@@ -780,6 +784,10 @@
 		},
 		"FlowParsoidForwardCookies": {
 			"value": false
+		},
+		"FlowLightTopicList": {
+			"value": false,
+			"description": "Experimental: render Flow board topics as lightweight previews, fetching the full thread on activation. Disabled by default."
 		},
 		"FlowDefaultLimit": {
 			"value": 10

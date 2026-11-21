@@ -1,0 +1,19 @@
+<div class="flow-topic flow-light-topic flow-load-interactive"
+	id="flow-topic-{{postId}}"
+	data-flow-id="{{postId}}"
+	data-flow-load-handler="topic"
+	data-flow-toc-scroll-target=".flow-topic-title"
+	data-flow-topic-timestamp-updated="{{last_updated}}">
+	<div class="flow-topic-titlebar-container">
+		<h2 class="flow-topic-title" data-flow-topic-title="{{content.content}}">
+			<a href="{{links.topic.url}}" class="flow-light-topic-open flow-click-interactive"
+				data-flow-interactive-handler="loadLightTopic">
+				{{~escapeContent content.format content.content~}}
+			</a>
+		</h2>
+		<a href="{{links.topic.url}}" class="flow-light-topic-open flow-click-interactive mw-ui-button"
+			data-flow-interactive-handler="loadLightTopic">{{l10n "flow-light-topic-open"}}</a>
+		<span class="flow-light-topic-loading" role="status" hidden>{{l10n "flow-light-topic-loading"}}</span>
+		<span class="flow-light-topic-error" role="alert" hidden></span>
+	</div>
+</div>

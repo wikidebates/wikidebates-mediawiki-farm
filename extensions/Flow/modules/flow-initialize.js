@@ -31,6 +31,16 @@
 			return;
 		}
 
+		// URL fragments are not sent to PHP. When the initial board is a
+		// preview, a direct post fragment must fall back to full server rendering.
+		if ( $component.hasClass( 'flow-lightweight-board' ) &&
+			/^#flow-post-/.test( location.hash ) ) {
+			var fullUri = new mw.Uri( location.href );
+			fullUri.query.flow_full = '1';
+			location.replace( fullUri.toString() );
+			return;
+		}
+
 		// Initialize old system
 		initializer.initOldComponent();
 		// Initialize board

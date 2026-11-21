@@ -357,6 +357,9 @@ class View extends ContextSource {
 			$template = $this->lightncandy->getTemplate( 'flow_block_loop' );
 
 			$classes = [ 'flow-component', "flow-$page-page", 'expanded' ];
+			if ( !empty( $apiResponse['blocks']['topiclist']['lightweight'] ) ) {
+				$classes[] = 'flow-lightweight-board';
+			}
 
 			// Always add mw-content-{ltr,rtl} class
 			$title = Title::newFromText( $apiResponse['title'] );

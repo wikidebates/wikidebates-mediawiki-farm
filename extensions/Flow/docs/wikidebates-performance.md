@@ -31,7 +31,49 @@ These checks do not replace the full MediaWiki PHPUnit/QUnit suites, browser tes
 
 ## Large-topic loading: measure before changing the interface
 
-The proposed initial lightweight topic list is deliberately NOT enabled or implemented in this patch. The existing API, full rendering, direct post links and no-JavaScript behaviour are preserved. Implementing lazy discussion bodies needs a separate browser-tested change covering moderation, failures, retries and direct anchors. `toconly` is an existing minimal representation, not a drop-in replacement for a discussion board.
+An experimental **initial** lightweight topic list is implemented on the separate
+`feature/flow-light-topiclist-20261121` branch. It is **disabled by default**; the
+previous, full board rendering is unchanged until explicitly enabled. This is
+not included in the first, already-merged Flow optimization batch.
+
+To test on a staging wiki after deploying this second branch, set in the wiki's
+configuration:
+
+```php
+$wgFlowLightTopicList = true;
+```
+
+Only ordinary server-rendered Flow discussion boards display minimal topic
+titles, preserving the native `Topic:` link for script-free navigation. Root
+view permissions are checked **before** inserting titles into server HTML or
+`wgFlowData`. No child messages are loaded while generating the initial board;
+the regular `view-topic` API loads one full thread when clicked, after which the
+existing Flow event hooks render replies, editors and moderation controls.
+The other API routes and topic pages continue to render normally. Subsequent
+infinite-scroll pages still use the original, full topic list API. This is
+an initial-load optimization, not a rewritten API or a cache.
+
+Direct `#flow-post-...` links reopen the *full* board with `?flow_full=1`, because
+URL fragments are not visible to PHP. The same query parameter is an immediate
+manual fallback if the compact board behaves unexpectedly. On a failed or
+incomplete `view-topic` request, the original Topic: link is restored. The source
+Handlebars partial **and its generated PHP template** must both be deployed,
+otherwise the server still renders the old full template. No database update
+or Composer change is required for this second feature.
+
+Isolated regression coverage for root visibility, compact data shape, browser
+hydration, duplicate clicks, network/malformed response fallback and direct-link
+fallback is included in GitHub CI. It does **not** replace full PHPUnit/QUnit,
+actual browser accessibility testing, session tests or production SQL/CPU
+measurements. Before enabling in production, check viewing (anonymous and
+logged-in), sorting, pagination, links to replies, long threads, topic summaries,
+new topics, editing, watching, moderation (including locks), restores, browser
+back/forward, JavaScript disabled, keyboard navigation and localization.
+
+This lightweight mode can reduce the first HTML and API-data payload at the
+cost of an extra request when opening a topic; measure both outcomes. In
+particular, removing discussion bodies from the initial HTML also changes what
+search engines see on the board, so validate SEO expectations before activation.
 
 A bounded, anonymous, read-only helper compares full topic-list and TOC responses:
 

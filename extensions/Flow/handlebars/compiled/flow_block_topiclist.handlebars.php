@@ -63,6 +63,24 @@
 '.$sp.'			</div>
 '.$sp.'' : '').'	</form>
 '.$sp.'' : '').'';},
+'flow_topic_preview' => function ($cx, $in, $sp) {$inary=is_array($in);return ''.$sp.'<div class="flow-topic flow-light-topic flow-load-interactive"
+'.$sp.'	id="flow-topic-'.LR::encq($cx, (($inary && isset($in['postId'])) ? $in['postId'] : null)).'"
+'.$sp.'	data-flow-id="'.LR::encq($cx, (($inary && isset($in['postId'])) ? $in['postId'] : null)).'"
+'.$sp.'	data-flow-load-handler="topic"
+'.$sp.'	data-flow-toc-scroll-target=".flow-topic-title"
+'.$sp.'	data-flow-topic-timestamp-updated="'.LR::encq($cx, (($inary && isset($in['last_updated'])) ? $in['last_updated'] : null)).'">
+'.$sp.'	<div class="flow-topic-titlebar-container">
+'.$sp.'		<h2 class="flow-topic-title" data-flow-topic-title="'.LR::encq($cx, ((isset($in['content']) && is_array($in['content']) && isset($in['content']['content'])) ? $in['content']['content'] : null)).'">
+'.$sp.'			<a href="'.LR::encq($cx, ((isset($in['links']['topic']) && is_array($in['links']['topic']) && isset($in['links']['topic']['url'])) ? $in['links']['topic']['url'] : null)).'" class="flow-light-topic-open flow-click-interactive"
+'.$sp.'				data-flow-interactive-handler="loadLightTopic">'.LR::encq($cx, LR::hbch($cx, 'escapeContent', array(array(((isset($in['content']) && is_array($in['content']) && isset($in['content']['format'])) ? $in['content']['format'] : null),((isset($in['content']) && is_array($in['content']) && isset($in['content']['content'])) ? $in['content']['content'] : null)),array()), 'encq', $in)).'</a>
+'.$sp.'		</h2>
+'.$sp.'		<a href="'.LR::encq($cx, ((isset($in['links']['topic']) && is_array($in['links']['topic']) && isset($in['links']['topic']['url'])) ? $in['links']['topic']['url'] : null)).'" class="flow-light-topic-open flow-click-interactive mw-ui-button"
+'.$sp.'			data-flow-interactive-handler="loadLightTopic">'.LR::encq($cx, LR::hbch($cx, 'l10n', array(array('flow-light-topic-open'),array()), 'encq', $in)).'</a>
+'.$sp.'		<span class="flow-light-topic-loading" role="status" hidden>'.LR::encq($cx, LR::hbch($cx, 'l10n', array(array('flow-light-topic-loading'),array()), 'encq', $in)).'</span>
+'.$sp.'		<span class="flow-light-topic-error" role="alert" hidden></span>
+'.$sp.'	</div>
+'.$sp.'</div>
+';},
 'flow_topic_moderation_flag' => function ($cx, $in, $sp) {$inary=is_array($in);return ''.$sp.'<span class="mw-ui-icon mw-ui-icon-before'.LR::hbbch($cx, 'ifCond', array(array((($inary && isset($in['moderateState'])) ? $in['moderateState'] : null),'===','lock'),array()), $in, false, function($cx, $in)use($sp){$inary=is_array($in);return ' mw-ui-icon-check';}).''.LR::hbbch($cx, 'ifCond', array(array((($inary && isset($in['moderateState'])) ? $in['moderateState'] : null),'===','hide'),array()), $in, false, function($cx, $in)use($sp){$inary=is_array($in);return ' mw-ui-icon-flag';}).''.LR::hbbch($cx, 'ifCond', array(array((($inary && isset($in['moderateState'])) ? $in['moderateState'] : null),'===','delete'),array()), $in, false, function($cx, $in)use($sp){$inary=is_array($in);return ' mw-ui-icon-trash';}).'"></span>
 ';},
 'flow_post_moderation_state' => function ($cx, $in, $sp) {$inary=is_array($in);return ''.$sp.'<span class="plainlinks">'.((LR::ifvar($cx, (($inary && isset($in['replyToId'])) ? $in['replyToId'] : null), false)) ? ''.LR::encq($cx, LR::hbch($cx, 'l10nParse', array(array(LR::hbch($cx, 'concat', array(array('flow-',(($inary && isset($in['moderateState'])) ? $in['moderateState'] : null),'-post-content'),array()), 'raw', $in),((isset($in['moderator']) && is_array($in['moderator']) && isset($in['moderator']['name'])) ? $in['moderator']['name'] : null),((isset($in['links']['topic-history']) && is_array($in['links']['topic-history']) && isset($in['links']['topic-history']['url'])) ? $in['links']['topic-history']['url'] : null)),array()), 'encq', $in)).'' : ''.LR::encq($cx, LR::hbch($cx, 'l10nParse', array(array(LR::hbch($cx, 'concat', array(array('flow-',(($inary && isset($in['moderateState'])) ? $in['moderateState'] : null),'-title-content'),array()), 'raw', $in),((isset($in['moderator']) && is_array($in['moderator']) && isset($in['moderator']['name'])) ? $in['moderator']['name'] : null),((isset($in['links']['topic-history']) && is_array($in['links']['topic-history']) && isset($in['links']['topic-history']['url'])) ? $in['links']['topic-history']['url'] : null)),array()), 'encq', $in)).'').'</span>
@@ -226,7 +244,7 @@
 '.$sp.'			>'.LR::encq($cx, LR::hbch($cx, 'l10n', array(array('flow-reply-topic-title-placeholder',((isset($in['properties']) && is_array($in['properties']) && isset($in['properties']['topic-of-post-text-from-html'])) ? $in['properties']['topic-of-post-text-from-html'] : null)),array()), 'encq', $in)).'</a>
 '.$sp.'';}).'' : ''.LR::hbbch($cx, 'progressiveEnhancement', array(array(),array('type'=>'insert')), $in, false, function($cx, $in)use($sp){$inary=is_array($in);return ''.LR::p($cx, 'flow_reply_form', array(array($in),array()),0, '			').'';}).'').'</div>
 ';},
-'flow_topiclist_loop' => function ($cx, $in, $sp) {$inary=is_array($in);return ''.$sp.''.LR::sec($cx, (($inary && isset($in['roots'])) ? $in['roots'] : null), null, $in, true, function($cx, $in)use($sp){$inary=is_array($in);return ''.LR::hbbch($cx, 'eachPost', array(array((isset($cx['sp_vars']['root']) ? $cx['sp_vars']['root'] : null),$in),array()), $in, false, function($cx, $in)use($sp){$inary=is_array($in);return ''.LR::p($cx, 'flow_topic', array(array($in),array()),0, '		').'';}).'';}).'';},
+'flow_topiclist_loop' => function ($cx, $in, $sp) {$inary=is_array($in);return ''.$sp.''.LR::sec($cx, (($inary && isset($in['roots'])) ? $in['roots'] : null), null, $in, true, function($cx, $in)use($sp){$inary=is_array($in);return ''.LR::hbbch($cx, 'eachPost', array(array((isset($cx['sp_vars']['root']) ? $cx['sp_vars']['root'] : null),$in),array()), $in, false, function($cx, $in)use($sp){$inary=is_array($in);return ''.((LR::ifvar($cx, (($inary && isset($in['lightweight'])) ? $in['lightweight'] : null), false)) ? ''.LR::p($cx, 'flow_topic_preview', array(array($in),array()),0, '			').'' : ''.LR::p($cx, 'flow_topic', array(array($in),array()),0, '			').'').'';}).'';}).'';},
 'flow_load_more' => function ($cx, $in, $sp) {$inary=is_array($in);return ''.$sp.''.((LR::ifvar($cx, (($inary && isset($in['loadMoreObject'])) ? $in['loadMoreObject'] : null), false)) ? '	<div class="flow-load-more">
 '.$sp.'		<div class="flow-error-container">
 '.$sp.'		</div>
@@ -244,7 +262,7 @@
 '.$sp.'		   title="'.LR::encq($cx, ((isset($in['loadMoreObject']) && is_array($in['loadMoreObject']) && isset($in['loadMoreObject']['title'])) ? $in['loadMoreObject']['title'] : null)).'"
 '.$sp.'		   class="mw-ui-button mw-ui-progressive flow-load-interactive flow-ui-fallback-element"><span class="mw-ui-icon mw-ui-icon-before mw-ui-icon-article-invert"></span> '.LR::encq($cx, LR::hbch($cx, 'l10n', array(array('flow-load-more'),array()), 'encq', $in)).'</a>
 '.$sp.'	</div>
-'.$sp.'' : '
+'.$sp.'' : '	<div class="flow-bottom-spacer"></div>
 '.$sp.'').'';});
     $cx = array(
         'flags' => array(

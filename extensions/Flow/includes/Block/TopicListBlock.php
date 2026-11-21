@@ -279,6 +279,20 @@ class TopicListBlock extends AbstractBlock {
 
 		$workflows = $this->storage->getMulti( 'Workflow', $workflowIds );
 
+		// Experiment: only ordinary board GETs may use lightweight previews.
+		// The API, topic namespace, form submissions, history and explicit full
+		// links retain the full response and the existing rendering behaviour.
+		$request = $this->context->getRequest();
+		$useLightweight = !$isTocOnly && $this->action === 'view' &&
+			$this->workflow->getType() === 'discussion' &&
+			!$this->workflow->isDeleted() && !$request->wasPosted() &&
+			!$request->getBool( 'flow_full' ) &&
+			$this->context->getConfig()->get( 'FlowLightTopicList' );
+
+		if ( $useLightweight ) {
+			return $response + $this->renderLightweightApi( $workflows, $page );
+		}
+
 		if ( $isTocOnly ) {
 			// We don't need any further data, so we skip the TopicListQuery.
 
@@ -302,6 +316,56 @@ class TopicListBlock extends AbstractBlock {
 		}, $workflowIds ) ) );
 
 		return $response + $serializer->formatApi( $this->workflow, $workflows, $found, $page, $this->context );
+	}
+
+	/**
+	 * Build the board's initial preview without walking each discussion subtree.
+	 *
+	 * This deliberately reuses the TOC formatter's title-only representation
+	 * but checks viewing permissions before including any title in the HTML
+	 * or wgFlowData. A topic is fetched through view-topic when selected.
+	 *
+	 * @param Workflow[] $workflows
+	 * @param PagerPage $page
+	 * @return array
+	 */
+	private function renderLightweightApi( array $workflows, PagerPage $page ): array {
+		/** @var TopicListFormatter $fullFormatter */
+		$fullFormatter = Container::get( 'formatter.topiclist' );
+		/** @var TocTopicListFormatter $tocFormatter */
+		$tocFormatter = Container::get( 'formatter.topiclist.toc' );
+
+		$visibleRevisions = [];
+		$visibleWorkflows = [];
+		foreach ( $workflows as $workflow ) {
+			$topicId = $workflow->getId()->getAlphadecimal();
+			$root = $this->topicRootRevisionCache[$topicId] ?? null;
+			if ( $root && $this->permissions->isAllowed( $root, 'view' ) ) {
+				$visibleRevisions[$topicId] = $root;
+				$visibleWorkflows[$topicId] = $workflow;
+			}
+		}
+
+		$result = $tocFormatter->formatApi(
+			$this->workflow, $visibleRevisions, $visibleWorkflows, $page
+		);
+		// Full board-level metadata is needed for the existing new-topic form,
+		// pagination links, sorting controls and browser initialization.
+		$empty = $fullFormatter->buildEmptyResult( $this->workflow );
+		$result['links'] = array_replace( $empty['links'], $result['links'] );
+		$result += $empty;
+		$result['lightweight'] = true;
+		foreach ( $result['roots'] as $topicId ) {
+			$revisionId = $result['posts'][$topicId][0];
+			$result['revisions'][$revisionId]['postId'] = $topicId;
+			$result['revisions'][$revisionId]['revisionId'] = $revisionId;
+			$result['revisions'][$revisionId]['lightweight'] = true;
+			$result['revisions'][$revisionId]['links']['topic'] = [
+				'url' => $visibleWorkflows[$topicId]->getArticleTitle()->getLinkURL(),
+			];
+		}
+
+		return $result;
 	}
 
 	/**

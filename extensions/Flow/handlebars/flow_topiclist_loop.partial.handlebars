@@ -1,6 +1,10 @@
 {{#each roots}}
 	{{!-- eachPost topiclist --}}
 	{{#eachPost @root this}}
-		{{> flow_topic}}
+		{{#if lightweight}}
+			{{> flow_topic_preview}}
+		{{else}}
+			{{> flow_topic}}
+		{{/if}}
 	{{/eachPost}}
 {{/each}}
