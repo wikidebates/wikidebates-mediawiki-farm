@@ -152,12 +152,31 @@ class TopicListQuery extends AbstractQuery {
 
 		$started = $this->beginBenchmarkStep();
 		$visibleTopicIds = [];
+		$topicPermissionNanoseconds = 0;
 		foreach ( $posts as $post ) {
-			if ( $post->isTopicTitle() && $this->permissions->isAllowed( $post, 'view' ) ) {
+			if ( !$post->isTopicTitle() ) {
+				continue;
+			}
+			$permissionStarted = $started !== null ? hrtime( true ) : null;
+			try {
+				$canView = $this->permissions->isAllowed( $post, 'view' );
+			} finally {
+				if ( $permissionStarted !== null ) {
+					$topicPermissionNanoseconds += hrtime( true ) - $permissionStarted;
+				}
+			}
+			if ( $canView ) {
 				$visibleTopicIds[] = $post->getPostId();
 			}
 		}
 		$this->endBenchmarkStep( 'filter_visible_topics', $started );
+		if ( $started !== null && $this->benchmarkTimer !== null ) {
+			// Aggregated once per query; permission decisions are never skipped.
+			( $this->benchmarkTimer )(
+				'query_detail_visible_topic_permissions',
+				round( $topicPermissionNanoseconds / 1000000, 3 )
+			);
+		}
 
 		$started = $this->beginBenchmarkStep();
 		$topicSummary = $this->collectSummary( $visibleTopicIds );
