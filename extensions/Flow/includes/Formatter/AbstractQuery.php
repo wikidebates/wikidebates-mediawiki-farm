@@ -74,6 +74,15 @@ abstract class AbstractQuery {
 	}
 
 	/**
+	 * Current revision re-fetching is required by generic/history queries.
+	 * TopicListQuery can suppress it ONLY in the maintenance experiment
+	 * because that query already fetched the latest post revisions.
+	 */
+	protected function shouldPreloadCurrentRevisionsForMetadata(): bool {
+		return true;
+	}
+
+	/**
 	 * Entry point for batch loading metadata for a variety of revisions
 	 * into the internal cache.
 	 *
@@ -219,30 +228,32 @@ abstract class AbstractQuery {
 		}
 
 		// preload all current versions
-		foreach ( $collectionIds as $revisionType => $ids ) {
-			$queries = [];
-			foreach ( $ids as $uuid ) {
-				$cacheKey = $revisionType . ':' . $uuid->getAlphadecimal();
-				if ( !isset( $this->currentRevisionsCache[$cacheKey] ) ) {
-					$queries[] = [ 'rev_type_id' => $uuid ];
+		if ( $this->shouldPreloadCurrentRevisionsForMetadata() ) {
+			foreach ( $collectionIds as $revisionType => $ids ) {
+				$queries = [];
+				foreach ( $ids as $uuid ) {
+					$cacheKey = $revisionType . ':' . $uuid->getAlphadecimal();
+					if ( !isset( $this->currentRevisionsCache[$cacheKey] ) ) {
+						$queries[] = [ 'rev_type_id' => $uuid ];
+					}
 				}
-			}
 
-			if ( !$queries ) {
-				continue;
-			}
+				if ( !$queries ) {
+					continue;
+				}
 
-			$found = $this->storage->findMulti( $revisionType,
-				$queries,
-				[ 'sort' => 'rev_id', 'order' => 'DESC', 'limit' => 1 ]
-			);
+				$found = $this->storage->findMulti( $revisionType,
+					$queries,
+					[ 'sort' => 'rev_id', 'order' => 'DESC', 'limit' => 1 ]
+				);
 
-			/** @var AbstractRevision[] $result */
-			foreach ( $found as $result ) {
-				$rev = reset( $result );
-				$cacheKey = $this->getCurrentRevisionCacheKey( $rev );
-				$this->currentRevisionsCache[$cacheKey] = $rev->getRevisionId();
-				$revisions[$rev->getRevisionId()->getAlphadecimal()] = $rev;
+				/** @var AbstractRevision[] $result */
+				foreach ( $found as $result ) {
+					$rev = reset( $result );
+					$cacheKey = $this->getCurrentRevisionCacheKey( $rev );
+					$this->currentRevisionsCache[$cacheKey] = $rev->getRevisionId();
+					$revisions[$rev->getRevisionId()->getAlphadecimal()] = $rev;
+				}
 			}
 		}
 
