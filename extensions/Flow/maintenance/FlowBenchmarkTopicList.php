@@ -31,6 +31,10 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$this->addOption( 'breakdown', 'Include read-only phase timings for the renderer' );
 		$this->addOption( 'diagnose-digests', 'Inspect ordering, IDs and private per-revision HMACs' );
 		$this->addOption(
+			'skip-current-revision-refetch',
+			'Maintenance-only A/B: skip current-revision metadata fetch for already loaded topic posts'
+		);
+		$this->addOption(
 			'reuse-html-dom',
 			'Maintenance-only A/B experiment: reuse the parsed HTML source DOM for fixers'
 		);
@@ -49,6 +53,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 		$sortby = $this->getOption( 'sortby', 'updated' );
 		$breakdown = $this->hasOption( 'breakdown' );
 		$diagnoseDigests = $this->hasOption( 'diagnose-digests' );
+		$skipCurrentRevisionRefetch = $this->hasOption( 'skip-current-revision-refetch' );
 		$reuseHtmlDom = $this->hasOption( 'reuse-html-dom' );
 		$offsetId = $this->hasOption( 'offset-id' )
 			? (string)$this->getOption( 'offset-id' )
@@ -94,6 +99,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 		for ( $i = 0; $i < $runs; $i++ ) {
 			$block = new TopicListBlock( $workflow, Container::get( 'storage' ) );
 			$block->init( $context, 'view-topiclist' );
+			$block->setBenchmarkSkipCurrentRevisionRefetch( $skipCurrentRevisionRefetch );
 			$phases = [];
 			$formatDetails = [];
 			$formatCalls = [];
@@ -196,6 +202,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 			'limit' => $limit,
 			'offset_id' => $offsetId,
 			'html_dom_reuse' => $reuseHtmlDom ? 'enabled' : 'disabled',
+			'current_revision_refetch_skipped' => $skipCurrentRevisionRefetch ? 'enabled' : 'disabled',
 			'diagnose_digests' => $diagnoseDigests,
 			'peak_memory_bytes' => memory_get_peak_usage( true ),
 			'note' => 'In-process timings include database and conversion work; '
@@ -207,7 +214,8 @@ class FlowBenchmarkTopicList extends Maintenance {
 				. 'result_structure_sha256 fingerprints visible root/post/revision identifiers, '
 				. 'not the full API payload. result_content_sha256 fingerprints exact '
 				. 'per-revision content and formats (not action tokens). '
-				. '--reuse-html-dom is maintenance-only; the normal renderer is unchanged. '
+				. '--reuse-html-dom is a maintenance-only override of the site-level DOM mode. '
+				. '--skip-current-revision-refetch is disabled in ordinary rendering. '
 				. 'For newest sort, pass last_root_id as --offset-id to inspect older topics. '
 				. '--diagnose-digests includes canonical hashes and private HMACs by revision. '
 				. 'Compare independent PHP processes. '
