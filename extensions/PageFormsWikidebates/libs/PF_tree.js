@@ -55,10 +55,10 @@
 		if ( this.multiple ) {
 			this.values.push( data );
 			const data_string = this.values.join( this.delimiter );
-			$input.attr( 'value', data_string );
+			$input.val( data_string ).attr( 'value', data_string ).trigger( 'change' );
 		} else {
 			this.values.push( data );
-			$input.attr('value', data);
+			$input.val( data ).attr( 'value', data ).trigger( 'change' );
 		}
 	};
 
@@ -67,7 +67,7 @@
 
 		this.values.splice( this.values.indexOf( data ), 1 );
 		const data_string = this.values.join( this.delimiter );
-		$input.attr( 'value', data_string );
+		$input.val( data_string ).attr( 'value', data_string ).trigger( 'change' );
 	};
 
 	TreeInput_proto.setCurValue = function() {

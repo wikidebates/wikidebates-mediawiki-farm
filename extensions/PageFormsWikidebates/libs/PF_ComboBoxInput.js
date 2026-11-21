@@ -31,6 +31,7 @@
 		const existingLabel = element.attr( 'data-label' ) || existingValue;
 
 		this.$element = element;
+		element.data( 'pfComboBoxInstance', this );
 		this.id = element.attr( 'id' );
 		this.autocompletedatatype = element.attr( 'autocompletedatatype' );
 		this.autocompletesettings = ( element.attr( 'autocompletesettings' ) || '' ).replace( /\\'/g, "'" );
@@ -219,15 +220,10 @@
 		let name;
 
 		if ( depOn !== null ) {
-			data = this.$element.data( 'autocompletevalues' ) || [];
-			data.forEach( ( item ) => {
-				values.push( {
-					id: item,
-					text: item,
-					title: item
-				} );
-			} );
-			return values;
+			const items = this.$element.data( 'autocompleteitems' );
+			return Array.isArray( items ) ? items.map( ( item ) => ( {
+				id: String( item.title ), text: String( item.displaytitle === undefined ? item.title : item.displaytitle ), title: String( item.title )
+			} ) ) : ( this.$element.data( 'autocompletevalues' ) || [] ).map( ( item ) => ( { id: item, text: item, title: item } ) );
 		}
 
 		if ( autocompleteSettings === 'external data' ) {
@@ -336,7 +332,8 @@
 				const xhr = $.ajax( {
 					url: mw.util.wikiScript( 'api' ),
 					dataType: 'json',
-					data: requestData
+					data: requestData,
+					timeout: 15000
 				} );
 
 				// Register before attaching callbacks, even for an already settled jqXHR.
@@ -346,6 +343,10 @@
 						return;
 					}
 					delete staticData.pendingRequests[ inputId ];
+					if ( !response || response.error || !( Array.isArray( response.pfautocomplete ) || ( response.query && Array.isArray( response.query.prefixsearch ) ) ) ) {
+						failure( xhr, 'error', 'Invalid autocomplete response' );
+						return;
+					}
 					self.rememberRequest( cacheKey, response );
 					success( response );
 				} ).fail( ( jqXHR, textStatus, errorThrown ) => {
@@ -398,7 +399,28 @@
 		}
 
 		if ( isDependentField && Array.isArray( dependentValues ) && currentValue !== '' ) {
-			shouldKeepValue = dependentValues.includes( currentValue ) || !this.existingValuesOnly;
+			shouldKeepValue = dependentValues.includes( currentValue ) || !this.existingValuesOnly || $element.data( 'autocompleteMore' );
+		}
+
+		if ( isDependentField && $element.data( 'select2' ) ) {
+			// Refresh choices in place: rebuilding Select2 would interrupt focus/IME.
+			this.abortPendingRequest();
+			const data = this.getLocalData();
+			const choices = new Set( data.map( ( item ) => String( item.id ) ) );
+			$element.find( 'option' ).each( function () {
+				if ( this.value && !choices.has( this.value ) && !( shouldKeepValue && this.value === currentValue ) ) {
+					$( this ).remove();
+				}
+			} );
+			data.forEach( ( item ) => {
+				if ( !$element.find( 'option' ).filter( function () { return this.value === String( item.id ); } ).length ) {
+					$element.append( new Option( item.text, item.id, false, false ) );
+				}
+			} );
+			$element.val( shouldKeepValue ? currentValue : '' ).trigger( 'change.select2' );
+			$element.attr( { 'data-value': shouldKeepValue ? currentValue : '', 'data-label': shouldKeepValue ? currentLabel : '' } );
+			if ( !shouldKeepValue && currentValue !== '' ) { $element.trigger( 'change' ); }
+			return;
 		}
 
 		if ( $element.data( 'select2' ) ) {
@@ -452,6 +474,7 @@
 				return $( self.escapeMarkupAndAddHTML( self.textHighlight( String( text ), term ) ) );
 			},
 			language: {
+				errorLoading: function () { return mw.msg( 'pf-autocomplete-error' ); },
 				inputTooShort: function () {
 					return mw.msg( 'pf-autocomplete-input-too-short', self.getMinimumInputLength() );
 				},

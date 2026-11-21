@@ -60,7 +60,7 @@ test( 'save waits for uniqueness and prevents all competing submissions', async 
 	await settle();
 	expect( env.requests ).toHaveLength( 2 );
 	expect( env.requests[ 1 ].options.data.action ).toBe( 'pfautoedit' );
-	$( '#body' ).trigger( 'input' );
+	$( '#body' ).val( 'Typed while saving' ).trigger( 'input' );
 	expect( $button.prop( 'disabled' ) ).toBe( true );
 	$( '.pf-save_and_continue' ).trigger( 'click' );
 	await settle();

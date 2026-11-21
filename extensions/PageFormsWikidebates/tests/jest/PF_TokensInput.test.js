@@ -181,3 +181,85 @@ test( 'Backspace restores a token for editing, then accepts accented replacement
 	input( 'ö;' );
 	expect( element.val() ).toEqual( [ 'ö' ] );
 } );
+
+describe( 'token request lifecycle', () => {
+	let requests;
+	let token;
+	beforeEach( () => {
+		mediaWiki.util = { wikiScript: () => '/api.php' };
+		requests = [];
+		$.ajax = jest.fn( ( options ) => {
+			const deferred = $.Deferred();
+			const xhr = deferred.promise();
+			xhr.abort = jest.fn( () => deferred.reject( xhr, 'abort' ) );
+			requests.push( { options, deferred, xhr } );
+			return xhr;
+		} );
+		token = element.data( 'pfTokensInstance' );
+	} );
+	function request( term, success = jest.fn(), failure = jest.fn() ) {
+		return token.getAjaxOpts().transport( { data: { action: 'pfautocomplete', category: 'A', substr: term } }, success, failure );
+	}
+	test( 'a cache hit cancels an older HTTP request and ignores late responses', () => {
+		request( 'cached' );
+		requests[ 0 ].deferred.resolve( { pfautocomplete: [] } );
+		const oldSuccess = jest.fn();
+		request( 'old', oldSuccess );
+		requests[ 1 ].xhr.abort.mockImplementation( () => {} );
+		request( 'cached' );
+		requests[ 1 ].deferred.resolve( { pfautocomplete: [ { title: 'Old' } ] } );
+		expect( requests[ 1 ].xhr.abort ).toHaveBeenCalledTimes( 1 );
+		expect( oldSuccess ).not.toHaveBeenCalled();
+	} );
+
+	test( 'an API error is not cached as an empty successful result', () => {
+		const failure = jest.fn();
+		request( 'retry', jest.fn(), failure );
+		requests[ 0 ].deferred.resolve( { error: { code: 'category-limit' } } );
+		expect( failure ).toHaveBeenCalledTimes( 1 );
+		request( 'retry' );
+		expect( requests ).toHaveLength( 2 );
+	} );
+
+	test( 'destruction cancels the transport and discards late callbacks', () => {
+		const success = jest.fn();
+		request( 'pending', success );
+		requests[ 0 ].xhr.abort.mockImplementation( () => {} );
+		token.destroy( element );
+		requests[ 0 ].deferred.resolve( { pfautocomplete: [] } );
+		expect( success ).not.toHaveBeenCalled();
+		// Restore the fixture for the common teardown.
+		new pageforms.select2.tokens().apply( element );
+	} );
+
+	test( 'dependent tokens consume preloaded data without synchronous AJAX', () => {
+		const config = mediaWiki.config.get;
+		mediaWiki.config.get = ( key ) => key === 'wgPageFormsDependentFields' ? [ [ 'Parent', 'Form[Tokens][]' ] ] : config( key );
+		element.data( 'autocompleteitems', [ { title: 'Canonical', displaytitle: 'Label' } ] );
+		expect( token.getData( 'Local,list,;' ) ).toEqual( [ { id: 'Canonical', text: 'Label', title: 'Canonical' } ] );
+		expect( $.ajax ).not.toHaveBeenCalled();
+	} );
+
+	test( 'a dependent refresh preserves the actual composing search input', () => {
+		const config = mediaWiki.config.get;
+		mediaWiki.config.get = ( key ) => key === 'wgPageFormsDependentFields' ? [ [ 'Parent', 'Form[Tokens][]' ] ] : config( key );
+		element.data( 'autocompletevalues', [ 'New' ] );
+		const inputNode = search[ 0 ];
+		search.trigger( 'compositionstart' );
+		input( 'e', true );
+		token.refresh( element );
+		expect( element.data( 'select2' ) ).toBe( widget );
+		expect( element.data( 'select2' ).selection.$search[ 0 ] ).toBe( inputNode );
+		expect( document.activeElement ).toBe( inputNode );
+		expect( search.val() ).toBe( 'e' );
+	} );
+
+	test( 'truncated suggestions do not erase a selected existing-only token', () => {
+		const config = mediaWiki.config.get;
+		mediaWiki.config.get = ( key ) => key === 'wgPageFormsDependentFields' ? [ [ 'Parent', 'Form[Tokens][]' ] ] : config( key );
+		element.append( new Option( 'Kept', 'Kept', true, true ) ).attr( 'existingvaluesonly', 'true' );
+		element.data( 'autocompletevalues', [ 'Other' ] ).data( 'autocompleteMore', true );
+		token.refresh( element );
+		expect( element.val() ).toEqual( [ 'Kept' ] );
+	} );
+} );

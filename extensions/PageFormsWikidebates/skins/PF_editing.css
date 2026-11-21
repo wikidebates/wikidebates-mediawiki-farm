@@ -1,0 +1,51 @@
+/* In-flow feedback only. No sticky/fixed action bar. */
+.pf-edit-state,
+.pf-drafts,
+.pf-dependent-status,
+.pf-instance-undo {
+	margin-block: 0.5em;
+}
+
+.pf-instance-actions {
+	display: inline-flex;
+	gap: 0.4em;
+	margin: 0.35em;
+}
+
+.pf-instance-actions button,
+.pf-instance-undo button,
+.pf-dependent-status button,
+.pf-draft-recovery button,
+.pf-widget-retry {
+	font: inherit;
+	min-height: 2.25em;
+	margin-inline-end: 0.4em;
+	cursor: pointer;
+}
+
+.pf-instance-actions button:disabled {
+	cursor: default;
+}
+
+#pf-error-summary button {
+	font: inherit;
+	text-align: start;
+	text-decoration: underline;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+}
+
+.pf-instance-error {
+	outline: 1px solid var( --border-color-error, #b32424 );
+}
+
+.pf-drafts summary {
+	cursor: pointer;
+}
+
+.pf-instance-position {
+	display: block;
+	font-size: 0.9em;
+}

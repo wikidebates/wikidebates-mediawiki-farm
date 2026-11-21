@@ -1,5 +1,28 @@
 # CHANGELOG Wikidebates
 
+## Progressive editing and local recovery (November 2026)
+- Initialize individual near-viewport widgets instead of their whole form; keep
+  values available before initialization, including the hidden tree value.
+- Unify dependent suggestions, remove synchronous token lookups, deduplicate
+  requests, expire completed values, ignore stale responses and retain selections
+  when the returned choice list is incomplete. Keep focused widgets on refresh.
+- Link accessible error summaries to fields; reveal minimized instances and
+  recheck only fields already reported invalid. Provide keyboard block movement,
+  reversible removal and plain-text collapsed summaries.
+- Share semantic dirty state between save-and-continue and leave-page warnings.
+  Acknowledge only the sent snapshot, including editor and structural changes.
+- Offer opt-in seven-day local recovery drafts, isolated per wiki/user/form/target
+  and per tab. Store structured user values, never tokens or executable form HTML.
+  Verify current revisions before restoration; require explicit confirmation,
+  reject unsupported schemas and retain recovery/export data on failure.
+- Discover category trees separately from limited suggestions, query in batches,
+  rank exact/prefix/word matches and add bounded category-local word fallback.
+  Report an explicit traversal-budget error rather than silently omit a branch.
+- Resume native submission in a new browser task after asynchronous validation:
+  real Chromium rejects a reentrant requestSubmit during the original dispatch.
+- No fixed/sticky action bar. VisualEditor initialization and FullCalendar's
+  module-wide initialization are intentionally not deferred by this pass.
+
 ## Safe labels, resilient saving and asynchronous validation
 - Restore Select2's default escaping for plain labels and selected values; render
   only the extension's escaped match-highlighting markup as a DOM fragment.

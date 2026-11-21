@@ -207,6 +207,24 @@ describe( 'with the bundled Select2 widget', () => {
 		expect( $.fn.setAutocompleteForDependentField ).toHaveBeenCalledTimes( 1 );
 	} );
 
+	test( 'a dependent refresh keeps the focused widget and incomplete selections', () => {
+		mediaWiki.config.get = ( name ) => name === 'wgPageFormsDependentFields' ? [ [ 'Parent', 'Form[Choice]' ] ] : {};
+		const element = $( '<select id="dependent" name="Form[Choice]" existingvaluesonly="true"><option value=""></option><option value="A" selected>A</option></select>' ).appendTo( document.body );
+		element.data( 'autocompletevalues', [ 'A', 'B' ] );
+		const input = createInput();
+		input.apply( element );
+		const widget = element.data( 'select2' );
+		element.select2( 'open' );
+		widget.dropdown.$search[ 0 ].focus();
+		widget.dropdown.$search.val( 'typed' );
+		element.data( 'autocompletevalues', [ 'B' ] ).data( 'autocompleteMore', true );
+		input.refresh( element );
+		expect( element.data( 'select2' ) ).toBe( widget );
+		expect( element.val() ).toBe( 'A' );
+		expect( document.activeElement ).toBe( widget.dropdown.$search[ 0 ] );
+		expect( widget.dropdown.$search.val() ).toBe( 'typed' );
+	} );
+
 	test( 'selected local and restored labels are text, never executable markup', () => {
 		const label = '<img src=x onerror="window.pfInjected=1"> & <b>label</b>';
 		const element = $( '<select id="safe" name="Form[Choice]"><option value=""></option></select>' ).appendTo( document.body );

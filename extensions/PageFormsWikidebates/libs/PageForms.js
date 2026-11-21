@@ -80,65 +80,18 @@ function ensureFormErrorHeader( message ) {
 }
 
 const pfModulePromises = {};
-let pfIntersectionObserver = null;
-
 function loadPFModule( moduleName ) {
-	if ( !pfModulePromises[moduleName] ) {
-		pfModulePromises[moduleName] = mw.loader.using( moduleName );
-	}
-
-	return pfModulePromises[moduleName];
-}
-
-function shouldLazyLoadImmediately( element ) {
-	const rect = element.getBoundingClientRect();
-	const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-	return rect.top < viewportHeight * 1.5 && rect.bottom > -viewportHeight * 0.25;
-}
-
-function createPFIntersectionObserver() {
-	if ( pfIntersectionObserver !== null || typeof window.IntersectionObserver !== 'function' ) {
-		return pfIntersectionObserver;
-	}
-
-	pfIntersectionObserver = new window.IntersectionObserver( ( entries, observer ) => {
-		entries.forEach( ( entry ) => {
-			if ( !entry.isIntersecting ) {
-				return;
-			}
-
-			observer.unobserve( entry.target );
-			const initializer = $( entry.target ).data( 'pfLazyInit' );
-			if ( typeof initializer === 'function' ) {
-				initializer();
-			}
+	if ( !pfModulePromises[ moduleName ] ) {
+		pfModulePromises[ moduleName ] = mw.loader.using( moduleName ).catch( ( error ) => {
+			delete pfModulePromises[ moduleName ];
+			throw error;
 		} );
-	}, {
-		rootMargin: '240px 0px'
-	} );
-
-	return pfIntersectionObserver;
+	}
+	return pfModulePromises[ moduleName ];
 }
 
 function registerLazyWidget( $elements, initializer ) {
-	const observer = createPFIntersectionObserver();
-
-	$elements.each( function() {
-		const $element = $( this );
-		if ( $element.data( 'pfLazyRegistered' ) ) {
-			return;
-		}
-
-		$element.data( 'pfLazyRegistered', true );
-		$element.data( 'pfLazyInit', initializer );
-
-		if ( shouldLazyLoadImmediately( this ) || observer === null ) {
-			initializer();
-			return;
-		}
-
-		observer.observe( this );
-	} );
+	mw.pageFormsLazyWidgets.register( $elements, initializer );
 }
 
 function initTokensIn( $root ) {
@@ -149,10 +102,10 @@ function initTokensIn( $root ) {
 		return;
 	}
 
-	mw.loader.using( [ 'ext.pageforms.select2', 'ext.pageforms.select2.styles' ] ).then( () => {
+	return mw.loader.using( [ 'ext.pageforms.select2', 'ext.pageforms.select2.styles' ] ).then( () => {
 		$tokens.each( function() {
 			const $element = $( this );
-			if ( $element.hasClass( 'pf-tokens-initialized' ) || $element.next( '.select2' ).length ) {
+			if ( !document.documentElement.contains( this ) || $element.closest( '.pf-removed-instance' ).length || $element.hasClass( 'pf-tokens-initialized' ) || $element.next( '.select2' ).length ) {
 				return;
 			}
 			const tokens = new pf.select2.tokens();
@@ -168,9 +121,9 @@ function initAutoGrowIn( $root ) {
 		return;
 	}
 
-	loadPFModule( 'ext.pageforms.autogrow' ).then( () => {
-		$elements.filter( ':not(.pf-autogrow-initialized)' ).each( function() {
-			$( this ).addClass( 'pf-autogrow-initialized' ).autoGrow();
+	return loadPFModule( 'ext.pageforms.autogrow' ).then( () => {
+		$elements.filter( function () { return document.documentElement.contains( this ) && !$( this ).closest( '.pf-removed-instance' ).length; } ).filter( ':not(.pf-autogrow-initialized)' ).each( function() {
+			$( this ).autoGrow().addClass( 'pf-autogrow-initialized' );
 		} );
 	} );
 }
@@ -181,9 +134,10 @@ function initRatingsIn( $root ) {
 		return;
 	}
 
-	mw.loader.using( [ 'ext.pageforms.rating', 'ext.pageforms.rating.styles' ] ).then( () => {
-		$elements.filter( ':not(.pf-rating-initialized)' ).each( function() {
-			$( this ).addClass( 'pf-rating-initialized' ).applyRatingInput();
+	return mw.loader.using( [ 'ext.pageforms.rating', 'ext.pageforms.rating.styles' ] ).then( () => {
+		$elements.filter( function () { return document.documentElement.contains( this ) && !$( this ).closest( '.pf-removed-instance' ).length; } ).filter( ':not(.pf-rating-initialized)' ).each( function() {
+			$( this ).applyRatingInput();
+			$( this ).addClass( 'pf-rating-initialized' );
 		} );
 	} );
 }
@@ -194,9 +148,10 @@ function initTreesIn( $root ) {
 		return;
 	}
 
-	loadPFModule( 'ext.pageforms.jstree' ).then( () => {
-		$elements.filter( ':not(.pf-tree-initialized)' ).each( function() {
-			$( this ).addClass( 'pf-tree-initialized' ).applyJSTree();
+	return loadPFModule( 'ext.pageforms.jstree' ).then( () => {
+		$elements.filter( function () { return document.documentElement.contains( this ) && !$( this ).closest( '.pf-removed-instance' ).length; } ).filter( ':not(.pf-tree-initialized)' ).each( function() {
+			$( this ).applyJSTree();
+			$( this ).addClass( 'pf-tree-initialized' );
 		} );
 	} );
 }
@@ -218,23 +173,24 @@ function initCalendarsIn( $root ) {
 }
 
 function initVisibleWidgetsIn( $root ) {
-	registerLazyWidget( $root.find( '.pfTokens' ).addBack( '.pfTokens' ), () => {
-		initTokensIn( $root );
-	} );
-	registerLazyWidget( $root.find( '.autoGrow' ).addBack( '.autoGrow' ), () => {
-		initAutoGrowIn( $root );
-	} );
-	registerLazyWidget( $root.find( '.pfRating' ).addBack( '.pfRating' ), () => {
-		initRatingsIn( $root );
-	} );
-	registerLazyWidget( $root.find( '.pfTreeInput' ).addBack( '.pfTreeInput' ), () => {
-		initTreesIn( $root );
-	} );
-	registerLazyWidget( $root.find( '.pfFullCalendarJS' ).addBack( '.pfFullCalendarJS' ), () => {
-		initCalendarsIn( $root );
+	registerLazyWidget( $root.find( '.pfTokens' ).addBack( '.pfTokens' ), initTokensIn );
+	registerLazyWidget( $root.find( '.autoGrow' ).addBack( '.autoGrow' ), initAutoGrowIn );
+	registerLazyWidget( $root.find( '.pfRating' ).addBack( '.pfRating' ), initRatingsIn );
+	registerLazyWidget( $root.find( '.pfTreeInput' ).addBack( '.pfTreeInput' ), initTreesIn );
+	// FullCalendar initializes all its instances on module load; leave that
+	// integration unchanged until its own initializer can be scoped safely.
+	registerLazyWidget( $root.find( '.pfFullCalendarJS' ).addBack( '.pfFullCalendarJS' ), initCalendarsIn );
+	registerLazyWidget( $root.find( '.pfComboBox' ).addBack( '.pfComboBox' ), ( $element ) => {
+		return loadPFModule( 'ext.pageforms.ooui.combobox' ).then( () => {
+			if ( document.documentElement.contains( $element[ 0 ] ) && !$element.closest( '.pf-removed-instance' ).length ) {
+				new pf.ComboBoxInput( {} ).apply( $element );
+			}
+		} );
 	} );
 	initImagePreviewIn( $root );
 }
+
+mw.pageFormsInitializeWidgets = initVisibleWidgetsIn;
 
 // Register a validation method
 //
@@ -609,13 +565,8 @@ $.fn.setErrorMessage = function(msg, val) {
 };
 
 // Append an error message to the end of an input.
-$.fn.addErrorMessage = function(msg, val) {
-	this.find('input').addClass('inputError');
-	this.find('select2-container').addClass('inputError');
-	this.append($('<div>').addClass( 'errorMessage' ).text( mw.msg( msg, val ) ));
-	// If this is part of a minimized multiple-template instance, add a
-	// red border around the instance rectangle to make it easier to find.
-	this.parents( '.multipleTemplateInstance.minimized' ).css( 'border', '1px solid red' );
+$.fn.addErrorMessage = function( msg, val ) {
+	mw.pageFormsErrors.add( this, msg, val );
 };
 
 $.fn.isAtMaxInstances = function() {
@@ -1163,7 +1114,7 @@ window.validateAll = function() {
 		const $pfForm = $form;
 
 		// Remove all old error messages.
-		$pfForm.find( ".errorMessage" ).remove();
+		mw.pageFormsErrors.clear( $pfForm );
 		$pfForm.find( '.inputError' ).removeClass( 'inputError' );
 		$( '#form_error_header' ).remove();
 		const pendingValidations = [];
@@ -1315,7 +1266,7 @@ window.validateAll = function() {
 			if (num_errors > 0) {
 				// add error header, if it's not there already
 				ensureFormErrorHeader( mw.msg( 'pf_formerrors_header' ) );
-				scroll(0, 0);
+				mw.pageFormsErrors.summarize( $pfForm );
 			} else {
 				// Disable inputs hidden due to either "show on select" or
 				// because they're part of the "starter" div for
@@ -1370,7 +1321,7 @@ $.fn.possiblyMinimizeAllOpenInstances = function() {
 					return;
 				}
 				const matches = fieldFullName.match(/.*\[.*\]\[(.*)\]/);
-				const fieldRealName = matches[1].toLowerCase();
+				const fieldRealName = matches ? matches[1].toLowerCase() : fieldFullName.toLowerCase();
 				if ( !allDisplayedFields.includes( fieldRealName ) ) {
 					return;
 				}
@@ -1394,7 +1345,7 @@ $.fn.possiblyMinimizeAllOpenInstances = function() {
 				curVal = curVal.slice(0, 70) + "...";
 			}
 			if ( valuesStr !== '' ) {
-				valuesStr += ' &middot; ';
+				valuesStr += ' \u00b7 ';
 			}
 			valuesStr += curVal;
 		});
@@ -1402,7 +1353,7 @@ $.fn.possiblyMinimizeAllOpenInstances = function() {
 		if ( valuesStr === '' ) {
 			$display.append( $( '<em>' ).text( mw.message( 'pf-formedit-nodata' ).text() ) );
 		} else {
-			$display.html( valuesStr );
+			$display.text( valuesStr );
 		}
 		$instance.find( '.instanceMain' ).addClass( 'pf-hidden' );
 		$instance.find( '.fieldValuesDisplay' ).remove();
@@ -1700,114 +1651,9 @@ $.fn.addInstance = function( addAboveCurInstance ) {
 
 	// Hook that fires each time a new template instance is added.
 	// The first parameter is a jQuery selection of the newly created instance div.
+	mw.pageFormsInstances.update( $multipleTemplateList );
 	mw.hook('pf.addTemplateInstance').fire($new_div);
-};
-
-// The first argument is needed, even though it's an attribute of the element
-// on which this function is called, because it's the 'name' attribute for
-// regular inputs, and the 'origName' attribute for inputs in multiple-instance
-// templates.
-$.fn.setDependentAutocompletion = function( dependentField, baseField, baseValue ) {
-	let myServer = mw.config.get( 'wgScriptPath' ) + "/api.php",
-		wgPageFormsCargoFields = mw.config.get( 'wgPageFormsCargoFields' ),
-		wgPageFormsFieldProperties = mw.config.get( 'wgPageFormsFieldProperties' );
-	myServer += "?action=pfautocomplete&format=json";
-	if ( wgPageFormsCargoFields.hasOwnProperty( dependentField ) ) {
-		const cargoTableAndFieldStr = wgPageFormsCargoFields[dependentField];
-		const cargoTableAndField = cargoTableAndFieldStr.split('|');
-		const cargoTable = cargoTableAndField[0];
-		const cargoField = cargoTableAndField[1];
-		const baseCargoTableAndFieldStr = wgPageFormsCargoFields[baseField];
-		const baseCargoTableAndField = baseCargoTableAndFieldStr.split('|');
-		const baseCargoTable = baseCargoTableAndField[0];
-		const baseCargoField = baseCargoTableAndField[1];
-		myServer += "&cargo_table=" + cargoTable + "&cargo_field=" + cargoField + "&is_array=true" + "&base_cargo_table=" + baseCargoTable + "&base_cargo_field=" + baseCargoField + "&basevalue=" + baseValue;
-	} else {
-		const propName = wgPageFormsFieldProperties[dependentField];
-		const baseProp = wgPageFormsFieldProperties[baseField];
-		myServer += "&property=" + propName + "&baseprop=" + baseProp + "&basevalue=" + baseValue;
-	}
-
-	const $thisInput = $(this);
-	const previousRequest = $thisInput.data( 'pfDependentAutocompleteRequest' );
-	if ( previousRequest && typeof previousRequest.abort === 'function' ) {
-		previousRequest.abort();
-	}
-
-	const request = $.ajax( {
-		url: myServer,
-		dataType: 'json'
-	} ).done( function( data ) {
-		const dependentValues = [];
-		const realData = data.pfautocomplete || [];
-		$.each( realData, ( key, val ) => {
-			dependentValues.push( val.title );
-		} );
-		$thisInput.data( 'autocompletevalues', dependentValues );
-	} ).always( function() {
-		$thisInput.removeData( 'pfDependentAutocompleteRequest' );
-	} );
-
-	$thisInput.data( 'pfDependentAutocompleteRequest', request );
-	return request;
-};
-
-/**
- * Called on a 'base' field (e.g., for a country) - sets the autocompletion
- * for its 'dependent' field (e.g., for a city).
- *
- * @param {Mixed} partOfMultiple
- * @return {Mixed}
- */
-$.fn.setAutocompleteForDependentField = function( partOfMultiple ) {
-	const curValue = $( this ).val();
-	if ( curValue === null ) {
-		return this;
-	}
-
-	const name = partOfMultiple ? ( $( this ).attr( 'origname' ) || $( this ).attr( 'origName' ) ) : $( this ).attr( 'name' );
-	const wgPageFormsDependentFields = mw.config.get( 'wgPageFormsDependentFields' ) || [];
-	let dependent_on_me = [];
-	for ( let i = 0; i < wgPageFormsDependentFields.length; i++ ) {
-		const dependentFieldPair = wgPageFormsDependentFields[i];
-		if ( dependentFieldPair[0] === name ) {
-			dependent_on_me.push( dependentFieldPair[1] );
-		}
-	}
-	dependent_on_me = $.uniqueSort( dependent_on_me );
-
-	const self = this;
-	$.each( dependent_on_me, function() {
-		let $element, combobox, tokens,
-			dependentField = this;
-
-		if ( partOfMultiple ) {
-			$element = $( self ).closest( '.multipleTemplateInstance' )
-				.find( '[origname="' + dependentField + '"], [origName="' + dependentField + '"]' );
-		} else {
-			$element = $( '[name="' + dependentField + '"]' );
-		}
-
-		if ( !$element.length ) {
-			return;
-		}
-
-		if ( $element.hasClass( 'pfTokens' ) ) {
-			tokens = new pf.select2.tokens();
-			$element.setDependentAutocompletion( dependentField, name, curValue ).done( function() {
-				tokens.refresh( $element );
-			} );
-		} else if ( $element.hasClass( 'pfComboBox' ) ) {
-			combobox = new pf.ComboBoxInput( {} );
-			$element.setDependentAutocompletion( dependentField, name, curValue ).done( function() {
-				combobox.refresh( $element );
-			} );
-		} else {
-			$element.setDependentAutocompletion( dependentField, name, curValue );
-		}
-	} );
-
-	return this;
+	return $new_div;
 };
 
 /**
@@ -1869,25 +1715,10 @@ $.fn.initializeJSElements = function( partOfMultiple ) {
 
 	if ( partOfMultiple ) {
 		// Enable the new remove button
-		$root.find( '.removeButton' ).off( 'click.pfRemoveInstance' ).on( 'click.pfRemoveInstance', function() {
-			var $instance = $( this ).closest( '.multipleTemplateInstance' );
-
-			if ( !$instance.length || $instance.hasClass( 'pf-removing-instance' ) ) {
-				return false;
-			}
-
-			$instance.addClass( 'pf-removing-instance' );
-
-			window.setTimeout( function() {
-				$instance.find( 'input, select, textarea' ).each( function() {
-					$( this ).PageForms_unregisterInputInit();
-					$( this ).PageForms_unregisterInputValidation();
-				} );
-
-				$instance.remove();
-			}, 220 );
-
-			return false;
+		$root.find( '.removeButton' ).off( 'click.pfRemoveInstance' ).on( 'click.pfRemoveInstance', function( event ) {
+			event.preventDefault();
+			event.stopPropagation();
+			mw.pageFormsInstances.remove( $( this ).closest( '.multipleTemplateInstance' ) );
 		} );
 
 		// ...and the new adder
@@ -1897,11 +1728,6 @@ $.fn.initializeJSElements = function( partOfMultiple ) {
 		});
 	}
 
-	$root.find('.pfComboBox').not('.multipleTemplateStarter .pfComboBox, .pf-combobox-initialized').each( function() {
-		const $source = $( this );
-		const inputType = new pf.ComboBoxInput( {} );
-		inputType.apply( $source );
-	});
 
 	// Set the end date input to the value selected in start date
 	$root.find("span.startDateInput").not(".hiddenByPF").find("input").last().off( 'blur.pfCopyStartDate' ).on( 'blur.pfCopyStartDate', function() {
@@ -1996,7 +1822,7 @@ $.fn.initializeJSElements = function( partOfMultiple ) {
 	});
 
 	const $myThis = this;
-	if ( $.fn.applyVisualEditor ) {
+	if ( $.fn.applyVisualEditor && !$root.closest( 'form' ).data( 'pfRestoringDraft' ) ) {
 		if ( partOfMultiple ) {
 			$myThis.find( '.visualeditor' ).applyVisualEditor();
 		} else {
@@ -2050,18 +1876,8 @@ $( () => {
 		return;
 	}
 
-	$pfForm.on( 'focusin', '.pfTokens, .autoGrow, .pfRating, .pfTreeInput', function() {
-		const $target = $( this );
-		if ( $target.hasClass( 'pfTokens' ) ) {
-			initTokensIn( $target.closest( '.multipleTemplateInstance, #pfForm' ) );
-		} else if ( $target.hasClass( 'autoGrow' ) ) {
-			initAutoGrowIn( $target.closest( '.multipleTemplateInstance, #pfForm' ) );
-		} else if ( $target.hasClass( 'pfRating' ) ) {
-			initRatingsIn( $target.closest( '.multipleTemplateInstance, #pfForm' ) );
-		} else if ( $target.hasClass( 'pfTreeInput' ) ) {
-			initTreesIn( $target.closest( '.multipleTemplateInstance, #pfForm' ) );
-		}
-	} );
+
+	mw.pageFormsEditState.bind( $pfForm );
 
 	function minimizeInstances( minHeight ) {
 		if ( minHeight >= 0) {
@@ -2103,6 +1919,9 @@ $( () => {
 			}
 
 			$pfForm.initializeJSElements( false );
+			mw.pageFormsErrors.bind( $pfForm );
+			mw.pageFormsDrafts.bind( $pfForm );
+			mw.pageFormsInstances.update( $pfForm );
 
 			$( '.multipleTemplateInstance' ).each( function() {
 				$( this ).initializeJSElements( true );
@@ -2135,6 +1954,8 @@ $( () => {
 							},
 							onEnd: function() {
 								$list.removeClass( 'currentFocus' );
+								mw.pageFormsInstances.update( $list );
+								mw.hook( 'pf.formChanged' ).fire( $pfForm );
 								$list.find( '.multipleTemplateInstance' ).each( function( index ) {
 									$( this ).attr( 'data-instance-order', index );
 								} );
