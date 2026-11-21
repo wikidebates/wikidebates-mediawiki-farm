@@ -372,3 +372,52 @@ Do not alter the DOM bypass conditions based on these timings alone:
 the current conversion also handles red links, invalid images and
 compatibility HTML normalization. Any future shortcut must prove
 identical returned HTML, entity handling, moderation and links.
+
+## Cold action-permission cost: targeted read-only measurements
+
+On the French Bistro benchmark (50 topics, 242 posts), five independent
+PHP processes each running a single `--runs=1 --breakdown` measurement
+took an average of **559.97 ms wall-clock / 493.97 ms CPU**. The
+`format_detail_ms.revision_actions` stage averaged **171.78 ms**, and
+`revision_view_permission` averaged **62.39 ms**. These are server-side
+maintenance process measurements, not actual HTTP TTFB.
+
+The existing `--breakdown` mode now reports two timings **nested within**
+`revision_actions`:
+
+- `action_workflow_edit_permission`: checking
+  `Workflow::userCan( 'edit', $user )` for each serialized revision
+- `action_specific_permission`: combined time across individual
+  `RevisionActionPermissions::isAllowed( $revision, $type )` checks inside
+  the action-generation loop, after the workflow gate has passed
+
+`format_detail_calls` gives the number of checks for each stage, not the
+number of unique posts or authorized actions. The difference between
+`revision_actions` and these two times includes actual link generation,
+any further checks within individual actions, and measurement overhead.
+These stages are **not additive** with `revision_actions`.
+
+The logic intentionally still rechecks the workflow permission for every
+post: a speculative batch-scoped permission cache introduced in PR #16 was
+removed by PR #19 because its effect on overall render time was not
+demonstrated. No permission results are cached by this instrumentation.
+The non-benchmark path invokes the original permission methods directly;
+the observer is installed only within the existing maintenance benchmark.
+
+After deploying, obtain both the in-process (warm) profile and the
+cross-process (cold) profile, for example:
+
+```sh
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
+	--wiki=fr --page='Wikidébats:Bistro' \
+	--runs=3 --limit=50 --sortby=updated --breakdown
+
+for i in 1 2 3 4 5; do
+	php maintenance/run.php Flow:FlowBenchmarkTopicList \
+		--wiki=fr --page='Wikidébats:Bistro' \
+		--runs=1 --limit=50 --sortby=updated --breakdown
+done
+```
+
+Only optimize a permissions path after its measured cost is isolated,
+and retain the current moderation, user rights and invalidation behavior.
