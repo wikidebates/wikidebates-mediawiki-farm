@@ -758,24 +758,39 @@ and API traffic. The block restores the shared query's normal mode in
 a `finally` block, even if the query fails. It is not an extension
 configuration option and must not be used in web/API rendering.
 
-Run **alternating, independent PHP processes** to control for server
-load changes. Prefer the unprofiled measurements for overall speed:
+Run **paired, independent PHP processes** to control for server
+load changes. Alternate the order of both variants (AB/BA) so the
+second measurement is not always the lazy variant. Prefer the
+unprofiled measurements for overall speed:
 
 ```sh
-for i in 1 2 3 4 5; do
-	echo "Eager #$i"
-	php maintenance/run.php Flow:FlowBenchmarkTopicList \
-		--wiki=fr --page='Wikidébats:Bistro' \
-		--runs=1 --limit=50 --sortby=updated
-	echo "Lazy #$i"
-	php maintenance/run.php Flow:FlowBenchmarkTopicList \
-		--wiki=fr --page='Wikidébats:Bistro' \
-		--runs=1 --limit=50 --sortby=updated \
-		--skip-permission-prewarm
+run_flow_variant() {
+	mode=$1
+	echo "Variant: $mode"
+	if [ "$mode" = lazy ]; then
+		php maintenance/run.php Flow:FlowBenchmarkTopicList \
+			--wiki=fr --page='Wikidébats:Bistro' \
+			--runs=1 --limit=50 --sortby=updated \
+			--skip-permission-prewarm
+	else
+		php maintenance/run.php Flow:FlowBenchmarkTopicList \
+			--wiki=fr --page='Wikidébats:Bistro' \
+			--runs=1 --limit=50 --sortby=updated
+	fi
+}
+
+for i in 1 2 3 4 5 6; do
+	if [ $((i % 2)) -eq 0 ]; then
+		run_flow_variant lazy
+		run_flow_variant eager
+	else
+		run_flow_variant eager
+		run_flow_variant lazy
+	fi
 done
 ```
 
-For phase attribution, repeat three paired processes using
+For phase attribution, repeat at least three pairs using
 `--breakdown` on *both* variants. In the lazy mode,
 `query_detail_ms.prime_permissions` should be almost zero, while
 `filter_visible_topics` or `build_visible_rows` may become more
