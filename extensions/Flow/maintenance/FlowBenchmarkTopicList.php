@@ -60,13 +60,15 @@ class FlowBenchmarkTopicList extends Maintenance {
 			$block->init( $context, 'view-topiclist' );
 			$phases = [];
 			$formatDetails = [];
+			$formatCalls = [];
 			if ( $breakdown ) {
 				$block->setBenchmarkTimer(
-					static function ( string $phase, float $milliseconds ) use ( &$phases, &$formatDetails ): void {
+					static function ( string $phase, float $milliseconds ) use ( &$phases, &$formatDetails, &$formatCalls ): void {
 						$prefix = 'format_detail_';
 						if ( str_starts_with( $phase, $prefix ) ) {
 							$key = substr( $phase, strlen( $prefix ) );
 							$formatDetails[$key] = round( ( $formatDetails[$key] ?? 0 ) + $milliseconds, 3 );
+							$formatCalls[$key] = ( $formatCalls[$key] ?? 0 ) + 1;
 						} else {
 							$phases[$phase] = $milliseconds;
 						}
@@ -100,6 +102,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 				$sample['phases_ms'] = $phases;
 				// These timings nest inside 'formatting'; do not add them to phases_ms.
 				$sample['format_detail_ms'] = $formatDetails;
+				$sample['format_detail_calls'] = $formatCalls;
 				// The remaining time includes assembly and timing overhead.
 				$sample['other_ms'] = round( max( 0, $wallMs - array_sum( $phases ) ), 2 );
 			}
@@ -115,6 +118,7 @@ class FlowBenchmarkTopicList extends Maintenance {
 				. 'later samples may benefit from warmed request caches. '
 				. 'Phase timings, when requested, are wall-clock time, may include SQL, '
 				. 'and exclude block init; detailed formatting phases are nested, not additive. '
+				. 'format_detail_calls counts measured operations rather than messages. '
 				. 'Use MediaWiki database profiling for SQL counts.',
 			'samples' => $samples,
 		], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) . "\n" );
