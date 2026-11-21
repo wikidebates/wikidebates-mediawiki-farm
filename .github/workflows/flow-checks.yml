@@ -44,7 +44,8 @@
 					"uses": "shivammathur/setup-php@v2",
 					"with": {
 						"php-version": "${{ matrix.php }}",
-						"coverage": "none"
+						"coverage": "none",
+						"extensions": "dom,xml"
 					}
 				},
 				{
@@ -58,12 +59,12 @@
 					"run": "find extensions/Flow -type f -name '*.php' -not -path '*/vendor/*' -print0 | xargs -0 -n 1 php -l"
 				},
 				{
-					"name": "Cache, moderation and sibling regressions",
-					"run": "php extensions/Flow/tests/smoke/FlowCacheTest.php"
+					"name": "Flow caching, formatter, HTML and paging regressions",
+					"run": "php extensions/Flow/tests/smoke/FlowCacheTest.php\nphp extensions/Flow/tests/smoke/FlowFormatterOptimizationTest.php\nphp extensions/Flow/tests/smoke/FlowContentFixerTest.php"
 				},
 				{
-					"name": "JavaScript syntax and batch cleanup",
-					"run": "find extensions/Flow/modules -type f -name '*.js' -print0 | xargs -0 -n 1 node --check\nnode extensions/Flow/tests/smoke/flow-loadmore.test.js"
+					"name": "JavaScript syntax, topic batch cleanup and pagination",
+					"run": "find extensions/Flow/modules -type f -name '*.js' -print0 | xargs -0 -n 1 node --check\nnode extensions/Flow/tests/smoke/flow-loadmore.test.js\nnode extensions/Flow/tests/smoke/flow-pagination.test.js"
 				},
 				{
 					"name": "SQL semantics and benchmark helper",
