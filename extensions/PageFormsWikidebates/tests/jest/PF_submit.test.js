@@ -290,5 +290,7 @@ test( 'save waits for an already-started lazy VisualEditor but not other offscre
 		.toBe( 'Typed during lazy editor startup' );
 	env.requests[ 0 ].deferred.resolve( success );
 	await settle();
-	unlocked();
+	expect( env.$form.data( 'pfSubmissionPending' ) ).toBeUndefined();
+	expect( $( '#save' ).prop( 'disabled' ) ).toBe( false );
+	expect( $button.prop( 'disabled' ) ).toBe( true );
 } );
