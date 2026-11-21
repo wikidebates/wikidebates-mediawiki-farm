@@ -670,6 +670,9 @@ class RevisionFormatter {
 			if ( !$canPerform ) {
 				continue;
 			}
+			// This follows the per-action permission check and includes
+			// URL creation plus any action-specific eligibility work.
+			$actionStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 			switch ( $type ) {
 				case 'thank':
 					$targetedUser = User::newFromId( $revision->getCreatorId() );
@@ -849,6 +852,20 @@ class RevisionFormatter {
 					wfDebugLog( 'Flow', __METHOD__ . ': unkown action link type: ' . $type );
 					break;
 			}
+			if ( $actionStarted !== null ) {
+				( $this->benchmarkTimer )(
+					'format_detail_action_allowed_branch',
+					round( ( hrtime( true ) - $actionStarted ) / 1000000, 3 )
+				);
+			}
+		}
+
+		if ( $this->benchmarkTimer !== null ) {
+			// Count the resulting write links, not the number of permissions
+			// granted; multiple actions may produce the same output key.
+			foreach ( $links as $link ) {
+				( $this->benchmarkTimer )( 'format_detail_action_output_link', 0.0 );
+			}
 		}
 
 		return $links;
@@ -1001,6 +1018,14 @@ class RevisionFormatter {
 				default:
 					wfDebugLog( 'Flow', __METHOD__ . ': unkown action link type: ' . $type );
 					break;
+			}
+		}
+
+		if ( $this->benchmarkTimer !== null ) {
+			// Read-link construction is already timed by revision_links;
+			// this counter records the number of links in that output.
+			foreach ( $links as $link ) {
+				( $this->benchmarkTimer )( 'format_detail_read_output_link', 0.0 );
 			}
 		}
 
