@@ -10,8 +10,9 @@
 - Add read-only real-wiki category/SMW benchmark and browser resource report;
   report actual measured timings rather than inferring performance gains.
 - Validate and restore nested repeating instances up to a global budget of 500;
-  restore rating values with their visual state. Keep tree widgets export-only
-  until a verified selection adapter is available.
+  restore rating values with their visual state. Restore tree selections only
+  for unambiguous labels, synchronized on jsTree readiness, keeping unknown or
+  duplicated labels export-only.
 - Test browser interactions in both Chromium and Firefox, and run an extra
   disposable MediaWiki 1.43/SMW integration job.
 
