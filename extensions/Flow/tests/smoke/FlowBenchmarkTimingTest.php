@@ -54,6 +54,26 @@ check( $topicProperty->getValue( $topicFormatter ) === null,
 check( $revisionProperty->getValue( $revisionFormatter ) === null,
 	'The revision formatter releases the callback after rendering' );
 
+// The read-only benchmark's observer must reach the shared ContentFixer
+// without persisting beyond the formatting batch, even on failures.
+$contentFixer = ( new ReflectionClass( \Flow\Parsoid\ContentFixer::class ) )
+	->newInstanceWithoutConstructor();
+$templating = ( new ReflectionClass( \Flow\Templating::class ) )
+	->newInstanceWithoutConstructor();
+( new ReflectionProperty( \Flow\Templating::class, 'contentFixer' ) )
+	->setValue( $templating, $contentFixer );
+( new ReflectionProperty( \Flow\Formatter\RevisionFormatter::class, 'templating' ) )
+	->setValue( $revisionFormatter, $templating );
+$fixerProperty = new ReflectionProperty( \Flow\Parsoid\ContentFixer::class, 'benchmarkTimer' );
+check( $fixerProperty->getValue( $contentFixer ) === null,
+	'ContentFixer is never instrumented by default' );
+$topicFormatter->setBenchmarkTimer( $observer );
+check( $fixerProperty->getValue( $contentFixer ) === $observer,
+	'Topic formatter propagates opt-in timings through Templating to ContentFixer' );
+$topicFormatter->setBenchmarkTimer( null );
+check( $fixerProperty->getValue( $contentFixer ) === null,
+	'ContentFixer observer is cleared after the benchmark' );
+
 // Time the exact call path used for links and actions; propagate values and
 // failures without writing to the normal API response.
 $revisionFormatter->setBenchmarkTimer( $observer );
