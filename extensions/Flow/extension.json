@@ -766,6 +766,10 @@
 		"FlowContentFormat": {
 			"value": "html"
 		},
+		"FlowReuseDecodedDom": {
+			"value": false,
+			"description": "Opt-in optimization for Flow fixed-html content; reuse the first parsed HTML DOM rather than parsing again."
+		},
 		"FlowParsoidURL": {
 			"value": null
 		},
