@@ -35,6 +35,13 @@ class ContentFixer {
 
 	public function setBenchmarkTimer( ?callable $observer ): void {
 		$this->benchmarkTimer = $observer;
+		// Forward profiling to WikiLinkFixer only, without changing the
+		// normal application path or other HTML fixers.
+		foreach ( $this->contentFixers as $fixer ) {
+			if ( $fixer instanceof WikiLinkFixer ) {
+				$fixer->setBenchmarkTimer( $observer );
+			}
+		}
 	}
 
 	private function recordBenchmarkStep( string $phase, int $started ): void {
