@@ -68,6 +68,11 @@ class Templating {
 		$this->contentFixer->setBenchmarkReuseDecodedDom( $reuse );
 	}
 
+	/** Opt-in, maintenance-only comparison of WikiLink title resolution. */
+	public function setBenchmarkReusePreloadedWikiLinkTitles( bool $reuse ): void {
+		$this->contentFixer->setBenchmarkReusePreloadedWikiLinkTitles( $reuse );
+	}
+
 	/**
 	 * Returns pretty-printed user links + user tool links for history and
 	 * RecentChanges pages.
