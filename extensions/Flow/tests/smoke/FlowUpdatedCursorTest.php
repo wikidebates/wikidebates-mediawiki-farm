@@ -141,6 +141,32 @@ namespace {
 		}
 	}
 
+	// Exercise the real ObjectLocator::getIndexFor() and TopKIndex::canAnswer()
+	// before the pagination doubles: the previous test accepted an invalid nested sort.
+	class CursorIndexSelectionManager extends ObjectManager {
+		public function __construct( $index ) {
+			$this->indexes = [ $index ];
+		}
+	}
+	$checkIndexSelection = static function ( array $indexedSort, string $declaredOrder, $requestedSort ) {
+		// Only the index metadata is needed for selection; no cache or storage is touched.
+		$index = ( new \\ReflectionClass( \\Flow\\Data\\Index\\TopKIndex::class ) )->newInstanceWithoutConstructor();
+		( new \\ReflectionProperty( \\Flow\\Data\\Index\\FeatureIndex::class, 'indexedOrdered' ) )
+			->setValue( $index, [ 'topic_list_id' ] );
+		( new \\ReflectionProperty( \\Flow\\Data\\Index\\TopKIndex::class, 'options' ) )
+			->setValue( $index, [ 'sort' => $indexedSort, 'order' => $declaredOrder, 'limit' => 500 ] );
+		$manager = new CursorIndexSelectionManager( $index );
+		$pager = new Pager( $manager, [ 'topic_list_id' => 'board' ], [
+			'sort' => $requestedSort,
+			'order' => 'desc',
+			'pager-limit' => 10,
+		] );
+		check( $pager instanceof Pager, 'Real topic-list index is selected for requested sort' );
+		return $manager;
+	};
+	$checkIndexSelection( TopicListCursor::SORT, 'desc', TopicListCursor::SORT );
+	$checkIndexSelection( [ 'topic_id' ], 'DESC', 'topic_id' );
+
 	$storage = new CursorFakeStorage;
 	// More than TopKIndex's 500 cached items. 560 topics share the same second.
 	for ( $i = 1; $i <= 660; $i++ ) {
