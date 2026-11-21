@@ -910,3 +910,39 @@ to identify the exact revision IDs; do not activate DOM reuse until
 the cause is understood. Also repeat **original vs original** to
 separate renderer differences from naturally unstable data, and retain
 the default read-only, unmodified web/API renderer.
+
+### Opt-in single-pass Flow HTML rendering (default OFF)
+
+The `FlowReuseDecodedDom` extension configuration flag defaults to
+**false**. With that default the production web/API HTML path is
+unchanged. Set the flag to true for a specific wiki *only after*
+carefully reviewing real content, safety and parser compatibility:
+
+```php
+$wgFlowReuseDecodedDom = true;
+```
+
+The flag is read when the FlowTemplating service is constructed, so it
+applies to the wiki's normal `fixed-html` rendering in web and API
+contexts. It does not change wikitext or topic-title conversion.
+All existing content/permission checks, the Flow HTML XSS hook,
+moderation and DOM fixers still execute. The optimized path falls
+back to original parsing if no decoded DOM is available.
+
+Rollback: set the flag back to false or remove the override,
+then restart/reload PHP workers as required by the deployment's
+configuration/OPcache setup. Verify the live site and API after
+configuration changes; do not assume cached HTML has been refreshed.
+Do not enable this configuration as part of the code-only deployment.
+
+The read-only maintenance benchmark continues to compare both
+alternatives independently of the site flag. Its temporary override
+is always cleared in a `finally` block, including on exceptions.
+
+The subtree query in `TreeRepository::fetchSubtreeNodeListFromDb()`
+does not specify an `ORDER BY`. The original rendering can therefore
+return equivalent content in different associative iteration orders.
+Do not confuse the benchmark's order-sensitive digests with a proven
+HTML difference. Inspect the sorted hashes, per-revision HMACs and
+root sets when comparing A/B output. Stabilizing visible reply
+ordering is a separate functional change that requires explicit tests.
