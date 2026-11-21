@@ -18,6 +18,41 @@ namespace MediaWiki\Title {
 		}
 	}
 }
+namespace MediaWiki\Html {
+	class Html {
+		public static function rawElement( $tag, $attributes, $content ) {
+			return "<$tag>" . $content . "</$tag>";
+		}
+		public static function element( $tag, array $attributes ) {
+			$serialized = '';
+			foreach ( $attributes as $key => $value ) {
+				$serialized .= ' ' . $key . '="' . htmlspecialchars( $value, ENT_QUOTES ) . '"';
+			}
+			return "<$tag$serialized />";
+		}
+	}
+}
+namespace MediaWiki\Utils {
+	class UrlUtils {
+		public function expand( $url, $protocol ) {
+			return '/wiki/';
+		}
+		public function matchesDomainList( $url, $exceptions ) {
+			return false;
+		}
+	}
+}
+namespace Flow\Hooks {
+	class HookRunner {
+		public static int $calls = 0;
+		public function __construct( $container ) {
+		}
+		public function onFlowCheckHtmlContentXss( string $html ): bool {
+			self::$calls++;
+			return !str_contains( $html, '<script' );
+		}
+	}
+}
 namespace MediaWiki\Cache {
 	class LinkBatch {
 		public array $titles = [];
@@ -48,6 +83,9 @@ namespace MediaWiki {
 		public static function getInstance() {
 			return new self;
 		}
+		public function getHookContainer() {
+			return new \stdClass;
+		}
 		public function getLinkRenderer() {
 			return new class {
 				public function makeLink( $title, $label, $attributes ) {
@@ -63,6 +101,13 @@ namespace MediaWiki {
 	}
 }
 namespace {
+	if ( !defined( 'PROTO_RELATIVE' ) ) {
+		define( 'PROTO_RELATIVE', 0 );
+	}
+	if ( !function_exists( 'wfDebugLog' ) ) {
+		function wfDebugLog( $group, $message ) {
+		}
+	}
 	class HtmlArmor {
 		public function __construct( public string $html ) {
 		}
@@ -156,6 +201,80 @@ namespace {
 	$fixer->setBenchmarkTimer( null );
 	check( $fixer->getContent( $revision ) === $source,
 		'Disabling profiling restores the unchanged noninstrumented path' );
+
+	// An inherited getContent('html') must still run the XSS hook, decoding
+	// and legacy handling before the experimental single-pass DOM can be used.
+	class SafetyCheckedHtmlRevision extends \Flow\Model\PostRevision {
+		public function __construct( private \MediaWiki\Title\Title $title, private string $raw ) {
+			$this->content = $raw;
+			$this->revId = \Flow\Model\UUID::create( '0000000000000101' );
+		}
+		public function getContentRaw() {
+			return $this->raw;
+		}
+		public function getContentFormat() {
+			return 'html';
+		}
+		public function getCollection() {
+			return new class( $this->title ) {
+				public function __construct( private \MediaWiki\Title\Title $title ) {
+				}
+				public function getTitle() {
+					return $this->title;
+				}
+			};
+		}
+	}
+	$urlUtils = new \MediaWiki\Utils\UrlUtils;
+	$fullFixer = new \Flow\Parsoid\ContentFixer(
+		new \Flow\Parsoid\Fixer\WikiLinkFixer( new \MediaWiki\Cache\LinkBatch ),
+		new \Flow\Parsoid\Fixer\BadImageRemover(
+			static fn ( string $image, \MediaWiki\Title\Title $title ): bool => $image === 'Blocked'
+		),
+		new \Flow\Parsoid\Fixer\BaseHrefFixer( '/wiki/$1', $urlUtils ),
+		new \Flow\Parsoid\Fixer\ExtLinkFixer( $urlUtils )
+	);
+	$fixtures = [
+		'<body><p>Bonjour <strong>Wikidébats</strong> &amp; Flow.</p></body>',
+		'<body base-url="//example.org/wiki/"><p><a href="./Existing" rel="mw:WikiLink">Lien</a></p></body>',
+		'<body><figure typeof="mw:File"><img resource="./Blocked" src="./image.png"></figure></body>',
+		'<body><p><a href="./External" rel="mw:ExtLink">External</a><a></a><br></p></body>',
+		'<p>Legacy body-less content <em>with tags</em> &amp; text</p>',
+		'<body><div><span></span><strong>Closing tags</strong><img src="./x"></div></body>',
+	];
+	foreach ( $fixtures as $fixture ) {
+		$fullFixer->setBenchmarkReuseDecodedDom( false );
+		$legacyRevision = new SafetyCheckedHtmlRevision( $title, $fixture );
+		$legacy = $fullFixer->getContent( $legacyRevision );
+		$fullFixer->setBenchmarkReuseDecodedDom( true );
+		$optimizedRevision = new SafetyCheckedHtmlRevision( $title, $fixture );
+		$optimized = $fullFixer->getContent( $optimizedRevision );
+		check( $legacy === $optimized,
+			'Source DOM reuse preserves exact serialized HTML for fixture: ' . $fixture );
+	}
+	check( \Flow\Hooks\HookRunner::$calls === count( $fixtures ) * 2,
+		'Both HTML variants execute the original XSS hook exactly once per revision' );
+
+	$denied = new SafetyCheckedHtmlRevision( $title, '<body><script>alert(1)</script></body>' );
+	check( $fullFixer->getContent( $denied ) === '',
+		'Source DOM experiment respects XSS-hook denial and produces no HTML' );
+	check( \Flow\Hooks\HookRunner::$calls === count( $fixtures ) * 2 + 1,
+		'XSS check is invoked before attempting to reuse the DOM' );
+
+	$fullFixer->setBenchmarkReuseDecodedDom( false );
+	$raw = '<body><p>A cached, unmodified revision</p></body>';
+	$cachedRevision = new SafetyCheckedHtmlRevision( $title, $raw );
+	$cachedRevision->getContent( 'html' );
+	$fullFixer->setBenchmarkReuseDecodedDom( true );
+	$cachedOutput = $fullFixer->getContent( $cachedRevision );
+	$fullFixer->setBenchmarkReuseDecodedDom( false );
+	check( $cachedOutput === $fullFixer->getContent( new SafetyCheckedHtmlRevision( $title, $raw ) ),
+		'Cached original HTML safely falls back when no first-pass DOM is available' );
+
+	$fullFixer->setBenchmarkReuseDecodedDom( true );
+	check( $fullFixer->getContent( $revision ) === $source,
+		'Custom revision getContent override retains the original fallback path' );
+	$fullFixer->setBenchmarkReuseDecodedDom( false );
 
 	echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " HTML/link-batching assertions\n";
 
