@@ -62,6 +62,9 @@ class RevisionActionPermissions {
 	 */
 	protected $boardAllowedCache = [];
 
+	/** @var int|null Generation of the collection cache used by these decisions. */
+	private $cacheGeneration;
+
 	/**
 	 * @param FlowActions $actions
 	 * @param User $user
@@ -95,8 +98,9 @@ class RevisionActionPermissions {
 	 * @return bool
 	 */
 	public function isAllowed( AbstractRevision $revision, $action ) {
+		$this->ensureCacheIsFresh();
 		$revisionId = $revision->getRevisionId()->getAlphadecimal();
-		$cacheKey = $revisionId . ':' . $action;
+		$cacheKey = $revisionId . ':' . $revision->getModerationState() . ':' . $action;
 		if ( array_key_exists( $cacheKey, $this->isAllowedCache ) ) {
 			return $this->isAllowedCache[$cacheKey];
 		}
@@ -281,6 +285,7 @@ class RevisionActionPermissions {
 	 * @return void
 	 */
 	public function primeCacheForView( array $revisions ) {
+		$this->ensureCacheIsFresh();
 		foreach ( $revisions as $revision ) {
 			if ( !( $revision instanceof AbstractRevision ) ) {
 				continue;
@@ -296,6 +301,14 @@ class RevisionActionPermissions {
 	 * @return AbstractRevision
 	 */
 	protected function getCachedRoot( AbstractRevision $revision ) {
+		// A title (including a historical title) is its own root. Do not let it
+		// populate the per-topic cache: replies must use the latest topic state.
+		if ( !( $revision instanceof PostSummary ) &&
+			!( $revision instanceof PostRevision && !$revision->isTopicTitle() )
+		) {
+			return $revision;
+		}
+
 		$topicKey = $this->getTopicCacheKey( $revision );
 		if ( isset( $this->rootRevisionCache[$topicKey] ) ) {
 			return $this->rootRevisionCache[$topicKey];
@@ -379,11 +392,10 @@ class RevisionActionPermissions {
 	 * @return string
 	 */
 	protected function getBoardWorkflowCacheKey( AbstractRevision $revision ) {
-		try {
-			return $revision->getCollection()->getBoardWorkflow()->getId()->getAlphadecimal();
-		} catch ( DataModelException $e ) {
-			return $this->getTopicCacheKey( $revision );
-		}
+		// Finding the board just to build a key defeats the cache. A topic's
+		// workflow identifies its board lookup; board decisions remain shared
+		// by the actual board ID in isBoardAllowedCached().
+		return $this->getTopicCacheKey( $revision );
 	}
 	/**
 	 * @param AbstractRevision $revision
@@ -427,6 +439,33 @@ class RevisionActionPermissions {
 	 * @param User $user
 	 */
 	public function setUser( User $user ) {
+		// formatApi() calls this for every row. Preserve the cache when the
+		// very same User object is reused, but not for another security context.
+		if ( $this->user !== $user ) {
+			$this->clearCache();
+		}
 		$this->user = $user;
+	}
+
+	/**
+	 * Clear decisions explicitly, e.g. after changing a user's rights in-process.
+	 */
+	public function clearCache(): void {
+		$this->isAllowedCache = [];
+		$this->rootRevisionCache = [];
+		$this->boardWorkflowCache = [];
+		$this->rootAllowedCache = [];
+		$this->boardAllowedCache = [];
+	}
+
+	/** Discard decisions and loaded roots after a Flow storage mutation. */
+	private function ensureCacheIsFresh(): void {
+		/** @var CollectionCache $cache */
+		$cache = Container::get( 'collection.cache' );
+		$generation = $cache->getGeneration();
+		if ( $this->cacheGeneration !== $generation ) {
+			$this->clearCache();
+			$this->cacheGeneration = $generation;
+		}
 	}
 }

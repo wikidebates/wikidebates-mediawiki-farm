@@ -1,0 +1,75 @@
+{
+	"name": "Flow regression checks",
+	"on": {
+		"pull_request": {
+			"paths": [
+				"extensions/Flow/**",
+				".github/workflows/flow-checks.yml"
+			]
+		},
+		"push": {
+			"branches": [
+				"wikidebates-REL1_43-stable-2026-07-11"
+			],
+			"paths": [
+				"extensions/Flow/**",
+				".github/workflows/flow-checks.yml"
+			]
+		}
+	},
+	"permissions": {
+		"contents": "read"
+	},
+	"jobs": {
+		"flow": {
+			"runs-on": "ubuntu-latest",
+			"strategy": {
+				"fail-fast": false,
+				"matrix": {
+					"php": [
+						"8.1",
+						"8.4"
+					]
+				}
+			},
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"submodules": false
+					}
+				},
+				{
+					"uses": "shivammathur/setup-php@v2",
+					"with": {
+						"php-version": "${{ matrix.php }}",
+						"coverage": "none"
+					}
+				},
+				{
+					"uses": "actions/setup-node@v4",
+					"with": {
+						"node-version": "22"
+					}
+				},
+				{
+					"name": "PHP syntax",
+					"run": "find extensions/Flow -type f -name '*.php' -not -path '*/vendor/*' -print0 | xargs -0 -n 1 php -l"
+				},
+				{
+					"name": "Cache, moderation and sibling regressions",
+					"run": "php extensions/Flow/tests/smoke/FlowCacheTest.php"
+				},
+				{
+					"name": "JavaScript syntax and batch cleanup",
+					"run": "find extensions/Flow/modules -type f -name '*.js' -print0 | xargs -0 -n 1 node --check\nnode extensions/Flow/tests/smoke/flow-loadmore.test.js"
+				},
+				{
+					"name": "SQL semantics and benchmark helper",
+					"run": "PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s extensions/Flow/tests/smoke -p 'test_*.py' -v"
+				}
+			]
+		}
+	}
+}

@@ -25,6 +25,19 @@ class CollectionCache extends AbstractListener {
 	 */
 	protected $lastRevCache;
 
+	/** @var int In-process generation, advanced after writes or an explicit clear. */
+	private $generation = 0;
+
+	/**
+	 * Consumers can discard derived request-local caches after a storage mutation.
+	 * This is deliberately not a shared cache version or a database counter.
+	 *
+	 * @return int
+	 */
+	public function getGeneration(): int {
+		return $this->generation;
+	}
+
 	/**
 	 * Initialize any cache holder in here
 	 */
@@ -59,22 +72,26 @@ class CollectionCache extends AbstractListener {
 	}
 
 	public function onAfterClear() {
+		$this->generation++;
 		$this->lastRevCache = new MapCacheLRU( self::LAST_REV_CACHE_MAX );
 	}
 
 	public function onAfterInsert( $object, array $new, array $metadata ) {
+		$this->generation++;
 		if ( $object instanceof AbstractRevision ) {
 			$this->lastRevCache->clear( $this->getLastRevCacheKey( $object ) );
 		}
 	}
 
 	public function onAfterUpdate( $object, array $old, array $new, array $metadata ) {
+		$this->generation++;
 		if ( $object instanceof AbstractRevision ) {
 			$this->lastRevCache->clear( $this->getLastRevCacheKey( $object ) );
 		}
 	}
 
 	public function onAfterRemove( $object, array $old, array $metadata ) {
+		$this->generation++;
 		if ( $object instanceof AbstractRevision ) {
 			$this->lastRevCache->clear( $this->getLastRevCacheKey( $object ) );
 		}

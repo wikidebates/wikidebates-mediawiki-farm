@@ -23,6 +23,11 @@
 		this.orderedTopicIds = [];
 
 		this.bindNodeHandlers( FlowBoardComponentLoadMoreFeatureMixin.UI.events );
+		// The base handler registers all topics first. Clean up once per batch,
+		// not once per topic (which makes a batch quadratic in its size).
+		this.bindComponentHandlers( {
+			makeContentInteractive: this.pruneRenderedTopics
+		} );
 	}
 	OO.initClass( FlowBoardComponentLoadMoreFeatureMixin );
 
@@ -346,21 +351,24 @@
 	 * @param {jQuery} $topic
 	 */
 	function flowBoardComponentLoadMoreFeatureElementLoadTopic( $topic ) {
-		var self = this,
-			currentTopicId = $topic.data( 'flow-id' );
+		var currentTopicId = $topic.data( 'flow-id' );
 
-		// Store this topic by ID
+		// Store this topic by ID. Cleanup runs once after the whole batch.
 		this.renderedTopics[ currentTopicId ] = $topic;
+	}
+	FlowBoardComponentLoadMoreFeatureMixin.UI.events.loadHandlers.topic = flowBoardComponentLoadMoreFeatureElementLoadTopic;
 
-		// Remove any topics that are no longer on the page, just in case
+	/** Remove detached topic nodes after all load handlers in a batch have run. */
+	FlowBoardComponentLoadMoreFeatureMixin.prototype.pruneRenderedTopics = function () {
+		var self = this;
+
 		// eslint-disable-next-line no-jquery/no-each-util
 		$.each( this.renderedTopics, function ( topicId, $topic ) {
 			if ( !$topic.closest( self.$board ).length ) {
 				delete self.renderedTopics[ topicId ];
 			}
 		} );
-	}
-	FlowBoardComponentLoadMoreFeatureMixin.UI.events.loadHandlers.topic = flowBoardComponentLoadMoreFeatureElementLoadTopic;
+	};
 
 	//
 	// Private functions

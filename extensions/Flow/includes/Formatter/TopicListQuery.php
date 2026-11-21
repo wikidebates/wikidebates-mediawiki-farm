@@ -2,6 +2,8 @@
 
 namespace Flow\Formatter;
 
+use Flow\Collection\CollectionCache;
+use Flow\Container;
 use Flow\Data\ManagerGroup;
 use Flow\Exception\FlowException;
 use Flow\Exception\InvalidDataException;
@@ -25,11 +27,14 @@ class TopicListQuery extends AbstractQuery {
 	/** @var UUID[][] */
 	protected $postIdsCache = [];
 
-	/** @var PostSummary[] */
+	/** @var array<string,PostSummary|null> Null means a confirmed missing summary. */
 	protected $summaryCache = [];
 
 	/** @var bool[] */
 	protected $watchStatusCache = [];
+
+	/** @var int|null Generation of the storage snapshot cached by this query. */
+	private $cacheGeneration;
 
 	/**
 	 * @param ManagerGroup $storage
@@ -54,6 +59,7 @@ class TopicListQuery extends AbstractQuery {
 	 * @suppress PhanUndeclaredMethod Types not inferred from instanceof
 	 */
 	public function getResults( array $topicIdsOrEntries ) {
+		$this->ensureCacheIsFresh();
 		$topicIds = $this->getTopicIds( $topicIdsOrEntries );
 		$allPostIds = $this->collectPostIds( $topicIds );
 		$posts = $this->collectRevisions( $allPostIds );
@@ -96,7 +102,7 @@ class TopicListQuery extends AbstractQuery {
 				$replyToId = $revision->getReplyToId();
 				$replyToId = $replyToId ? $replyToId->getAlphadecimal() : null;
 				$postId = $revision->getPostId()->getAlphadecimal();
-				$replies[$replyToId ?? ''] = $postId;
+				$replies[$replyToId ?? ''][] = $postId;
 				if ( $post->isTopicTitle() ) {
 					// Attach the summary
 					if ( isset( $topicSummary[$postId] ) ) {
@@ -223,17 +229,15 @@ class TopicListQuery extends AbstractQuery {
 	 * @return PostSummary[]
 	 */
 	protected function collectSummary( $topicIds ) {
+		$this->ensureCacheIsFresh();
 		if ( !$topicIds ) {
 			return [];
 		}
 		$conds = [];
-		$result = [];
 		foreach ( $topicIds as $topicId ) {
 			$alpha = $topicId->getAlphadecimal();
-			if ( isset( $this->summaryCache[$alpha] ) ) {
-				$result[$alpha] = $this->summaryCache[$alpha];
-			} else {
-				$conds[] = [ 'rev_type_id' => $topicId ];
+			if ( !array_key_exists( $alpha, $this->summaryCache ) ) {
+				$conds[$alpha] = [ 'rev_type_id' => $topicId ];
 			}
 		}
 		if ( $conds ) {
@@ -242,14 +246,48 @@ class TopicListQuery extends AbstractQuery {
 				'order' => 'DESC',
 				'limit' => 1,
 			] );
+			// Only cache absence after a successful lookup, not after an error.
+			foreach ( $conds as $alpha => $condition ) {
+				$this->summaryCache[$alpha] = null;
+			}
 			foreach ( $found as $row ) {
+				if ( !$row ) {
+					continue;
+				}
 				$summary = reset( $row );
 				$alpha = $summary->getSummaryTargetId()->getAlphadecimal();
 				$this->summaryCache[$alpha] = $summary;
-				$result[$alpha] = $summary;
+			}
+		}
+
+		$result = [];
+		foreach ( $topicIds as $topicId ) {
+			$alpha = $topicId->getAlphadecimal();
+			if ( isset( $this->summaryCache[$alpha] ) ) {
+				$result[$alpha] = $this->summaryCache[$alpha];
 			}
 		}
 		return $result;
+	}
+
+	/** Invalidate positive and negative results when the storage changes. */
+	private function ensureCacheIsFresh(): void {
+		/** @var CollectionCache $cache */
+		$cache = Container::get( 'collection.cache' );
+		$generation = $cache->getGeneration();
+		if ( $this->cacheGeneration === $generation ) {
+			return;
+		}
+		$this->cacheGeneration = $generation;
+		$this->postIdsCache = [];
+		$this->summaryCache = [];
+		$this->watchStatusCache = [];
+		$this->rootPostIdCache = [];
+		$this->postCache = [];
+		$this->revisionCache = [];
+		$this->workflowCache = [];
+		$this->currentRevisionsCache = [];
+		$this->identityMap = [];
 	}
 
 	/**
