@@ -19,6 +19,13 @@ class ContentFixer {
 	/** @var callable|null Profiling observer, set only by the read-only benchmark. */
 	private $benchmarkTimer;
 
+	/** @var bool Maintenance-only A/B experiment; normal HTML rendering is unchanged. */
+	private bool $benchmarkReuseDecodedDom = false;
+
+	public function setBenchmarkReuseDecodedDom( bool $reuse ): void {
+		$this->benchmarkReuseDecodedDom = $reuse;
+	}
+
 	public function setBenchmarkTimer( ?callable $observer ): void {
 		$this->benchmarkTimer = $observer;
 	}
@@ -52,6 +59,27 @@ class ContentFixer {
 	 * @return string
 	 */
 	public function getContent( AbstractRevision $revision ) {
+		if ( $this->benchmarkReuseDecodedDom ) {
+			// First request the same HTML through AbstractRevision::getContent,
+			// including the existing XSS hook, legacy conversions and stubs.
+			$dom = null;
+			$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
+			$html = $revision->getHtmlWithDecodedDom( $dom );
+			if ( $started !== null ) {
+				$this->recordBenchmarkStep( 'source_html', $started );
+			}
+			$title = $revision->getCollection()->getTitle();
+			if ( $dom instanceof DOMDocument ) {
+				if ( $this->benchmarkTimer !== null ) {
+					( $this->benchmarkTimer )( 'format_detail_content_reused_dom', 0.0 );
+				}
+				return $this->renderFromPreparedDom( $dom, $title );
+			}
+			// A cached, converted, custom or inaccessible revision does not
+			// expose a decoded source DOM and retains the original path.
+			return $this->apply( $html, $title );
+		}
+
 		if ( $this->benchmarkTimer === null ) {
 			return $this->apply(
 				$revision->getContent( 'html' ),
@@ -85,6 +113,15 @@ class ContentFixer {
 			$this->recordBenchmarkStep( 'dom_parse', $started );
 		}
 
+		return $this->renderFromPreparedDom( $dom, $title );
+	}
+
+	/**
+	 * Complete the original fixers and XML serialization on a DOM prepared by
+	 * either path. The maintenance experiment merely skips the second parse.
+	 * The result must be compared byte-for-byte before enabling this in traffic.
+	 */
+	private function renderFromPreparedDom( DOMDocument $dom, Title $title ): string {
 		$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$this->applyToDom( $dom, $title );
 		if ( $started !== null ) {

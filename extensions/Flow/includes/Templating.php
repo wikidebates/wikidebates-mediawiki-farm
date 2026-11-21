@@ -57,6 +57,14 @@ class Templating {
 	}
 
 	/**
+	 * Enable a single-pass HTML experiment for the bounded, read-only
+	 * maintenance benchmark only. The normal web/API path stays unchanged.
+	 */
+	public function setBenchmarkReuseDecodedDom( bool $reuse ): void {
+		$this->contentFixer->setBenchmarkReuseDecodedDom( $reuse );
+	}
+
+	/**
 	 * Returns pretty-printed user links + user tool links for history and
 	 * RecentChanges pages.
 	 *
