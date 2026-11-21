@@ -86,13 +86,6 @@ class TopicListBlock extends AbstractBlock {
 	/** @var callable|null Optional phase timing observer for read-only maintenance benchmarking. */
 	private $benchmarkTimer;
 
-	/** @var bool Whether this block's next query runs the bounded A/B variant. */
-	private bool $benchmarkSkipCurrentRevisionRefetch = false;
-
-	public function setBenchmarkSkipCurrentRevisionRefetch( bool $skip ): void {
-		$this->benchmarkSkipCurrentRevisionRefetch = $skip;
-	}
-
 	/**
 	 * Record timings only when explicitly requested by the maintenance benchmark.
 	 * Standard API and page rendering do not install an observer.
@@ -376,7 +369,6 @@ class TopicListBlock extends AbstractBlock {
 		$phaseStarted = $this->beginBenchmarkPhase();
 		/** @var TopicListQuery $query */
 		$query = Container::get( 'query.topiclist' );
-		$query->setBenchmarkSkipCurrentRevisionRefetch( $this->benchmarkSkipCurrentRevisionRefetch );
 		$prefetchedRoots = [];
 		foreach ( $workflowIds as $id ) {
 			$alpha = $id->getAlphadecimal();
@@ -390,8 +382,6 @@ class TopicListBlock extends AbstractBlock {
 		try {
 			$found = $query->getResults( $page->getResults(), $prefetchedRoots );
 		} finally {
-			// Do not retain maintenance-only query behavior in the shared service.
-			$query->setBenchmarkSkipCurrentRevisionRefetch( false );
 			if ( $this->benchmarkTimer !== null ) {
 				$query->setBenchmarkTimer( null );
 			}
