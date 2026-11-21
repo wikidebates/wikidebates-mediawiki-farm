@@ -79,8 +79,15 @@ class RevisionActionPermissions {
 	/** @var callable|null Opt-in read-only benchmark timing observer. */
 	private $benchmarkTimer;
 
+	/** @var callable|null Separate query-only observer: do not mix query and formatting counters. */
+	private $primeBenchmarkTimer;
+
 	public function setBenchmarkTimer( ?callable $observer ): void {
 		$this->benchmarkTimer = $observer;
+	}
+
+	public function setPrimeBenchmarkTimer( ?callable $observer ): void {
+		$this->primeBenchmarkTimer = $observer;
 	}
 
 	/**
@@ -411,13 +418,29 @@ class RevisionActionPermissions {
 	 */
 	public function primeCacheForView( array $revisions ) {
 		$this->ensureCacheIsFresh();
+		$rootNanoseconds = 0;
+		$boardNanoseconds = 0;
+		$observer = $this->primeBenchmarkTimer;
 		foreach ( $revisions as $revision ) {
 			if ( !( $revision instanceof AbstractRevision ) ) {
 				continue;
 			}
 
+			$started = $observer !== null ? hrtime( true ) : null;
 			$this->getCachedRoot( $revision );
+			if ( $started !== null ) {
+				$rootNanoseconds += hrtime( true ) - $started;
+			}
+
+			$started = $observer !== null ? hrtime( true ) : null;
 			$this->getCachedBoardWorkflow( $revision );
+			if ( $started !== null ) {
+				$boardNanoseconds += hrtime( true ) - $started;
+			}
+		}
+		if ( $observer !== null ) {
+			$observer( 'query_detail_prime_root_revisions', round( $rootNanoseconds / 1000000, 3 ) );
+			$observer( 'query_detail_prime_board_workflows', round( $boardNanoseconds / 1000000, 3 ) );
 		}
 	}
 

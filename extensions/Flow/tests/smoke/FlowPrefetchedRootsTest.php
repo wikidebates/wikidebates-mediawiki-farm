@@ -98,6 +98,9 @@ $query->setBenchmarkTimer(
 		$queryTiming[$phase][] = $milliseconds;
 	}
 );
+$primeObserver = new ReflectionProperty( RevisionActionPermissions::class, 'primeBenchmarkTimer' );
+check( $primeObserver->getValue( $perms ) !== null,
+	'Query observer propagates to permission priming without changing formatting metrics' );
 $rows = $query->getResults( [ $rootId ], [ $rootId->getAlphadecimal() => $root ] );
 check( count( $storage->requests ) === 1, 'One latest-post batch is issued' );
 check( count( $storage->requests[0] ) === 1, 'Already loaded root is absent from latest-revision SQL' );
@@ -107,7 +110,8 @@ check( $rows[0]->replies === [ $replyId->getAlphadecimal() ], 'Replies remain at
 foreach ( [
 	'prepare_roots', 'collect_post_ids', 'collect_revisions', 'load_metadata',
 	'prime_topic_keys', 'prime_permissions', 'filter_visible_topics',
-	'collect_summaries', 'collect_watch_status', 'build_visible_rows', 'attach_replies',
+	'collect_summaries', 'collect_watch_status', 'build_visible_rows',
+	'visible_row_permissions', 'attach_replies',
 ] as $name ) {
 	check(
 		count( $queryTiming['query_detail_' . $name] ?? [] ) === 1 &&
@@ -116,6 +120,8 @@ foreach ( [
 	);
 }
 $query->setBenchmarkTimer( null );
+check( $primeObserver->getValue( $perms ) === null,
+	'Query observer removal also clears the permission priming callback' );
 $queryTimingCount = array_sum( array_map( 'count', $queryTiming ) );
 
 // A root from another page (or keyed to the wrong topic) must never be

@@ -286,6 +286,30 @@ $permissions->setBenchmarkTimer( null );
 check( $permissions->isAllowed( $post, 'view' ), 'Disabling profiling preserves cached permission' );
 check( array_sum( array_map( 'count', $trace ) ) === $traceCount,
 	'Disabling profiling stops all permission metrics' );
+ 
+// Query-only profiling must distinguish priming root and board workflows
+// without altering any permission decision or the formatting observer.
+$primeTrace = [];
+$permissions->clearCache();
+$permissions->setPrimeBenchmarkTimer(
+	static function ( string $phase, float $milliseconds ) use ( &$primeTrace ): void {
+		$primeTrace[$phase][] = $milliseconds;
+	}
+);
+$permissions->primeCacheForView( [ $topic, $post ] );
+foreach ( [ 'prime_root_revisions', 'prime_board_workflows' ] as $phase ) {
+	$key = 'query_detail_' . $phase;
+	check( count( $primeTrace[$key] ?? [] ) === 1 && $primeTrace[$key][0] >= 0,
+		'Priming profiler emits one nonnegative ' . $phase . ' timing' );
+}
+$primeTraceCount = array_sum( array_map( 'count', $primeTrace ) );
+$permissions->setPrimeBenchmarkTimer( null );
+$permissions->primeCacheForView( [ $post ] );
+check( array_sum( array_map( 'count', $primeTrace ) ) === $primeTraceCount,
+	'Disabling query priming profiling stops all measurements' );
+check( $permissions->isAllowed( $post, 'view' ),
+	'Opt-in priming profiler does not change view permission decisions' );
+
 
 
 $permissions->setUser( new User( [] ) );
