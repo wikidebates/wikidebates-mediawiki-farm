@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Chromium smoke checks using actual bundled JS, simulated MediaWiki services.
+"""Chromium/Firefox smoke checks using actual bundled JS, simulated MediaWiki services.
 
 Run from any directory with Python Playwright and Chromium installed:
-    python extensions/PageFormsWikidebates/tests/browser/editing-smoke.py
+    PF_BROWSER=firefox python extensions/PageFormsWikidebates/tests/browser/editing-smoke.py
 No wiki API or production server is contacted.
 """
 from pathlib import Path
@@ -15,7 +15,13 @@ libs = root / 'extensions/PageFormsWikidebates/libs'
 
 errors = []
 with sync_playwright() as p:
-	browser = p.chromium.launch(executable_path=os.environ.get('CHROMIUM', '/usr/bin/chromium'), headless=True, args=['--no-sandbox'])
+	engine = os.environ.get('PF_BROWSER', 'chromium').lower()
+	if engine == 'firefox':
+		browser = p.firefox.launch(headless=True)
+	elif engine == 'chromium':
+		browser = p.chromium.launch(executable_path=os.environ.get('CHROMIUM', '/usr/bin/chromium'), headless=True, args=['--no-sandbox'])
+	else:
+		raise ValueError('Unsupported PF_BROWSER: ' + engine)
 	page = browser.new_page(viewport={'width': 1000, 'height': 700})
 	page.on('pageerror', lambda error: errors.append(str(error)))
 	page.set_content('<!doctype html><html><head></head><body></body></html>')
