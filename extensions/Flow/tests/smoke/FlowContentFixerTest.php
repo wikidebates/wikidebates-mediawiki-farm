@@ -280,6 +280,66 @@ namespace {
 		'Custom revision getContent override retains the original fallback path' );
 	$fullFixer->setBenchmarkReuseDecodedDom( false );
 
+
+	// A site-level switch must default to off, be overridable for benchmark
+	// A/B checks, and recover its configured value when the override is cleared.
+	$manifest = json_decode( file_get_contents( __DIR__ . '/../../extension.json' ), true, 512, JSON_THROW_ON_ERROR );
+	check( ( $manifest['config']['FlowReuseDecodedDom']['value'] ?? null ) === false,
+		'Site-level DOM reuse must default to false' );
+	$wiring = file_get_contents( __DIR__ . '/../../includes/ServiceWiring.php' );
+	check( str_contains( $wiring, "get( 'FlowReuseDecodedDom' ) === true" ),
+		'Service wiring explicitly reads the opt-in setting' );
+
+	$flagHtml = '<body><p>Feature <strong>flag</strong> &amp; fallback.</p></body>';
+	$flagEvents = [];
+	$fullFixer->setBenchmarkTimer(
+		static function ( string $phase, float $milliseconds ) use ( &$flagEvents ): void {
+			$flagEvents[] = $phase;
+		}
+	);
+	$fullFixer->setBenchmarkReuseDecodedDom( null );
+	$fullFixer->setReuseDecodedDom( false );
+	$flagBaseline = $fullFixer->getContent( new SafetyCheckedHtmlRevision( $title, $flagHtml ) );
+	check( in_array( 'format_detail_content_dom_parse', $flagEvents, true ),
+		'Default-off mode retains the original second DOM parse' );
+
+	$flagEvents = [];
+	$fullFixer->setReuseDecodedDom( true );
+	$flagOptimized = $fullFixer->getContent( new SafetyCheckedHtmlRevision( $title, $flagHtml ) );
+	check( $flagOptimized === $flagBaseline, 'Configured DOM reuse preserves exact HTML' );
+	check( in_array( 'format_detail_content_reused_dom', $flagEvents, true ) &&
+		!in_array( 'format_detail_content_dom_parse', $flagEvents, true ),
+		'Opt-in mode reuses the prepared DOM without reparsing' );
+
+	$flagEvents = [];
+	$fullFixer->setBenchmarkReuseDecodedDom( false );
+	$flagForcedLegacy = $fullFixer->getContent( new SafetyCheckedHtmlRevision( $title, $flagHtml ) );
+	check( $flagForcedLegacy === $flagBaseline &&
+		in_array( 'format_detail_content_dom_parse', $flagEvents, true ),
+		'Maintenance can force the original path even when the site flag is enabled' );
+
+	$flagEvents = [];
+	$fullFixer->setBenchmarkReuseDecodedDom( true );
+	$flagForcedReuse = $fullFixer->getContent( new SafetyCheckedHtmlRevision( $title, $flagHtml ) );
+	check( $flagForcedReuse === $flagBaseline &&
+		in_array( 'format_detail_content_reused_dom', $flagEvents, true ),
+		'Maintenance can force DOM reuse independent of the site setting' );
+
+	$flagEvents = [];
+	$fullFixer->setBenchmarkReuseDecodedDom( null );
+	$flagRestored = $fullFixer->getContent( new SafetyCheckedHtmlRevision( $title, $flagHtml ) );
+	check( $flagRestored === $flagBaseline &&
+		in_array( 'format_detail_content_reused_dom', $flagEvents, true ),
+		'Clearing the benchmark override restores the configured optimization' );
+
+	$flagEvents = [];
+	$fullFixer->setReuseDecodedDom( false );
+	$flagDisabled = $fullFixer->getContent( new SafetyCheckedHtmlRevision( $title, $flagHtml ) );
+	check( $flagDisabled === $flagBaseline &&
+		in_array( 'format_detail_content_dom_parse', $flagEvents, true ),
+		'Disabling the site flag immediately restores the previous parsing path' );
+	$fullFixer->setBenchmarkTimer( null );
+
 	echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " HTML/link-batching assertions\n";
 
 }
