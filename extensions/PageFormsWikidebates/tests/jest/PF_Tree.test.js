@@ -27,7 +27,7 @@ beforeEach( async () => {
 		options = opts;
 		return this;
 	};
-	require( '../../../libs/PF_tree.js' );
+	require( '../../libs/PF_tree.js' );
 } );
 afterEach( () => {
 	delete $.fn.jstree;
