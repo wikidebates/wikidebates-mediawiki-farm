@@ -470,6 +470,11 @@ return [
 			new BaseHrefFixer( $wgArticlePath, $services->getUrlUtils() ),
 			new ExtLinkFixer( $services->getUrlUtils() )
 		);
+		// Read the opt-in once per service instance; the benchmark can
+		// override it temporarily without changing the site configuration.
+		$contextFixer->setReuseDecodedDom(
+			$services->getMainConfig()->get( 'FlowReuseDecodedDom' ) === true
+		);
 
 		return new Templating(
 			$services->getService( 'FlowUserNameRepository' ),
