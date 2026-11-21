@@ -176,19 +176,29 @@
 		"PFCategoryAutocomplete": "includes/PF_CategoryAutocomplete.php"
 	},
 	"ResourceModules": {
+		"ext.pageforms.editstate": {
+			"scripts": "libs/PF_editState.js",
+			"dependencies": [
+				"mediawiki.util"
+			],
+			"targets": [
+				"desktop",
+				"mobile"
+			]
+		},
 		"ext.pageforms.main": {
 			"scripts": [
 				"libs/PF_lazyWidgets.js",
 				"libs/PF_dependentFields.js",
 				"libs/PF_formErrors.js",
 				"libs/PF_instances.js",
-				"libs/PF_editState.js",
 				"libs/PF_drafts.js",
 				"libs/PF_formSubmission.js",
 				"libs/PageForms.js",
 				"libs/PF_preview.js"
 			],
 			"dependencies": [
+				"ext.pageforms.editstate",
 				"mediawiki.util",
 				"mediawiki.api",
 				"mediawiki.action.edit"
