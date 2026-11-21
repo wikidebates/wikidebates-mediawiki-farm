@@ -132,8 +132,9 @@
 	 *  if given, the topic list will be returned with topics that
 	 *  are after (and including) the topic with the given uuid or
 	 *  after the given timestamp.
-	 * @param {string} [config.toconly] Receive a stripped reply that fits the ToC. For more information
+	 * @param {boolean} [config.toconly] Receive a stripped reply that fits the ToC. For more information
 	 *  see 'toconly' in the API documentation.
+	 * @param {number} [config.limit] Number of topics requested, default 50 for ToC, 10 otherwise
 	 * @return {jQuery.Promise} Promise that is resolved with the topiclist response
 	 */
 	mw.flow.dm.APIHandler.prototype.getTopicList = function ( orderType, config ) {
@@ -144,7 +145,7 @@
 		config = config || {};
 
 		params.vtltoconly = !!config.toconly;
-		params.vtllimit = config.toconly ? 50 : 10;
+		params.vtllimit = config.limit || ( config.toconly ? 50 : 10 );
 		params.vtlsortby = orderType;
 
 		if ( orderType === 'newest' ) {

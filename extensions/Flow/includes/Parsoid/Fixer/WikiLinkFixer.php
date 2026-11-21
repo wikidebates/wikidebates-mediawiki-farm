@@ -41,6 +41,36 @@ class WikiLinkFixer implements Fixer {
 	}
 
 	/**
+	 * Warm MediaWiki's LinkCache before LinkRenderer formats individual anchors.
+	 * The title resolution must be identical to apply(), including relative links.
+	 *
+	 * @param iterable<DOMNode> $nodes
+	 * @param Title $pageTitle
+	 */
+	public function preload( iterable $nodes, Title $pageTitle ): void {
+		foreach ( $nodes as $node ) {
+			if ( !$node instanceof DOMElement ) {
+				continue;
+			}
+			$href = $node->getAttribute( 'href' );
+			if ( $href === '' ) {
+				continue;
+			}
+			$target = Utils::createRelativeTitle( rawurldecode( $href ), $pageTitle );
+			if ( $target !== null ) {
+				$this->batch->addObj( $target );
+			}
+		}
+		if ( !$this->batch->isEmpty() ) {
+			$this->batch->setCaller( __METHOD__ );
+			$this->batch->execute();
+			// The service is reused while other messages are rendered. Do not
+			// requery earlier titles on a later message.
+			$this->batch->setArray( [] );
+		}
+	}
+
+	/**
 	 * Parsoid ignores red links. With good reason: redlinks should only be
 	 * applied when rendering the content, not when it's created.
 	 *

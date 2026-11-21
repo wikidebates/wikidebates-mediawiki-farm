@@ -73,6 +73,15 @@ class TopicListBlock extends AbstractBlock {
 	 */
 	private const TOCLIMIT = 50;
 
+	/** @var PagerPage|null The full, unfiltered page already loaded for initial rendering. */
+	private $fullPageForToc;
+
+	/** @var Workflow[] Workflows already fetched for the full page. */
+	private $fullWorkflowsForToc = [];
+
+	/** @var string|null Sort mode of the saved initial page. */
+	private $fullPageSortForToc;
+
 	protected function validate() {
 		// for now, new topic is considered a new post; perhaps some day topic creation should get it's own permissions?
 		if (
@@ -213,6 +222,35 @@ class TopicListBlock extends AbstractBlock {
 		// submitted or defaulted to this is the resulting sort. ex: newest
 		$tocApiParams['sortby'] = $findOptions['sortby'];
 
+		// If the initial updated-sort page has no continuation, it contains
+		// every visible topic. Reuse its root revisions and workflows instead of
+		// running an identical first-page query. Never use a timestamp offset
+		// for partial pages: several topics may share the same update time.
+		if (
+			$tocApiParams['sortby'] === 'updated' && $this->fullPageForToc !== null &&
+			$this->fullPageSortForToc === 'updated' &&
+			!isset( $findOptions['pager-offset'] ) &&
+			count( $this->fullPageForToc->getResults() ) <= self::TOCLIMIT &&
+			!isset( $this->fullPageForToc->getPagingLinksOptions()['fwd'] )
+		) {
+			$roots = [];
+			$workflows = [];
+			foreach ( $this->fullWorkflowsForToc as $workflow ) {
+				$id = $workflow->getId()->getAlphadecimal();
+				if ( isset( $this->topicRootRevisionCache[$id] ) ) {
+					$roots[$id] = $this->topicRootRevisionCache[$id];
+					$workflows[$id] = $workflow;
+				}
+			}
+			/** @var TocTopicListFormatter $formatter */
+			$formatter = Container::get( 'formatter.topiclist.toc' );
+			return [
+				'submitted' => $this->wasSubmitted() ? $this->submitted : $tocApiParams,
+				'errors' => $this->errors,
+				'sortby' => $findOptions['sortby'],
+			] + $formatter->formatApi( $this->workflow, $roots, $workflows, $this->fullPageForToc );
+		}
+
 		// In the case of 'newest' sort, we could save ourselves trouble and only
 		// produce the necessary 40 topics that are missing from the ToC, by taking
 		// the latest UUID from the topic list.
@@ -278,6 +316,12 @@ class TopicListBlock extends AbstractBlock {
 		}
 
 		$workflows = $this->storage->getMulti( 'Workflow', $workflowIds );
+
+		if ( !$isTocOnly ) {
+			$this->fullPageForToc = $page;
+			$this->fullWorkflowsForToc = $workflows;
+			$this->fullPageSortForToc = $findOptions['sortby'];
+		}
 
 		if ( $isTocOnly ) {
 			// We don't need any further data, so we skip the TopicListQuery.
