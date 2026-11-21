@@ -274,3 +274,21 @@ test.each( [ 'editor', 'validator' ] )( 'a stalled %s times out and late complet
 		jest.useRealTimers();
 	}
 } );
+
+test( 'save waits for an already-started lazy VisualEditor but not other offscreen fields', async () => {
+	let complete;
+	mw.veForAllWaitForPending = jest.fn( () => new Promise( ( resolve ) => { complete = resolve; } ) );
+	$( '#body' ).addClass( 'visualeditor' );
+	await click();
+	expect( mw.veForAllWaitForPending ).toHaveBeenCalledTimes( 1 );
+	expect( env.requests ).toHaveLength( 0 );
+	$( '#body' ).val( 'Typed during lazy editor startup' );
+	complete();
+	await settle();
+	expect( env.requests ).toHaveLength( 1 );
+	expect( new URLSearchParams( env.requests[ 0 ].options.data.query ).get( 'Item[Body]' ) )
+		.toBe( 'Typed during lazy editor startup' );
+	env.requests[ 0 ].deferred.resolve( success );
+	await settle();
+	unlocked();
+} );
