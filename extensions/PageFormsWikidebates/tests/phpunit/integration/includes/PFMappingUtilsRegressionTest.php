@@ -23,6 +23,19 @@ class PFMappingUtilsRegressionTest extends MediaWikiIntegrationTestCase {
 		];
 	}
 
+	public function testDuplicatePropertyLookupsHaveTheSameSingleLabel(): void {
+		if ( !class_exists( '\\SMW\\DIWikiPage' ) ) {
+			$this->markTestSkipped( 'Requires active SemanticMediaWiki' );
+		}
+		$this->assertSame(
+			[ 'PFRegressionNoAnnotation' => 'PFRegressionNoAnnotation' ],
+			PFMappingUtils::getValuesWithMappingProperty(
+				[ 'PFRegressionNoAnnotation', 'PFRegressionNoAnnotation' ],
+				'PFRegressionUnusedProperty'
+			)
+		);
+	}
+
 	public function testEmptyValuesNeedNoMapping(): void {
 		$this->assertSame( [], PFMappingUtils::getValuesWithMappingTemplate( [], 'Invalid[Template' ) );
 	}
