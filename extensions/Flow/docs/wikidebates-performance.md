@@ -220,3 +220,32 @@ The same `--breakdown` command is used; no new option is needed.
 When the maintenance timer is off, the formatters do not measure time.
 The observer is removed after each instrumented render, including
 exception paths. No content, revision, or private data is logged.
+
+## Short-lived workflow edit-permission reuse
+
+On a fully rendered discussion board, the `RevisionFormatter::buildActions()`
+code checked `Workflow::userCan( 'edit', $viewer )` separately for every post,
+even though all posts in one topic share the same Workflow object. Each
+check invokes MediaWiki core permissions and may also check blocked status.
+
+While `TopicListFormatter::buildResult()` is formatting a single batch,
+`RevisionFormatter` now reuses one positive **or negative** edit decision
+per Workflow object and exact viewer User object. The batch cache is cleared
+in the existing `finally` block along with primed reply parents, even if
+serialization raises an exception. Viewer changes during the batch reset
+all edit decisions. Calls to `buildActions()` outside that explicit batch
+retain the original uncached check. The cache is local to one PHP renderer
+batch, not a persistent or cross-request authorization cache.
+
+The change does not cache or bypass per-revision Flow action permissions,
+moderation checks, or permissions for other actions. It does not change
+HTML, JSON response fields, or the interface. Isolated smoke tests verify
+negative and positive decisions, two different workflow objects, switching
+viewers, batch cleanup and updated rights in a later batch.
+
+**Measure on a real board:** run the existing
+`Flow:FlowBenchmarkTopicList --breakdown` command with `--limit=50` and
+compare three samples (especially runs 2–3) before and after the deploy.
+These wall-clock measurements include unrelated variability; do not infer
+a guaranteed improvement or an individual permission-manager cost without
+more granular profiling.
