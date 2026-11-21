@@ -102,6 +102,57 @@ namespace {
 		'Unprimed history or other formatter calls still use the original fallback' );
 	check( $storageHits === 1, 'Clearing the batch removes the in-process revision shortcut' );
 
+	// A topic workflow's edit check is the same for all posts in one batch.
+	// The decision must never persist across a batch or a change of viewer.
+	class CountedEditWorkflow extends \Flow\Model\Workflow {
+		public int $checks = 0;
+		public function getArticleTitle() {
+			return \MediaWiki\Title\Title::newFromText( 'Wikidébats:Bistro' );
+		}
+		public function userCan( $permission, $user ) {
+			check( $permission === 'edit', 'Only workflow edit checks are cached' );
+			$this->checks++;
+			return in_array( 'block', $user->rights, true );
+		}
+	}
+	$workflowOne = new CountedEditWorkflow;
+	$workflowTwo = new CountedEditWorkflow;
+	$editRow = new FormatterRow;
+	$editRow->workflow = $workflowOne;
+	$permissions->setUser( $reader );
+	$renderer->primePostRevisions( [] );
+	check( $renderer->buildActions( $editRow ) === [], 'Reader cannot edit the workflow' );
+	check( $renderer->buildActions( $editRow ) === [], 'Repeated reader edit denial is preserved' );
+	check( $workflowOne->checks === 1, 'Duplicate posts share one workflow edit decision' );
+	$otherRow = new FormatterRow;
+	$otherRow->workflow = $workflowTwo;
+	check( $renderer->buildActions( $otherRow ) === [], 'Another topic still denies editing' );
+	check( $workflowTwo->checks === 1, 'Distinct workflows have separate decisions' );
+
+	$editCheck = new \ReflectionMethod( RevisionFormatter::class, 'canEditWorkflow' );
+	check( $editCheck->invoke( $renderer, $workflowOne, $moderator ),
+		'Changing viewer recomputes and allows a moderator' );
+	check( $workflowOne->checks === 2, 'New viewer does not reuse reader denial' );
+	check( $editCheck->invoke( $renderer, $workflowOne, $moderator ),
+		'Moderator permission can be reused in the same batch' );
+	check( $workflowOne->checks === 2, 'Same moderator checks only once per workflow' );
+	check( !$editCheck->invoke( $renderer, $workflowOne, $reader ),
+		'Moderator permission is never reused for a reader' );
+	check( $workflowOne->checks === 3, 'Switching back to reader clears moderator decisions' );
+
+	$renderer->clearPrimedPostRevisions();
+	check( !$editCheck->invoke( $renderer, $workflowOne, $reader ),
+		'Outside a formatting batch, edits are checked each time' );
+	check( !$editCheck->invoke( $renderer, $workflowOne, $reader ),
+		'Outside a formatting batch, no implicit cache is retained' );
+	check( $workflowOne->checks === 5, 'No edit decision survives batch cleanup' );
+
+	$renderer->primePostRevisions( [] );
+	check( !$editCheck->invoke( $renderer, $workflowOne, $reader ),
+		'New batch rechecks the workflow for the same viewer' );
+	check( $workflowOne->checks === 6, 'Fresh batch does not reuse an old decision' );
+	$renderer->clearPrimedPostRevisions();
+
 	class SpyFormatter extends RevisionFormatter {
 		public int $primeCount = 0;
 		public int $clearCount = 0;
