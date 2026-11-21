@@ -42,6 +42,26 @@ class TopicListQuery extends AbstractQuery {
 	/** @var int|null Generation of the storage snapshot cached by this query. */
 	private $cacheGeneration;
 
+	/** @var callable|null Read-only profiling, enabled only for the maintenance benchmark. */
+	private $benchmarkTimer;
+
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+	}
+
+	private function beginBenchmarkStep(): ?int {
+		return $this->benchmarkTimer !== null ? hrtime( true ) : null;
+	}
+
+	private function endBenchmarkStep( string $phase, ?int $started ): void {
+		if ( $started !== null && $this->benchmarkTimer !== null ) {
+			( $this->benchmarkTimer )(
+				'query_detail_' . $phase,
+				round( ( hrtime( true ) - $started ) / 1000000, 3 )
+			);
+		}
+	}
+
 	/**
 	 * @param ManagerGroup $storage
 	 * @param TreeRepository $treeRepository
@@ -67,6 +87,7 @@ class TopicListQuery extends AbstractQuery {
 	 * @suppress PhanUndeclaredMethod Types not inferred from instanceof
 	 */
 	public function getResults( array $topicIdsOrEntries, array $prefetchedRoots = [] ) {
+		$started = $this->beginBenchmarkStep();
 		$this->ensureCacheIsFresh();
 		$topicIds = $this->getTopicIds( $topicIdsOrEntries );
 
@@ -85,12 +106,18 @@ class TopicListQuery extends AbstractQuery {
 				$this->postCache[$alpha] = $revision;
 			}
 		}
+		$this->endBenchmarkStep( 'prepare_roots', $started );
 
 		// Subclasses can override collectPostIds; never reuse a previous
 		// page's topic mapping if an override does not provide one.
+		$started = $this->beginBenchmarkStep();
 		$this->lastPostTopicKeys = [];
 		$allPostIds = $this->collectPostIds( $topicIds );
+		$this->endBenchmarkStep( 'collect_post_ids', $started );
+
+		$started = $this->beginBenchmarkStep();
 		$posts = $this->collectRevisions( $allPostIds );
+		$this->endBenchmarkStep( 'collect_revisions', $started );
 
 		$missing = array_diff(
 			array_keys( $allPostIds ),
@@ -103,25 +130,41 @@ class TopicListQuery extends AbstractQuery {
 			);
 		}
 
+		$started = $this->beginBenchmarkStep();
 		$this->loadMetadataBatch( $posts );
+		$this->endBenchmarkStep( 'load_metadata', $started );
+
 		// These associations came from the very subtree query used to select
 		// the posts. Reuse them for building permission cache keys, without
 		// pre-approving a single permission or bypassing moderation checks.
+		$started = $this->beginBenchmarkStep();
 		if ( $this->lastPostTopicKeys ) {
 			$this->permissions->primeTopicCacheKeysForView( $posts, $this->lastPostTopicKeys );
 		}
-		$this->permissions->primeCacheForView( $posts );
+		$this->endBenchmarkStep( 'prime_topic_keys', $started );
 
+		$started = $this->beginBenchmarkStep();
+		$this->permissions->primeCacheForView( $posts );
+		$this->endBenchmarkStep( 'prime_permissions', $started );
+
+		$started = $this->beginBenchmarkStep();
 		$visibleTopicIds = [];
 		foreach ( $posts as $post ) {
 			if ( $post->isTopicTitle() && $this->permissions->isAllowed( $post, 'view' ) ) {
 				$visibleTopicIds[] = $post->getPostId();
 			}
 		}
+		$this->endBenchmarkStep( 'filter_visible_topics', $started );
 
+		$started = $this->beginBenchmarkStep();
 		$topicSummary = $this->collectSummary( $visibleTopicIds );
-		$watchStatus = $this->collectWatchStatus( $visibleTopicIds );
+		$this->endBenchmarkStep( 'collect_summaries', $started );
 
+		$started = $this->beginBenchmarkStep();
+		$watchStatus = $this->collectWatchStatus( $visibleTopicIds );
+		$this->endBenchmarkStep( 'collect_watch_status', $started );
+
+		$started = $this->beginBenchmarkStep();
 		$results = [];
 		$replies = [];
 		foreach ( $posts as $post ) {
@@ -152,11 +195,14 @@ class TopicListQuery extends AbstractQuery {
 				\MWExceptionHandler::logException( $e );
 			}
 		}
+		$this->endBenchmarkStep( 'build_visible_rows', $started );
 
+		$started = $this->beginBenchmarkStep();
 		foreach ( $results as $result ) {
 			$alpha = $result->revision->getPostId()->getAlphadecimal();
 			$result->replies = $replies[$alpha] ?? [];
 		}
+		$this->endBenchmarkStep( 'attach_replies', $started );
 
 		return $results;
 	}
