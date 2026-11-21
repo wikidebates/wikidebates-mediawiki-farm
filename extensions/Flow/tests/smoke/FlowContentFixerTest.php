@@ -202,6 +202,38 @@ namespace {
 	check( $fixer->getContent( $revision ) === $source,
 		'Disabling profiling restores the unchanged noninstrumented path' );
 
+
+	// The optional WikiLink target memo must only avoid resolving the same
+	// href twice inside one message; it must not change output or context.
+	$resolvedLinks = new \Flow\Parsoid\Fixer\WikiLinkFixer( new \MediaWiki\Cache\LinkBatch );
+	$linkOnlyFixer = new \Flow\Parsoid\ContentFixer( $resolvedLinks );
+	$boards = [
+		\MediaWiki\Title\Title::newFromText( 'Talk:Board' ),
+		\MediaWiki\Title\Title::newFromText( 'Talk:OtherBoard' ),
+	];
+	$linkFixtures = [
+		'<body><p><a href="./Existing" rel="mw:WikiLink">One</a> ' .
+			'<a href="./Existing" rel="mw:WikiLink">Two</a> ' .
+			'<a href="./Missing" rel="mw:WikiLink">Missing</a></p></body>',
+		'<body><a href="#Section" rel="mw:WikiLink">Fragment</a> ' .
+			'<a href="./A%20B" rel="mw:WikiLink">Encoded</a></body>',
+		'<body><a href="" rel="mw:WikiLink">Empty</a> ' .
+			'<a rel="mw:WikiLink">Absent</a><a href="./Existing">Plain</a></body>',
+		'<body><p>Without wiki links &amp; with an entity.</p></body>',
+	];
+	foreach ( $boards as $board ) {
+		foreach ( $linkFixtures as $fixture ) {
+			$linkOnlyFixer->setBenchmarkReusePreloadedWikiLinkTitles( false );
+			$baseline = $linkOnlyFixer->apply( $fixture, $board );
+			$linkOnlyFixer->setBenchmarkReusePreloadedWikiLinkTitles( true );
+			$reused = $linkOnlyFixer->apply( $fixture, $board );
+			check( $baseline === $reused,
+				'Reusing preloaded link titles preserves exact HTML across pages and fixtures' );
+		}
+	}
+	$linkOnlyFixer->setBenchmarkReusePreloadedWikiLinkTitles( false );
+	check( $linkOnlyFixer->apply( $linkFixtures[0], $boards[0] ) !== '',
+		'Clearing benchmark-only WikiLink targets restores the ordinary path' );
 	// An inherited getContent('html') must still run the XSS hook, decoding
 	// and legacy handling before the experimental single-pass DOM can be used.
 	class SafetyCheckedHtmlRevision extends \Flow\Model\PostRevision {
