@@ -1181,35 +1181,30 @@ cache purge is required. The new HMAC diagnostics remain available in
 raw content, links, action tokens and user-specific fields from being emitted
 as plaintext in benchmark logs.
 
-## Maintenance A/B: memoizing complete serialized user payloads
+## Rejected A/B: memoizing full user serialization (2026-11-21)
 
-The 2026-11-21 French Bistro cold profile (242 posts) attributes a median
-17.803 ms to 726 calls to `RevisionFormatter::serializeUser()`. The
-formatter already caches *user links* by display name and viewer, and
-`UserNameBatch` caches resolved names, but it reconstructs the full payload
-(name, origin wiki, gender, links and ID) for each author/last-editor/creator
-role. This is only a **candidate** for improvement: 17.803 ms is an upper
-bound, not a promised whole-render saving.
+PR #54 introduced a maintenance-only `--reuse-serialized-users` experiment,
+motivated by 17.803 ms spent in 726 `RevisionFormatter::serializeUser()`
+calls in the initial Bistro profile (50 topics, 242 posts). The formatter
+already caches user links, and `UserNameBatch` caches resolved usernames.
 
-The off-by-default, **maintenance-only** flag `--reuse-serialized-users`
-memoizes the complete serialized user array during the topic-list formatting
-batch. The key distinguishes the exact input tuple (origin wiki, user ID,
-user IP), including false or null suppressed identities. It also requires
-the same viewer object before reuse; switching viewer clears the memo.
-`primePostRevisions()` resets the memo before each batch, and
-`clearPrimedPostRevisions()` clears it even on formatter exceptions.
-`TopicListBlock` resets the experiment on the shared formatter in a
-`finally` block. Normal page/API requests do **not** enable the flag.
+A twelve-process, three-series ABBA comparison with 6 runs per variant,
+`--reuse-html-dom` and `--diagnose-digests` returned **strict parity**
+for all inspected full-API, metadata, content, and identity fingerprints.
+However, its whole-render medians were:
 
-The experiment neither omits the `RevisionActionPermissions::isAllowed()`
-calls nor caches authorization decisions. It only reuses already generated
-user-facing metadata when all input identity components and the viewer match.
-Other query/formatter paths are unchanged. Run at least six independent PHP
-processes per variant, alternating `--reuse-serialized-users` on and off,
-with `--runs=1 --reuse-html-dom --diagnose-digests` and no `--breakdown`.
-Compare the full API HMAC, revision metadata HMAC, contents, ordered structure,
-root/post associations, and counts **across both variants**. Test moderator
-and suppressed-author cases separately before any rollout. Benchmark with
-`--breakdown` separately to see whether the 726 user-serialization calls
-become cheaper. Keep or discard the experiment based on reproducible total
-wall/CPU improvements, not merely timing a subphase.
+| Measure | Original | User memo | Difference (memo minus original) |
+| --- | ---: | ---: | ---: |
+| Wall time | 323.885 ms | 335.390 ms | +11.505 ms (+3.55%) |
+| CPU time | 296.065 ms | 296.525 ms | +0.460 ms (+0.16%) |
+
+There is **no demonstrated whole-render benefit**. The observed wall-time
+difference is not proof of a systematic regression because of independent
+process noise; the CPU medians are practically unchanged. Do not mistake
+17.803 ms of existing user serialization work for an attainable saving.
+The temporary memo, benchmark flag and experimental smoke assertions were
+therefore removed, without changing the ordinary user-link and username
+caches, moderation checks, permissions, other Flow optimizations or the API.
+
+Future work should focus on a measured cost that can be eliminated rather
+than duplicating caches that already work.

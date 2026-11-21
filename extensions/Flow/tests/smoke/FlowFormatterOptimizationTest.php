@@ -35,13 +35,6 @@ namespace MediaWiki\Context {
 	interface IContextSource {
 	}
 }
-namespace MediaWiki\WikiMap {
-	class WikiMap {
-		public static function getCurrentWikiId() {
-			return 'fr';
-		}
-	}
-}
 namespace {
 	require __DIR__ . '/bootstrap.php';
 
@@ -351,79 +344,6 @@ namespace {
 		'Partial updated-sort pages retain the original safe pagination' );
 	check( $block->renderTocApi( [], [ 'sortby' => 'updated', 'offset' => 123 ] ) === [ 'fallback' => true ],
 		'Explicit offset requests continue to use the ordinary query path' );
-
-	// The new user memo is experimental: it must preserve exact payloads,
-	// distinguish wiki/ID/IP (including suppressed identities), respect viewer
-	// rights, and be cleared on both normal completion and batch transitions.
-	$nameSpy = new class extends \Flow\Repository\UserNameBatch {
-		public int $calls = 0;
-		public function __construct() {
-		}
-		public function get( $wiki, $userId, $userIp = false ) {
-			$this->calls++;
-			return (int)$userId === 0 ? $userIp : 'Alice';
-		}
-	};
-	$genderSpy = new class {
-		public int $calls = 0;
-		public function getGenderOf( $name, $method ) {
-			$this->calls++;
-			return 'female';
-		}
-	};
-	( new \ReflectionProperty( RevisionFormatter::class, 'usernames' ) )->setValue( $renderer, $nameSpy );
-	( new \ReflectionProperty( RevisionFormatter::class, 'genderCache' ) )->setValue( $renderer, $genderSpy );
-	( new \ReflectionProperty( RevisionFormatter::class, 'permissions' ) )->setValue( $renderer, $permissions );
-	$permissions->setUser( $reader );
-	$renderer->setBenchmarkReuseSerializedUsers( true );
-	$renderer->primePostRevisions( [] );
-	$once = $renderer->serializeUser( 'fr', 42, false );
-	$twice = $renderer->serializeUser( 'fr', 42, false );
-	check( $once === $twice && $once['gender'] === 'female',
-		'Experimental memo preserves the complete repeat user payload' );
-	check( $nameSpy->calls === 1 && $genderSpy->calls === 1,
-		'Repeated user identity does not recompute name or gender' );
-	$otherWiki = $renderer->serializeUser( 'en', 42, false );
-	check( $otherWiki['gender'] === 'unknown' && $nameSpy->calls === 2,
-		'Different origin wiki is not conflated with a local identity' );
-	$anonymous = $renderer->serializeUser( 'fr', 0, '192.0.2.11' );
-	$renderer->serializeUser( 'fr', 0, '192.0.2.12' );
-	$anonymousAgain = $renderer->serializeUser( 'fr', 0, '192.0.2.11' );
-	check( $anonymous['name'] === '192.0.2.11' && $anonymous === $anonymousAgain,
-		'Anonymous identities are distinguished by their IP' );
-	check( $nameSpy->calls === 4,
-		'Only exact anonymous identity tuples are memoized' );
-	$hidden = $renderer->serializeUser( 'fr', 0, false );
-	check( $hidden['name'] === false && $hidden['links'] === [],
-		'Suppressed user names stay suppressed' );
-	$permissions->setUser( $moderator );
-	$moderatorView = $renderer->serializeUser( 'fr', 42, false );
-	check( isset( $moderatorView['links']['block'] ) && !isset( $once['links']['block'] ),
-		'Viewer changes invalidate user payloads and preserve block rights' );
-	check( $nameSpy->calls === 6,
-		'Viewer change forces a new name lookup rather than replaying old links' );
-	$renderer->clearPrimedPostRevisions();
-	$renderer->serializeUser( 'fr', 42, false );
-	check( $nameSpy->calls === 7, 'Finishing a batch clears the user memo' );
-	$renderer->setBenchmarkReuseSerializedUsers( false );
-	$renderer->serializeUser( 'fr', 42, false );
-	$renderer->serializeUser( 'fr', 42, false );
-	check( $nameSpy->calls === 9,
-		'Disabling the experiment restores repeated name lookups' );
-	$topicFormatter->setBenchmarkReuseSerializedUsers( true );
-	$memoEnabled = new \ReflectionProperty( RevisionFormatter::class, 'benchmarkReuseSerializedUsers' );
-	check( $memoEnabled->getValue( $spy ) === true,
-		'Topic formatter forwards the experimental setting to the revision serializer' );
-	$topicFormatter->setBenchmarkReuseSerializedUsers( false );
-	check( $memoEnabled->getValue( $spy ) === false,
-		'Topic formatter disables the experimental memo after rendering' );
-	$block->setBenchmarkReuseSerializedUsers( true );
-	$blockFlag = new \ReflectionProperty( \Flow\Block\TopicListBlock::class, 'benchmarkReuseSerializedUsers' );
-	check( $blockFlag->getValue( $block ) === true,
-		'Topic block accepts the opt-in maintenance setting' );
-	$block->setBenchmarkReuseSerializedUsers( false );
-	check( $blockFlag->getValue( $block ) === false,
-		'Topic block experiment can be disabled without changing default behavior' );
 
 	echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " formatter and viewer-cache assertions\n";
 }
