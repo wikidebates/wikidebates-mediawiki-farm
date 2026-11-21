@@ -376,7 +376,16 @@ class TopicListBlock extends AbstractBlock {
 				$prefetchedRoots[$alpha] = $this->topicRootRevisionCache[$alpha];
 			}
 		}
-		$found = $query->getResults( $page->getResults(), $prefetchedRoots );
+		if ( $this->benchmarkTimer !== null ) {
+			$query->setBenchmarkTimer( $this->benchmarkTimer );
+		}
+		try {
+			$found = $query->getResults( $page->getResults(), $prefetchedRoots );
+		} finally {
+			if ( $this->benchmarkTimer !== null ) {
+				$query->setBenchmarkTimer( null );
+			}
+		}
 		$this->endBenchmarkPhase( 'messages_and_permissions', $phaseStarted );
 		wfDebugLog( 'FlowDebug', 'Rendering topiclist for ids: ' . implode( ', ', array_map( static function ( UUID $id ) {
 			return $id->getAlphadecimal();
