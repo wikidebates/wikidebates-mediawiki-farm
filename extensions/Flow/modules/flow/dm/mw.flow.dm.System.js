@@ -103,6 +103,9 @@
 				offset: sortOrder === 'newest' ?
 					this.board.getOffsetId() :
 					this.board.getOffset(),
+				// Updated timestamps are not unique. Use the last topic ID as
+				// the second component of the pagination cursor.
+				offsetId: sortOrder === 'updated' ? this.board.getOffsetId() : null,
 				toconly: true,
 				limit: this.tocPostsLimit
 			} )

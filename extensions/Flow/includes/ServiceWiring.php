@@ -297,10 +297,11 @@ return [
 			$services->getService( 'FlowCache' ),
 			$services->getService( 'FlowStorage.TopicList.Backend' ),
 			$services->getService( 'FlowStorage.TopicList.Mapper' ),
-			'flow_topic_list_last_updated:list',
+			// A new key prevents reusing cached, timestamp-only sorted buckets.
+			'flow_topic_list_last_updated:list:v2',
 			[ 'topic_list_id' ],
 			[
-				'sort' => 'workflow_last_update_timestamp',
+				'sort' => [ 'workflow_last_update_timestamp', 'topic_id' ],
 				'order' => 'desc'
 			]
 		);

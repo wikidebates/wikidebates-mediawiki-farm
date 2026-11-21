@@ -5,6 +5,7 @@ namespace Flow\Block;
 use Flow\Container;
 use Flow\Data\Pager\Pager;
 use Flow\Data\Pager\PagerPage;
+use Flow\Data\Pager\TopicListCursor;
 use Flow\Exception\FailCommitException;
 use Flow\Formatter\TocTopicListFormatter;
 use Flow\Formatter\TopicListFormatter;
@@ -340,7 +341,14 @@ class TopicListBlock extends AbstractBlock {
 
 		/** @var TopicListQuery $query */
 		$query = Container::get( 'query.topiclist' );
-		$found = $query->getResults( $page->getResults() );
+		$prefetchedRoots = [];
+		foreach ( $workflowIds as $id ) {
+			$alpha = $id->getAlphadecimal();
+			if ( isset( $this->topicRootRevisionCache[$alpha] ) ) {
+				$prefetchedRoots[$alpha] = $this->topicRootRevisionCache[$alpha];
+			}
+		}
+		$found = $query->getResults( $page->getResults(), $prefetchedRoots );
 		wfDebugLog( 'FlowDebug', 'Rendering topiclist for ids: ' . implode( ', ', array_map( static function ( UUID $id ) {
 			return $id->getAlphadecimal();
 		}, $workflowIds ) ) );
@@ -428,8 +436,9 @@ class TopicListBlock extends AbstractBlock {
 				$findOptions = [
 					// @phan-suppress-next-line PhanUselessBinaryAddRight
 					'sortby' => 'updated',
-					'sort' => 'workflow_last_update_timestamp',
+					'sort' => TopicListCursor::SORT,
 					'order' => 'desc',
+					'pager-composite-cursor' => true,
 				] + $findOptions;
 
 				if ( $requestOptions['offset-id'] ) {
@@ -460,7 +469,13 @@ class TopicListBlock extends AbstractBlock {
 		if ( $requestOptions['offset-id'] ) {
 			$findOptions['pager-offset'] = UUID::create( $requestOptions['offset-id'] );
 		} elseif ( $requestOptions['offset'] ) {
-			$findOptions['pager-offset'] = intval( $requestOptions['offset'] );
+			if ( $findOptions['sortby'] === 'updated' ) {
+				$cursor = (string)$requestOptions['offset'];
+				TopicListCursor::parse( $cursor );
+				$findOptions['pager-offset'] = $cursor;
+			} else {
+				$findOptions['pager-offset'] = intval( $requestOptions['offset'] );
+			}
 		}
 
 		if ( $requestOptions['offset-dir'] ) {

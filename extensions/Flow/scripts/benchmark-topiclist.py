@@ -18,11 +18,11 @@ from urllib.request import Request, urlopen
 MAX_BYTES = 32 * 1024 * 1024
 
 
-def fetch(api, page, limit, toconly):
+def fetch(api, page, limit, toconly, sortby="newest"):
 	params = {
 		'action': 'flow', 'submodule': 'view-topiclist', 'page': page,
 		'format': 'json', 'formatversion': 2, 'vtllimit': limit,
-		'vtlsortby': 'newest', 'vtlformat': 'fixed-html', 'maxlag': 5,
+		'vtlsortby': sortby, 'vtlformat': 'fixed-html', 'maxlag': 5,
 	}
 	if toconly:
 		params['vtltoconly'] = 1
@@ -69,6 +69,8 @@ def main():
 	parser.add_argument('--page', required=True, help='Existing Flow discussion board title')
 	parser.add_argument('--runs', type=int, default=3, help='1 to 5 comparisons (default 3)')
 	parser.add_argument('--limit', type=int, default=10, help='1 to 100 topics (default 10)')
+	parser.add_argument('--sortby', choices=('newest', 'updated'), default='updated',
+		help='Topic ordering to benchmark (default updated)')
 	args = parser.parse_args()
 	url = urlsplit(args.api)
 	if url.scheme not in ('http', 'https') or not url.netloc or url.query or url.fragment or url.username or url.password:
@@ -82,7 +84,7 @@ def main():
 			for toconly in ((False, True) if run % 2 == 0 else (True, False)):
 				if rows:
 					time.sleep(1)
-				row = fetch(args.api, args.page, args.limit, toconly)
+				row = fetch(args.api, args.page, args.limit, toconly, args.sortby)
 				row['run'] = run + 1
 				rows.append(row)
 	except (HTTPError, URLError, TimeoutError, ValueError, OSError) as error:
@@ -93,7 +95,7 @@ def main():
 		for mode in ('full', 'toc')
 	}
 	print(json.dumps({
-		'page': args.page, 'limit': args.limit,
+		'page': args.page, 'limit': args.limit, 'sortby': args.sortby,
 		'note': 'Anonymous, sequential requests. No cache purge. Includes network latency; not server CPU time. TOC is not a replacement for full rendering.',
 		'median_ms': medians, 'samples': rows,
 	}, indent='\t'))

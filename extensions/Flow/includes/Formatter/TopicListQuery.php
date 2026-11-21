@@ -55,12 +55,31 @@ class TopicListQuery extends AbstractQuery {
 
 	/**
 	 * @param UUID[]|TopicListEntry[] $topicIdsOrEntries
+	 * @param PostRevision[] $prefetchedRoots Latest, already moderated root revisions indexed by topic ID.
+	 *  They must have been fetched for this page, not copied from a previous request.
 	 * @return FormatterRow[]
 	 * @suppress PhanUndeclaredMethod Types not inferred from instanceof
 	 */
-	public function getResults( array $topicIdsOrEntries ) {
+	public function getResults( array $topicIdsOrEntries, array $prefetchedRoots = [] ) {
 		$this->ensureCacheIsFresh();
 		$topicIds = $this->getTopicIds( $topicIdsOrEntries );
+
+		// TopicListBlock has already fetched the current root revisions to filter
+		// hidden/deleted topics. Reuse only roots belonging to this page. Other
+		// callers (e.g. search) continue to use the ordinary revision lookup.
+		$requested = [];
+		foreach ( $topicIds as $id ) {
+			$requested[$id->getAlphadecimal()] = true;
+		}
+		foreach ( $prefetchedRoots as $alpha => $revision ) {
+			if (
+				$revision instanceof PostRevision && isset( $requested[$alpha] ) &&
+				$revision->getPostId()->getAlphadecimal() === $alpha
+			) {
+				$this->postCache[$alpha] = $revision;
+			}
+		}
+
 		$allPostIds = $this->collectPostIds( $topicIds );
 		$posts = $this->collectRevisions( $allPostIds );
 

@@ -112,6 +112,7 @@ class Pager {
 			'offset-dir' => $this->options['pager-dir'],
 			$storageOffsetKey => $this->options['pager-offset'],
 			'include-offset' => $this->options['pager-include-offset'],
+			'composite-cursor' => !empty( $this->options['pager-composite-cursor'] ),
 		];
 		$offset = $this->options['pager-offset'];
 		$results = [];

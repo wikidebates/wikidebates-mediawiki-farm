@@ -113,12 +113,10 @@
 		if ( this.topicIdSort === 'newest' ) {
 			apiParameters[ 'vtloffset-id' ] = topicId;
 		} else {
-			// TODO: It would seem to be safer to pass 'offset-id' for both (what happens
-			// if there are two posts at the same timestamp?).  (Also, that would avoid needing
-			// the timestamp in the TOC-only API response).  However, currently
-			// we must pass 'offset' for 'updated' order to get valid results.
-
-			apiParameters.vtloffset = moment.utc( this.updateTimestampsByTopicId[ topicId ] ).format( 'YYYYMMDDHHmmss' );
+			// Include the topic ID to identify the exact position among topics
+			// whose last-update timestamps are identical.
+			apiParameters.vtloffset = moment.utc( this.updateTimestampsByTopicId[ topicId ] )
+				.format( 'YYYYMMDDHHmmss' ) + '|' + topicId;
 		}
 
 		flowBoard.Api.apiCall( apiParameters )
