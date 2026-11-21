@@ -171,9 +171,11 @@ namespace {
 		}
 		public function primePostRevisions( array $rows ): void {
 			$this->primeCount++;
+			parent::primePostRevisions( $rows );
 		}
 		public function clearPrimedPostRevisions(): void {
 			$this->clearCount++;
+			parent::clearPrimedPostRevisions();
 		}
 		public function formatApi( FormatterRow $row, \MediaWiki\Context\IContextSource $ctx, $action = 'view' ) {
 			if ( $this->throw ) {
@@ -202,6 +204,14 @@ namespace {
 		check( $e->getMessage() === 'Formatting stopped', 'Formatter exception propagates' );
 	}
 	check( $spy->clearCount === 2, 'Temporary parent index is also cleared on failure' );
+	check(
+		!( new \ReflectionProperty( RevisionFormatter::class, 'batchEditChecksEnabled' ) )->getValue( $spy ),
+		'Failed batch cannot retain the edit-permission reuse window'
+	);
+	check(
+		( new \ReflectionProperty( RevisionFormatter::class, 'batchEditChecks' ) )->getValue( $spy ) === [],
+		'Failed batch clears all workflow edit decisions'
+	);
 
 	// Only reuse an updated-sort page for the ToC when the server already
 	// knows that it has no continuation. Never guess around timestamp ties.
