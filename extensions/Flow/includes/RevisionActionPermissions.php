@@ -471,13 +471,13 @@ class RevisionActionPermissions {
 		// Avoid repeatedly traversing the Flow tree when the same post is
 		// checked against many actions. The collection ID, unlike rev_id,
 		// identifies the same post across historical revisions.
-		$collectionKey = $revision->getRevisionType() . ':' .
-			$revision->getCollectionId()->getAlphadecimal();
-		if ( isset( $this->topicCacheKeys[$collectionKey] ) ) {
-			return $this->topicCacheKeys[$collectionKey];
-		}
-
 		try {
+			$collectionKey = $revision->getRevisionType() . ':' .
+				$revision->getCollectionId()->getAlphadecimal();
+			if ( isset( $this->topicCacheKeys[$collectionKey] ) ) {
+				return $this->topicCacheKeys[$collectionKey];
+			}
+
 			$topicKey = $revision->getCollection()->getWorkflowId()->getAlphadecimal();
 			$this->topicCacheKeys[$collectionKey] = $topicKey;
 			return $topicKey;
