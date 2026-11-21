@@ -869,3 +869,44 @@ composite paging cursor. The option and last-root metadata affect only
 the maintenance benchmark. Stop at an empty page or if the next cursor
 does not advance. Do not infer equivalence of full API responses from
 these two hashes alone.
+
+
+### Diagnose intermittent A/B fingerprint mismatches (maintenance only)
+
+The original two A/B hashes are sensitive to associative insertion order:
+posts or revision IDs returned in a different order can change both
+digests even when the same revisions contain the same HTML. A one-off
+mismatch is not automatically proof of a DOM regression.
+
+Enable `--diagnose-digests` for a **targeted, read-only** comparison of
+the same board, sort mode, and cursor in independent PHP processes.
+The diagnostic is generated **after** timing and is disabled by default.
+
+```sh
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
+	--wiki=fr --page='Discussion:Le cannabis doit-il être légalisé ?' \
+	--sortby=newest --limit=50 --runs=1 --diagnose-digests
+
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
+	--wiki=fr --page='Discussion:Le cannabis doit-il être légalisé ?' \
+	--sortby=newest --limit=50 --runs=1 --diagnose-digests --reuse-html-dom
+```
+
+Each sample's `diagnostic` includes hashes for ordered and sorted root
+IDs, ordered and sorted post mappings, ordered and sorted revision IDs,
+and content sorted by revision ID. The canonical content hash is
+independent of revision-map insertion order, but retains every revision's
+exact content/format object. The diagnostic additionally provides root
+IDs, post-to-revision IDs and one HMAC-SHA256 per revision to pinpoint
+content differences without printing raw message HTML, plaintext, or
+the private HMAC key. HMACs use the configured site `SecretKey`, must
+not be compared between wikis, and will refuse to run without a strong
+configured key.
+
+If only ordered hashes differ while sorted hashes match, investigate
+unstable ordering rather than a change of rendered content. If the
+canonical content digest changes, compare `content_hmac_by_revision_id`
+to identify the exact revision IDs; do not activate DOM reuse until
+the cause is understood. Also repeat **original vs original** to
+separate renderer differences from naturally unstable data, and retain
+the default read-only, unmodified web/API renderer.
