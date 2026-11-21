@@ -492,3 +492,55 @@ The permission cache is per process and checks changes in the
 collection generation, the viewer, and the revision moderation state.
 Before considering any permission shortcut, verify those conditions
 remain enforced and inspect the distribution of actual cold misses.
+
+## Memoizing successful topic identities for permission cache keys
+
+On Wikidébats:Bistro with 50 topics / 242 posts, five independent
+PHP-process benchmarks after the cold permission breakdown reported:
+
+- `permission_cache_miss`: about 244.87 ms total
+- `permission_root_lookup`: about 97.47 ms across 1,278 calls
+- `permission_board_lookup`: about 112.32 ms across 1,278 calls
+- `permission_rule_lookup`: only about 3.91 ms
+
+The root and board lookups are expensive **even when the cached root
+revision and board workflow are already available**. The cache-key
+constructor `getTopicCacheKey()` calls
+`PostRevision::getCollection()->getWorkflowId()`. The collection
+factory constructs a **new collection object each time**, so the
+collection-local `rootId` memo cannot save the repeated tree lookup.
+This happens for each distinct, initially uncached Flow action.
+
+To address this specific duplication, `RevisionActionPermissions`
+now remembers successful topic-key resolutions using
+`revision type + collection ID` for the same permission service.
+All normal root and board permission checks still take place.
+The original keys and values of `rootRevisionCache`,
+`boardWorkflowCache`, `rootAllowedCache` and
+`boardAllowedCache` are unchanged. No individual action authorization
+is cached differently. For post summaries, the existing direct
+`summaryTargetId` key stays unchanged.
+
+This memo is cleared with all existing permission caches whenever the
+viewer changes, a Flow collection mutation increments its generation
+or `clearCache()` is called. If looking up a topic fails with
+`DataModelException`, **the original revision-ID fallback is kept**
+and deliberately not memoized by collection ID, so historical
+revisions never share an invalid fallback key.
+
+The smoke suite covers repeated calls, different revision IDs of
+one post, distinct collections, summary shortcuts, an updated tree
+association, viewer changes, an explicit clear and missing-root
+fallbacks. Existing tests check topic locks, hiding/deletion,
+restoration, suppression and admin/reader isolation.
+
+After deployment, measure the actual impact with both warm and cold
+benchmarks. Although the **number** of root/board permission checks
+may remain 1,278 each, their **duration** should fall if repeated
+root-key lookups are the cause. No gain is assumed before comparing
+production measurements.
+
+The benchmark contains optional instrumentation overhead and does not
+perfectly model anonymous and logged-in HTTP responses. Compare
+un-instrumented `--breakdown`-free measurements and server-side
+requests if available.

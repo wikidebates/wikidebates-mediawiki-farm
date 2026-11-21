@@ -62,6 +62,17 @@ class RevisionActionPermissions {
 	 */
 	protected $boardAllowedCache = [];
 
+	/**
+	 * Resolve a revision collection's topic ID only once per viewer/storage
+	 * generation. PostRevision::getCollection() creates a new collection each
+	 * time, so its local cached root ID cannot be reused across permission
+	 * checks for the same post. Only successful lookups are cached: the
+	 * historical-revision fallback must remain specific to its revision ID.
+	 *
+	 * @var array<string,string>
+	 */
+	private $topicCacheKeys = [];
+
 	/** @var int|null Generation of the collection cache used by these decisions. */
 	private $cacheGeneration;
 
@@ -457,9 +468,23 @@ class RevisionActionPermissions {
 			return $revision->getSummaryTargetId()->getAlphadecimal();
 		}
 
+		// Avoid repeatedly traversing the Flow tree when the same post is
+		// checked against many actions. The collection ID, unlike rev_id,
+		// identifies the same post across historical revisions.
 		try {
-			return $revision->getCollection()->getWorkflowId()->getAlphadecimal();
+			$collectionKey = $revision->getRevisionType() . ':' .
+				$revision->getCollectionId()->getAlphadecimal();
+			if ( isset( $this->topicCacheKeys[$collectionKey] ) ) {
+				return $this->topicCacheKeys[$collectionKey];
+			}
+
+			$topicKey = $revision->getCollection()->getWorkflowId()->getAlphadecimal();
+			$this->topicCacheKeys[$collectionKey] = $topicKey;
+			return $topicKey;
 		} catch ( DataModelException $e ) {
+			// No associated root (e.g. an isolated historical revision).
+			// Do not memoize this fallback by collection: separate revisions
+			// must still receive separate cache keys.
 			return $revision->getRevisionId()->getAlphadecimal();
 		}
 	}
@@ -533,6 +558,7 @@ class RevisionActionPermissions {
 		$this->boardWorkflowCache = [];
 		$this->rootAllowedCache = [];
 		$this->boardAllowedCache = [];
+		$this->topicCacheKeys = [];
 	}
 
 	/** Discard decisions and loaded roots after a Flow storage mutation. */

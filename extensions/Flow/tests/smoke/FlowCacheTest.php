@@ -127,6 +127,98 @@ $permissions->setUser( $reader );
 check( $permissions->isAllowed( $post, 'view' ), 'Same user remains allowed' );
 check( MediaWikiServices::$checks === $checks, 'Same User object preserves memoization' );
 check( $postCollection->boardLookups === 1, 'One board lookup, not a lookup to compute the key' );
+
+// One PostRevision::getCollection() call creates a fresh PostCollection.
+// A permission check must not redo the costly topic root lookup for each
+// action or for another revision of the very same post.
+class CountingTopicCollection extends TestCollection {
+	public int $rootLookups = 0;
+	public function getWorkflowId() {
+		$this->rootLookups++;
+		return parent::getWorkflowId();
+	}
+}
+$topicKeyMethod = new ReflectionMethod( RevisionActionPermissions::class, 'getTopicCacheKey' );
+$boardKeyMethod = new ReflectionMethod( RevisionActionPermissions::class, 'getBoardWorkflowCacheKey' );
+$firstCollection = new CountingTopicCollection( $topicId, $board );
+$secondCollection = new CountingTopicCollection( $topicId, $board );
+$firstRevision = new TestPost( '00000000000000a0', '00000000000000b0', $firstCollection, $topicId );
+$secondRevision = new TestPost( '00000000000000a0', '00000000000000b1', $secondCollection, $topicId );
+$permissions->clearCache();
+$expectedTopicKey = $topicId->getAlphadecimal();
+check( $topicKeyMethod->invoke( $permissions, $firstRevision ) === $expectedTopicKey,
+	'First lookup resolves the post collection topic ID' );
+check( $topicKeyMethod->invoke( $permissions, $firstRevision ) === $expectedTopicKey,
+	'Repeated lookup returns identical topic ID' );
+check( $boardKeyMethod->invoke( $permissions, $secondRevision ) === $expectedTopicKey,
+	'Board permission cache retains its original topic-based identity for historical revisions' );
+check( $firstCollection->rootLookups === 1 && $secondCollection->rootLookups === 0,
+	'Sibling permission checks reuse the same post identity instead of resolving the root again' );
+
+$otherTopicId = UUID::create( '00000000000000c0' );
+$otherCollection = new CountingTopicCollection( $otherTopicId, $board );
+$otherRevision = new TestPost( '00000000000000a1', '00000000000000b2', $otherCollection, $otherTopicId );
+check( $topicKeyMethod->invoke( $permissions, $otherRevision ) === $otherTopicId->getAlphadecimal(),
+	'Unrelated post collection keeps a separate topic key' );
+check( $otherCollection->rootLookups === 1, 'Other post root is independently resolved' );
+
+// As with every permission cache, storage changes must discard topic-key
+// associations; the same post may then belong to another topic.
+$firstCollection->topicId = $otherTopicId;
+$cache->onAfterUpdate( $firstRevision, [], [], [] );
+$permissions->primeCacheForView( [] );
+check( $topicKeyMethod->invoke( $permissions, $firstRevision ) === $otherTopicId->getAlphadecimal(),
+	'Flow mutation invalidates a previously resolved topic key' );
+check( $firstCollection->rootLookups === 2,
+	'Flow mutation causes a fresh root lookup for the moved post' );
+$permissions->clearCache();
+check( $topicKeyMethod->invoke( $permissions, $firstRevision ) === $otherTopicId->getAlphadecimal(),
+	'Explicit cache clear preserves the latest topic ID' );
+check( $firstCollection->rootLookups === 3, 'Explicit clear discards the topic key memo' );
+
+// Failed root resolutions use a revision-specific key and must not be
+// stored for the collection, since a later historical revision differs.
+class MissingTopicCollection extends CountingTopicCollection {
+	public function getWorkflowId() {
+		$this->rootLookups++;
+		throw new \Flow\Exception\DataModelException( 'Missing tree root', 'process-data' );
+	}
+}
+$missingCollection = new MissingTopicCollection( $topicId, $board );
+$missingRevision1 = new TestPost( '00000000000000e0', '00000000000000e1', $missingCollection, $topicId );
+$missingRevision2 = new TestPost( '00000000000000e0', '00000000000000e2', $missingCollection, $topicId );
+check( $topicKeyMethod->invoke( $permissions, $missingRevision1 ) ===
+	$missingRevision1->getRevisionId()->getAlphadecimal(),
+	'Missing tree root falls back to the first historical revision ID' );
+check( $topicKeyMethod->invoke( $permissions, $missingRevision2 ) ===
+	$missingRevision2->getRevisionId()->getAlphadecimal(),
+	'Unresolved collection does not cause historical revision key collisions' );
+check( $missingCollection->rootLookups === 2, 'Failed topic lookups are not cached as successes' );
+class MissingCollectionIdPost extends TestPost {
+	public function getCollectionId() {
+		throw new \Flow\Exception\DataModelException( 'Missing collection ID', 'process-data' );
+	}
+}
+$idlessRevision = new MissingCollectionIdPost(
+	'00000000000000f0', '00000000000000f1', $missingCollection, $topicId
+);
+check( $topicKeyMethod->invoke( $permissions, $idlessRevision ) ===
+	$idlessRevision->getRevisionId()->getAlphadecimal(),
+	'Invalid collection ID preserves the original per-revision fallback' );
+
+$topicSummary = new TestSummary( $firstCollection );
+check( $topicKeyMethod->invoke( $permissions, $topicSummary ) === $otherTopicId->getAlphadecimal(),
+	'PostSummary keeps its summary-target key without a tree lookup' );
+check( $firstCollection->rootLookups === 3, 'Summary shortcut never consults the post collection tree' );
+
+$permissions->setUser( new User( [ 'read' ] ) );
+check( $topicKeyMethod->invoke( $permissions, $firstRevision ) === $otherTopicId->getAlphadecimal(),
+	'Changing the viewer keeps the same topic identity but recalculates it' );
+check( $firstCollection->rootLookups === 4,
+	'Viewer change clears the topic key cache with other permission caches' );
+$permissions->setUser( $reader );
+
+
  
 // The optional read-only profiler reports a miss only when a permission
 // decision is calculated. Reusing that decision never skips the original
