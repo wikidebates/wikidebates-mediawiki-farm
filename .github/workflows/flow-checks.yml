@@ -58,12 +58,12 @@
 					"run": "find extensions/Flow -type f -name '*.php' -not -path '*/vendor/*' -print0 | xargs -0 -n 1 php -l"
 				},
 				{
-					"name": "Cache, moderation and sibling regressions",
-					"run": "php extensions/Flow/tests/smoke/FlowCacheTest.php"
+					"name": "Cache, moderation, sibling and lightweight topic-list regressions",
+					"run": "php extensions/Flow/tests/smoke/FlowCacheTest.php\nphp extensions/Flow/tests/smoke/FlowLightTopicListTest.php"
 				},
 				{
-					"name": "JavaScript syntax and batch cleanup",
-					"run": "find extensions/Flow/modules -type f -name '*.js' -print0 | xargs -0 -n 1 node --check\nnode extensions/Flow/tests/smoke/flow-loadmore.test.js"
+					"name": "JavaScript syntax, batch cleanup and lightweight hydration",
+					"run": "find extensions/Flow/modules -type f -name '*.js' -print0 | xargs -0 -n 1 node --check\nnode extensions/Flow/tests/smoke/flow-loadmore.test.js\nnode extensions/Flow/tests/smoke/flow-light-topic.test.js"
 				},
 				{
 					"name": "SQL semantics and benchmark helper",
