@@ -92,12 +92,31 @@ $query = new PrefetchedTestQuery(
 	( new ReflectionClass( WatchedTopicItems::class ) )->newInstanceWithoutConstructor()
 );
 $query->ids = [ $rootId->getAlphadecimal() => $rootId, $replyId->getAlphadecimal() => $replyId ];
+$queryTiming = [];
+$query->setBenchmarkTimer(
+	static function ( string $phase, float $milliseconds ) use ( &$queryTiming ): void {
+		$queryTiming[$phase][] = $milliseconds;
+	}
+);
 $rows = $query->getResults( [ $rootId ], [ $rootId->getAlphadecimal() => $root ] );
 check( count( $storage->requests ) === 1, 'One latest-post batch is issued' );
 check( count( $storage->requests[0] ) === 1, 'Already loaded root is absent from latest-revision SQL' );
 check( $storage->requests[0][0]['rev_type_id'] === $replyId, 'Only reply is fetched' );
 check( $rows[0]->revision === $root && $rows[1]->revision === $reply, 'Same root and reply objects rendered' );
 check( $rows[0]->replies === [ $replyId->getAlphadecimal() ], 'Replies remain attached to root' );
+foreach ( [
+	'prepare_roots', 'collect_post_ids', 'collect_revisions', 'load_metadata',
+	'prime_topic_keys', 'prime_permissions', 'filter_visible_topics',
+	'collect_summaries', 'collect_watch_status', 'build_visible_rows', 'attach_replies',
+] as $name ) {
+	check(
+		count( $queryTiming['query_detail_' . $name] ?? [] ) === 1 &&
+		$queryTiming['query_detail_' . $name][0] >= 0,
+		'Query profiling records the nonnegative ' . $name . ' duration exactly once'
+	);
+}
+$query->setBenchmarkTimer( null );
+$queryTimingCount = array_sum( array_map( 'count', $queryTiming ) );
 
 // A root from another page (or keyed to the wrong topic) must never be
 // trusted merely because it was passed into this method.
@@ -106,6 +125,10 @@ $storage->requests = [];
 $rows = $query->getResults( [ $rootId ], [ $rootId->getAlphadecimal() => $other ] );
 check( count( $storage->requests[0] ) === 2, 'Mismatched prefetched root is ignored' );
 check( $rows[0]->revision === $root, 'Wrong topic cannot contaminate another result' );
+check(
+	array_sum( array_map( 'count', $queryTiming ) ) === $queryTimingCount,
+	'Disabling the query profiler stops all measurements without altering rendering'
+);
 
 // The query is a shared service. Prefer a freshly retrieved revision over an
 // older in-process cache hit, then invalidate on moderation/storage updates.
