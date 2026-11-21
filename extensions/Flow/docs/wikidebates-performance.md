@@ -123,7 +123,7 @@ The Node tests verify the outgoing API cursor and direct topic-jump parameters.
 Run the bounded production renderer benchmark (requires an existing Flow board):
 
 ```sh
-php maintenance/run.php extensions/Flow/maintenance/FlowBenchmarkTopicList.php \
+php maintenance/run.php Flow:FlowBenchmarkTopicList \
 	--wiki=fr --page='Discussion:EXEMPLE' --runs=3 --limit=10 --sortby=updated
 ```
 
