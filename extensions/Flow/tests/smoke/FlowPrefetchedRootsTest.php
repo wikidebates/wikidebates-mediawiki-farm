@@ -128,4 +128,97 @@ $rows = $query->getResults( [ $rootId ] );
 check( count( $storage->requests[0] ) === 2, 'Search and older callers retain their original fetch behavior' );
 check( $rows[0]->revision === $rootEdited, 'No-prefetch calls see the newest stored revision' );
 
+// Reuse actual subtree membership for topic keys, without changing view
+// permission checks. The query still fetches the same revisions and roots.
+class TopicKeyTree extends TreeRepository {
+	public array $nodeList = [];
+	public int $calls = 0;
+	public function __construct() {
+	}
+	public function fetchSubtreeNodeList( array $roots ) {
+		$this->calls++;
+		return $this->nodeList;
+	}
+}
+class RecordingTopicPermissions extends PrefetchedTestPermissions {
+	public array $maps = [];
+	public function primeTopicCacheKeysForView( array $revisions, array $topicIdsByPost ): void {
+		$this->maps[] = $topicIdsByPost;
+	}
+}
+class TopicKeyQuery extends TopicListQuery {
+	protected function loadMetadataBatch( $results ) {
+	}
+	protected function collectSummary( $topicIds ) {
+		return [];
+	}
+	protected function collectWatchStatus( $topicIds ) {
+		return [];
+	}
+	protected function buildResult( AbstractRevision $revision, $indexField, ?FormatterRow $row = null ) {
+		$row ??= new FormatterRow;
+		$row->revision = $revision;
+		$row->currentRevision = $revision;
+		return $row;
+	}
+}
+$tree = new TopicKeyTree;
+$primedPermissions = new RecordingTopicPermissions;
+$primedStorage = new PrefetchedTestStorage;
+$secondReplyId = UUID::create( '0000000000000004' );
+$secondReply = new PrefetchedTestPost( '0000000000000004', '0000000000000014', $otherId );
+$primedStorage->items = [
+	$rootId->getAlphadecimal() => $rootEdited,
+	$replyId->getAlphadecimal() => $reply,
+	$otherId->getAlphadecimal() => $other,
+	$secondReplyId->getAlphadecimal() => $secondReply,
+];
+$tree->nodeList = [
+	$rootId->getAlphadecimal() => [ $rootId, $replyId ],
+	$otherId->getAlphadecimal() => [ $otherId, $secondReplyId ],
+];
+$primingQuery = new TopicKeyQuery(
+	$primedStorage,
+	$tree,
+	$primedPermissions,
+	( new ReflectionClass( WatchedTopicItems::class ) )->newInstanceWithoutConstructor()
+);
+$primingQuery->getResults( [ $rootId, $otherId ] );
+$expectedMap = [
+	$replyId->getAlphadecimal() => $rootId->getAlphadecimal(),
+	$secondReplyId->getAlphadecimal() => $otherId->getAlphadecimal(),
+];
+check( $primedPermissions->maps[0] === $expectedMap,
+	'Topic-list query primes only reply-to-topic relationships from the selected subtrees' );
+check( !isset( $primedPermissions->maps[0][$rootId->getAlphadecimal()] ),
+	'Topic title keys are not primed from subtree membership' );
+check( $tree->calls === 1, 'Only one subtree query builds post IDs and topic keys' );
+$primingQuery->getResults( [ $rootId, $otherId ] );
+check( $tree->calls === 1 && $primedPermissions->maps[1] === $expectedMap,
+	'Repeated query reuses both the post set and its topic map' );
+
+// Moving a reply to another subtree must refresh its topic identity.
+$tree->nodeList = [
+	$rootId->getAlphadecimal() => [ $rootId ],
+	$otherId->getAlphadecimal() => [ $otherId, $replyId, $secondReplyId ],
+];
+$cache->onAfterUpdate( $reply, [], [], [] );
+$primingQuery->getResults( [ $rootId, $otherId ] );
+check( $tree->calls === 2, 'A collection mutation refetches the subtree map' );
+check( $primedPermissions->maps[2][$replyId->getAlphadecimal()] === $otherId->getAlphadecimal(),
+	'Mutation refreshes the primed topic ID for a moved reply' );
+
+// Duplicate membership is ambiguous; leave it to the original tree
+// lookup and never allow one topic to override another in the memo.
+$tree->nodeList = [
+	$rootId->getAlphadecimal() => [ $rootId, $replyId ],
+	$otherId->getAlphadecimal() => [ $otherId, $replyId, $secondReplyId ],
+];
+$cache->onAfterClear();
+$primingQuery->getResults( [ $rootId, $otherId ] );
+check( !isset( $primedPermissions->maps[3][$replyId->getAlphadecimal()] ),
+	'A reply found under multiple roots cannot be primed' );
+check( $primedPermissions->maps[3][$secondReplyId->getAlphadecimal()] === $otherId->getAlphadecimal(),
+	'Unambiguous replies retain the subtree fast path' );
+
 echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " root-reuse assertions\n";
