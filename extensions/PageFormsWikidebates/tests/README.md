@@ -13,6 +13,9 @@ vendor/bin/phpunit extensions/PageFormsWikidebates/tests/phpunit
 
 This pass adds a coordinated VEForAll change in the separate repository:
 https://github.com/wikidebates/wikidebates-veforall/pull/1
+The relevant CI suites cover 160 PageForms JavaScript regressions, automated
+Chromium/Firefox smoke tests and a disposable wiki with and without active SMW.
+None of these claims includes a test against the deployed Wikidébats forms.
 The parent farm pull request pins the matching submodule revision. To enable the
 new behavior in production, update both the farm's files and the VEForAll
 submodule. `$wgVEForAllLazyPageForms = false;` restores eager initialization
