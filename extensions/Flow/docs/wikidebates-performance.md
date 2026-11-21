@@ -1160,7 +1160,7 @@ The second 12-process comparison returned exactly the same 242 posts and
 one identical digest across **both** variants for each of these seven fields:
 the full API HMAC, revision metadata HMAC, canonical content, canonical post
 associations, canonical roots, ordered structure and output content.
-This demonstrates parity for the sampled anonymous maintenance context,
+This demonstrates parity for the sampled maintenance context,
 not for every moderation or user-rights scenario.
 
 The previous benchmark option `--skip-current-revision-refetch` and the
