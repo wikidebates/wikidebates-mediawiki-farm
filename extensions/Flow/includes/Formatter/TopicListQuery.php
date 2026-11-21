@@ -27,6 +27,12 @@ class TopicListQuery extends AbstractQuery {
 	/** @var UUID[][] */
 	protected $postIdsCache = [];
 
+	/** @var array<string,array<string,string>> Topic ID per post, keyed by topic-list cache key. */
+	private $postTopicKeysCache = [];
+
+	/** @var array<string,string> Only the most recently collected page's post-to-topic keys. */
+	private $lastPostTopicKeys = [];
+
 	/** @var array<string,PostSummary|null> Null means a confirmed missing summary. */
 	protected $summaryCache = [];
 
@@ -80,6 +86,9 @@ class TopicListQuery extends AbstractQuery {
 			}
 		}
 
+		// Subclasses can override collectPostIds; never reuse a previous
+		// page's topic mapping if an override does not provide one.
+		$this->lastPostTopicKeys = [];
 		$allPostIds = $this->collectPostIds( $topicIds );
 		$posts = $this->collectRevisions( $allPostIds );
 
@@ -95,6 +104,12 @@ class TopicListQuery extends AbstractQuery {
 		}
 
 		$this->loadMetadataBatch( $posts );
+		// These associations came from the very subtree query used to select
+		// the posts. Reuse them for building permission cache keys, without
+		// pre-approving a single permission or bypassing moderation checks.
+		if ( $this->lastPostTopicKeys ) {
+			$this->permissions->primeTopicCacheKeysForView( $posts, $this->lastPostTopicKeys );
+		}
 		$this->permissions->primeCacheForView( $posts );
 
 		$visibleTopicIds = [];
@@ -181,11 +196,41 @@ class TopicListQuery extends AbstractQuery {
 		sort( $cacheKeyParts );
 		$cacheKey = implode( ':', $cacheKeyParts );
 		if ( isset( $this->postIdsCache[$cacheKey] ) ) {
+			$this->lastPostTopicKeys = $this->postTopicKeysCache[$cacheKey] ?? [];
 			return $this->postIdsCache[$cacheKey];
 		}
 
 		// Get the full list of postId's necessary
 		$nodeList = $this->treeRepository->fetchSubtreeNodeList( $topicIds );
+
+		// The subtree result already identifies each reply's topic. Do not
+		// prime ambiguous posts that appear under more than one root or roots
+		// that were not requested; those retain the original lookup path.
+		$requested = array_fill_keys( $cacheKeyParts, true );
+		$topicKeys = [];
+		$ambiguous = [];
+		foreach ( $nodeList as $rootAlpha => $descendants ) {
+			if ( !isset( $requested[$rootAlpha] ) ) {
+				continue;
+			}
+			foreach ( $descendants as $postId ) {
+				if ( !( $postId instanceof UUID ) ) {
+					continue;
+				}
+				$postAlpha = $postId->getAlphadecimal();
+				if ( $postAlpha === $rootAlpha || isset( $ambiguous[$postAlpha] ) ) {
+					continue;
+				}
+				if ( isset( $topicKeys[$postAlpha] ) && $topicKeys[$postAlpha] !== $rootAlpha ) {
+					unset( $topicKeys[$postAlpha] );
+					$ambiguous[$postAlpha] = true;
+				} else {
+					$topicKeys[$postAlpha] = $rootAlpha;
+				}
+			}
+		}
+		$this->postTopicKeysCache[$cacheKey] = $topicKeys;
+		$this->lastPostTopicKeys = $topicKeys;
 
 		// Merge all the children from the various posts into one array
 		if ( !$nodeList ) {
@@ -299,6 +344,8 @@ class TopicListQuery extends AbstractQuery {
 		}
 		$this->cacheGeneration = $generation;
 		$this->postIdsCache = [];
+		$this->postTopicKeysCache = [];
+		$this->lastPostTopicKeys = [];
 		$this->summaryCache = [];
 		$this->watchStatusCache = [];
 		$this->rootPostIdCache = [];
