@@ -35,6 +35,14 @@ class BenchmarkTest(unittest.TestCase):
 		self.assertNotIn('vtltoconly', url)
 		self.assertEqual(request.call_args.args[0].get_method(), 'GET')
 
+	def test_updated_sort_read_only(self):
+		body = json.dumps({'flow': {'view-topiclist': {'result': {'topiclist': {'roots': []}}}}}).encode()
+		with patch.object(benchmark, 'urlopen', return_value=Response(body)) as request:
+			benchmark.fetch('https://example.invalid/api.php', 'Talk:Test', 10, False, 'updated')
+		url = request.call_args.args[0].full_url
+		self.assertIn('vtlsortby=updated', url)
+		self.assertNotIn('vtlsavesortby', url)
+
 	def test_gzip_toc_response(self):
 		body = json.dumps({'flow': {'view-topiclist': {'result': {'topiclist': {'roots': []}}}}}).encode()
 		with patch.object(benchmark, 'urlopen', return_value=Response(gzip.compress(body), 'gzip')) as request:

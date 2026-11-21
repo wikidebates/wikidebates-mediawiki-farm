@@ -8,6 +8,9 @@ const vm = require( 'node:vm' );
 const root = path.resolve( __dirname, '../..' );
 let Mixin;
 const context = {
+	moment: { utc: ( value ) => ( {
+		format: () => new Date( value ).toISOString().slice( 0, 19 ).replace( /[-T:]/g, '' )
+	} ) },
 	OO: { initClass: () => {} },
 	mw: { flow: { mixinComponent: ( name, mixin ) => { Mixin = mixin; } } },
 	$: { each: ( items, callback ) => {
@@ -53,6 +56,34 @@ assert.equal( traversals, 400, 'A second batch gets one cleanup pass' );
 board.renderedTopics = {};
 callbacks.makeContentInteractive.call( board );
 assert.equal( traversals, 400, 'An empty board is safe' );
+
+// A direct anchor for an updated-sort topic must include the ID of that
+// exact topic, even when many topics were updated during the same second.
+const target = '0000000000000002';
+board.topicTitlesById[ target ] = 'Target';
+board.updateTimestampsByTopicId = { [ target ]: Date.UTC( 2026, 10, 21, 13, 58, 0 ) };
+board.topicIdSort = 'updated';
+let jumpParams;
+const pendingCall = {
+	always: () => pendingCall,
+	done: () => pendingCall,
+	fail: () => pendingCall
+};
+board.Api = { apiCall: ( params ) => {
+	jumpParams = params;
+	return pendingCall;
+} };
+board.jumpToTopic( target );
+assert.equal( jumpParams.vtloffset, '20261121135800|' + target,
+	'Jump to a same-second topic uses a composite cursor' );
+assert.equal( jumpParams[ 'vtlinclude-offset' ], true,
+	'Jump includes the targeted topic' );
+board.topicIdSort = 'newest';
+board.jumpToTopic( target );
+assert.equal( jumpParams[ 'vtloffset-id' ], target,
+	'Newest topic links continue to use the UUID offset' );
+assert.equal( jumpParams.vtloffset, undefined,
+	'Newest topic links must not contain a timestamp offset' );
 
 // Guard the two upstream REL1_43 security backports against accidental reversal.
 for ( const [ file, key ] of [

@@ -28,6 +28,9 @@ function deferred() {
 }
 const title = { getPrefixedDb: () => 'Talk:Board' };
 const context = {
+	moment: { utc: ( value ) => ( {
+		format: () => new Date( value ).toISOString().slice( 0, 19 ).replace( /[-T:]/g, '' )
+	} ) },
 	OO: {
 		EventEmitter: function () {},
 		initClass: () => {},
@@ -97,6 +100,20 @@ for ( const name of [
 	assert.equal( await system.fetchMoreTopics(), false, 'No extra request once the last page is known' );
 	assert.equal( requests.length, 3 );
 
+	// With updated ordering the request must carry both the time and topic ID.
+	const lastUpdated = Date.UTC( 2026, 10, 21, 13, 58, 0 );
+	const lastTopic = '0000000000000002';
+	system.board.getSortOrder = () => 'updated';
+	system.board.getOffset = () => lastUpdated;
+	system.board.getOffsetId = () => lastTopic;
+	system.moreTopicsExistInApi = true;
+	const updatedRequest = system.fetchMoreTopics();
+	assert.equal( requests[ 3 ].sortBy, 'updated' );
+	assert.equal( requests[ 3 ].options.offset, lastUpdated );
+	assert.equal( requests[ 3 ].options.offsetId, lastTopic );
+	requests[ 3 ].d.resolve( { roots: [] } );
+	assert.equal( await updatedRequest, false );
+
 	system.moreTopicsExistInApi = true;
 	system.emit = () => {};
 	system.populateBoardTopicsFromJson( { roots: [] } );
@@ -118,8 +135,17 @@ for ( const name of [
 	assert.equal( apiParams.vtllimit, 17, 'APIHandler passes through the requested limit' );
 	await handler.getTopicList( 'newest', { toconly: true } );
 	assert.equal( apiParams.vtllimit, 50, 'The old default limit stays unchanged' );
+	await handler.getTopicList( 'updated', { offset: lastUpdated, offsetId: lastTopic } );
+	assert.equal( apiParams.vtloffset, '20261121135800|' + lastTopic,
+		'Updated-order pagination sends a deterministic two-part cursor' );
+	await handler.getTopicList( 'updated', { offset: lastUpdated } );
+	assert.equal( apiParams.vtloffset, '20261121135800',
+		'Existing offset-only callers preserve timestamp-only pagination' );
+	await handler.getTopicList( 'updated', {} );
+	assert.equal( apiParams.vtloffset, undefined,
+		'First-page requests have no invalid timestamp cursor' );
 
-	console.log( 'OK: Flow ToC pagination, concurrency, retry, API request size and reset' );
+	console.log( 'OK: Flow ToC pagination, concurrency, retry, API request size and composite cursor' );
 } )().catch( ( error ) => {
 	console.error( error );
 	process.exitCode = 1;

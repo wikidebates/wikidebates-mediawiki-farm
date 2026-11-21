@@ -96,3 +96,59 @@ are not proof of improved production latency. Measure before/after SQL queries,
 link existence (including newly created pages) and reply actions at maximum
 threading depth on the MediaWiki 1.43 farm. Neither DB migrations nor Composer
 changes are required. Full browser and permission testing is still necessary.
+
+## Follow-up: reused topic roots and stable last-updated cursors
+
+The topic-list pager already loads each root's latest revision to determine
+whether its topic is moderated. `TopicListQuery::getResults()` now accepts an
+**optional, current-page-only** map of these revisions. It reuses them when
+building the full reply tree and still fetches every uncached reply, performs
+ordinary permission checks and accepts calls without the new parameter.
+
+Sorting by last activity now has a stable tie-breaker: `workflow_last_update_timestamp`
+followed by `topic_id` (descending). A continuation cursor is
+`YYYYMMDDHHMMSS|<topic-alphadecimal-id>`. Historical timestamp-only offsets
+remain accepted. Navigation, table-of-contents pagination, and jumping to a
+topic all send both components. The SQL continuation uses a lexicographic
+comparison and reverse queries use the opposite order before returning results
+to the pager. Cursors beyond the first 500 entries go to the backing database
+instead of exhausting the `TopKIndex` first-page cache. A versioned cache key
+prevents reuse of stale timestamp-only index buckets. **No DB schema change.**
+
+Standalone regression tests cover 660 synthetic topics, including 560 sharing
+one timestamp, forward/reverse paging, a deep link with inclusive offset,
+legacy timestamp offsets and rejected invalid input; root-reuse tests check
+missing and wrong-page revisions, user permissions and cache invalidation.
+The Node tests verify the outgoing API cursor and direct topic-jump parameters.
+Run the bounded production renderer benchmark (requires an existing Flow board):
+
+```sh
+php maintenance/run.php extensions/Flow/maintenance/FlowBenchmarkTopicList.php \
+	--wiki=fr --page='Discussion:EXEMPLE' --runs=3 --limit=10 --sortby=updated
+```
+
+Replace `Discussion:EXEMPLE` with an actual Flow board title (not an article or
+ordinary wikitext talk page). It reports wall time, process CPU time, peak
+memory, and topic/post/revision counts in JSON. This read-only tool does not
+warm a shared page cache on purpose, purge caches, log discussion content, or
+count database queries; database profiling requires separate measurement.
+The first sample may reflect a cold request and the later samples can benefit
+from in-process caches. Test both sort modes, both wikis, and boards of varying
+size before inferring any relative speedup.
+
+A second, anonymous HTTP API benchmark compares full rendering and a table of
+contents (not a proposed replacement for full rendering). It can now also
+select the updated sort:
+
+```sh
+python3 extensions/Flow/scripts/benchmark-topiclist.py \
+	--api https://fr.wikidebates.org/w/api.php \
+	--page 'Discussion:EXEMPLE' --runs 3 --limit 10 --sortby updated
+```
+
+The HTTP benchmark includes network latency, does not authenticate or modify
+pages, and is limited to ten sequential requests with one-second intervals.
+It does **not** benchmark HTML rendering in the browser or report SQL counts.
+Full MediaWiki browser and SQL profiler tests still need to be run on the farm,
+including hidden/deleted/locked topics, same-second updates and links to
+specific comments. Do not infer production performance from isolated tests.
