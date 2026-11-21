@@ -47,6 +47,9 @@ class TopicListQuery extends AbstractQuery {
 
 	public function setBenchmarkTimer( ?callable $observer ): void {
 		$this->benchmarkTimer = $observer;
+		// Keep query prefetch timings distinct from the formatter's
+		// existing permission_decision metrics.
+		$this->permissions->setPrimeBenchmarkTimer( $observer );
 	}
 
 	private function beginBenchmarkStep(): ?int {
@@ -165,11 +168,20 @@ class TopicListQuery extends AbstractQuery {
 		$this->endBenchmarkStep( 'collect_watch_status', $started );
 
 		$started = $this->beginBenchmarkStep();
+		$visiblePermissionNanoseconds = 0;
 		$results = [];
 		$replies = [];
 		foreach ( $posts as $post ) {
 			try {
-				if ( !$this->permissions->isAllowed( $post, 'view' ) ) {
+				$permissionStarted = $started !== null ? hrtime( true ) : null;
+				try {
+					$canView = $this->permissions->isAllowed( $post, 'view' );
+				} finally {
+					if ( $permissionStarted !== null ) {
+						$visiblePermissionNanoseconds += hrtime( true ) - $permissionStarted;
+					}
+				}
+				if ( !$canView ) {
 					continue;
 				}
 				$row = new TopicRow;
@@ -196,6 +208,12 @@ class TopicListQuery extends AbstractQuery {
 			}
 		}
 		$this->endBenchmarkStep( 'build_visible_rows', $started );
+		if ( $started !== null && $this->benchmarkTimer !== null ) {
+			( $this->benchmarkTimer )(
+				'query_detail_visible_row_permissions',
+				round( $visiblePermissionNanoseconds / 1000000, 3 )
+			);
+		}
 
 		$started = $this->beginBenchmarkStep();
 		foreach ( $results as $result ) {
