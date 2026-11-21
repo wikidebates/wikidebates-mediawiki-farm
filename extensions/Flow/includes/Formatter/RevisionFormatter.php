@@ -12,7 +12,6 @@ use Flow\Model\Anchor;
 use Flow\Model\PostRevision;
 use Flow\Model\PostSummary;
 use Flow\Model\UUID;
-use Flow\Model\Workflow;
 use Flow\Repository\UserNameBatch;
 use Flow\RevisionActionPermissions;
 use Flow\Templating;
@@ -117,15 +116,6 @@ class RevisionFormatter {
 	/** @var PostRevision[] Current post revisions preloaded only while serializing a topic batch. */
 
 	private $availablePostRevisions = [];
-
-	/** @var bool Only reuse edit decisions within an active topic-list formatting batch. */
-	private $batchEditChecksEnabled = false;
-
-	/** @var User|null Viewer whose rights were used for the batch edit decisions. */
-	private $batchEditCheckViewer;
-
-	/** @var array<int,bool> Per-workflow, per-viewer decisions; false is cacheable. */
-	private $batchEditChecks = [];
 
 	/** @var callable|null Optional aggregate timer for the read-only benchmark. */
 	private $benchmarkTimer;
@@ -607,9 +597,6 @@ class RevisionFormatter {
 	 */
 	public function primePostRevisions( array $rows ): void {
 		$this->availablePostRevisions = [];
-		$this->batchEditChecksEnabled = true;
-		$this->batchEditCheckViewer = null;
-		$this->batchEditChecks = [];
 		foreach ( $rows as $row ) {
 			$revision = $row->currentRevision;
 			if ( $revision instanceof PostRevision ) {
@@ -620,32 +607,6 @@ class RevisionFormatter {
 
 	public function clearPrimedPostRevisions(): void {
 		$this->availablePostRevisions = [];
-		$this->batchEditChecksEnabled = false;
-		$this->batchEditCheckViewer = null;
-		$this->batchEditChecks = [];
-	}
-
-	/**
-	 * Checking Workflow::userCan() uses MediaWiki's permission manager and,
-	 * for registered users, blocked-status checks. All posts in one topic
-	 * share the same workflow. Reuse the answer only for the current batch
-	 * and the exact same viewer object; outside the batch, always recheck.
-	 */
-	private function canEditWorkflow( Workflow $workflow, User $user ): bool {
-		if ( !$this->batchEditChecksEnabled ) {
-			return $workflow->userCan( 'edit', $user );
-		}
-
-		if ( $this->batchEditCheckViewer !== $user ) {
-			$this->batchEditCheckViewer = $user;
-			$this->batchEditChecks = [];
-		}
-
-		$workflowKey = spl_object_id( $workflow );
-		if ( !array_key_exists( $workflowKey, $this->batchEditChecks ) ) {
-			$this->batchEditChecks[$workflowKey] = $workflow->userCan( 'edit', $user );
-		}
-		return $this->batchEditChecks[$workflowKey];
 	}
 
 	private function getReplyParentRevision( UUID $postId ): PostRevision {
@@ -667,7 +628,7 @@ class RevisionFormatter {
 
 		// If a user does not have rights to perform actions on this page return
 		// an empty array of actions.
-		if ( !$this->canEditWorkflow( $workflow, $user ) ) {
+		if ( !$workflow->userCan( 'edit', $user ) ) {
 			return [];
 		}
 
