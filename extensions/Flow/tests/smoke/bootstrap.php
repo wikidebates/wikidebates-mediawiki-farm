@@ -3,6 +3,22 @@
  * Minimal MediaWiki boundary doubles for standalone regression tests.
  * Production Flow classes are autoloaded unchanged. Not a MediaWiki integration test.
  */
+// Isolated smoke tests do not load MediaWiki's Composer dependencies.
+// Provide the minimum exception interfaces needed for testing Flow's
+// historical-revision fallback with a real DataModelException.
+namespace Wikimedia\NormalizedException {
+	class NormalizedException extends \Exception {
+		public function __construct( $message, $context = [] ) {
+			parent::__construct( $message );
+		}
+	}
+}
+namespace Wikimedia\Message {
+	interface MessageSpecifier {
+		public function getKey();
+		public function getParams();
+	}
+}
 namespace {
 	if ( PHP_SAPI !== 'cli' || defined( 'MEDIAWIKI' ) ) {
 		exit( "Run this test in a separate CLI process, without MediaWiki.\n" );
