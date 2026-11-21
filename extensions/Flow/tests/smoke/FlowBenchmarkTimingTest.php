@@ -207,4 +207,77 @@ $genericPreload = new ReflectionMethod(
 );
 check( $genericPreload->invoke( $topicQuery ) === true,
 	'The generic query implementation always preserves current revision fetching' );
+
+// Spy on metadata loading itself, not just the A/B toggle.
+// The input topic revision is already the latest one from collectRevisions().
+class MetadataLatestTopicRevision extends \Flow\Model\PostRevision {
+	public function __construct( private \Flow\Model\UUID $id ) {
+	}
+	public function isTopicTitle() {
+		return true;
+	}
+	public function getPostId() {
+		return $this->id;
+	}
+	public function getCollectionId() {
+		return $this->id;
+	}
+	public function getRevisionId() {
+		return $this->id;
+	}
+	public function getChangeType() {
+		return 'new-post';
+	}
+	public function getCollection() {
+		return new class( $this->id ) {
+			public function __construct( private \Flow\Model\UUID $id ) {
+			}
+			public function getId() {
+				return $this->id;
+			}
+		};
+	}
+}
+class MetadataSpyStorage {
+	public int $currentRevisionQueries = 0;
+	public function __construct( private MetadataLatestTopicRevision $revision ) {
+	}
+	public function getMulti( $type, $ids ) {
+		return [];
+	}
+	public function findMulti( $type, $queries, $options ) {
+		check( $type === MetadataLatestTopicRevision::class,
+			'Current revision lookup uses the expected concrete post revision type' );
+		$this->currentRevisionQueries++;
+		return [ [ $this->revision ] ];
+	}
+}
+$latestTopic = new MetadataLatestTopicRevision(
+	\Flow\Model\UUID::create( '0000000000000011' )
+);
+$spyStorage = new MetadataSpyStorage( $latestTopic );
+$metadataMethod = new ReflectionMethod(
+	\Flow\Formatter\TopicListQuery::class, 'loadMetadataBatch'
+);
+$queryStorage = new ReflectionProperty( \Flow\Formatter\AbstractQuery::class, 'storage' );
+$queryStorage->setValue( $topicQuery, $spyStorage );
+$metadataMethod->invoke( $topicQuery, [ $latestTopic ] );
+check( $spyStorage->currentRevisionQueries === 1,
+	'Legacy topic metadata redundantly fetches the already loaded current revision' );
+$freshTopicQuery = ( new ReflectionClass( \Flow\Formatter\TopicListQuery::class ) )
+	->newInstanceWithoutConstructor();
+$queryStorage->setValue( $freshTopicQuery, $spyStorage );
+$freshTopicQuery->setBenchmarkSkipCurrentRevisionRefetch( true );
+$metadataMethod->invoke( $freshTopicQuery, [ $latestTopic ] );
+check( $spyStorage->currentRevisionQueries === 1,
+	'Benchmark-only variant skips the duplicated current revision query' );
+$currentMethod = new ReflectionMethod(
+	\Flow\Formatter\TopicListQuery::class, 'getCurrentRevision'
+);
+check( $currentMethod->invoke( $freshTopicQuery, $latestTopic ) === $latestTopic,
+	'Topic list continues using the original latest revision object' );
+$freshTopicQuery->setBenchmarkSkipCurrentRevisionRefetch( false );
+$metadataMethod->invoke( $freshTopicQuery, [ $latestTopic ] );
+check( $spyStorage->currentRevisionQueries === 2,
+	'Disabling the variant restores the legacy current revision fetch' );
 echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " benchmark timing assertions\n";
