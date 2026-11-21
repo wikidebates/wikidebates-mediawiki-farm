@@ -280,4 +280,91 @@ $freshTopicQuery->setBenchmarkSkipCurrentRevisionRefetch( false );
 $metadataMethod->invoke( $freshTopicQuery, [ $latestTopic ] );
 check( $spyStorage->currentRevisionQueries === 2,
 	'Disabling the variant restores the legacy current revision fetch' );
+// An edited topic title still needs its previous revision for history
+// metadata. The A/B variant must eliminate only the current-revision lookup.
+class MetadataEditedTopicRevision extends MetadataLatestTopicRevision {
+	public function __construct(
+		\Flow\Model\UUID $postId,
+		private \Flow\Model\UUID $revisionId,
+		private ?\Flow\Model\UUID $previousId
+	) {
+		parent::__construct( $postId );
+	}
+	public function getRevisionId() {
+		return $this->revisionId;
+	}
+	public function getPrevRevisionId() {
+		return $this->previousId;
+	}
+	public function getChangeType() {
+		return 'edit-title';
+	}
+}
+class MetadataEditedTopicSpyStorage {
+	public int $previousFetches = 0;
+	public int $currentFetches = 0;
+	public function __construct(
+		private MetadataEditedTopicRevision $latest,
+		private MetadataEditedTopicRevision $previous
+	) {
+	}
+	public function getMulti( $type, $ids ) {
+		if ( $type === 'Workflow' ) {
+			return [];
+		}
+		check( $type === MetadataEditedTopicRevision::class,
+			'Edited title previous revision uses the expected revision class' );
+		check( count( $ids ) === 1 &&
+			$ids[0]->getAlphadecimal() === $this->previous->getRevisionId()->getAlphadecimal(),
+			'Edited title still requests the actual previous revision ID' );
+		$this->previousFetches++;
+		return [ $this->previous ];
+	}
+	public function findMulti( $type, $queries, $options ) {
+		check( $type === MetadataEditedTopicRevision::class,
+			'Current revision is re-fetched only through the original query path' );
+		$this->currentFetches++;
+		return [ [ $this->latest ] ];
+	}
+}
+$editedPostId = \Flow\Model\UUID::create( '0000000000000020' );
+$previousRevision = new MetadataEditedTopicRevision(
+	$editedPostId,
+	\Flow\Model\UUID::create( '0000000000000021' ),
+	null
+);
+$latestRevision = new MetadataEditedTopicRevision(
+	$editedPostId,
+	\Flow\Model\UUID::create( '0000000000000022' ),
+	$previousRevision->getRevisionId()
+);
+$previousMethod = new ReflectionMethod(
+	\Flow\Formatter\TopicListQuery::class, 'getPreviousRevision'
+);
+$revisionCacheProperty = new ReflectionProperty(
+	\Flow\Formatter\AbstractQuery::class, 'revisionCache'
+);
+$cacheKeys = [];
+foreach ( [ false, true ] as $skip ) {
+	$editedTopicQuery = ( new ReflectionClass( \Flow\Formatter\TopicListQuery::class ) )
+		->newInstanceWithoutConstructor();
+	$editedTopicStorage = new MetadataEditedTopicSpyStorage( $latestRevision, $previousRevision );
+	$queryStorage->setValue( $editedTopicQuery, $editedTopicStorage );
+	$editedTopicQuery->setBenchmarkSkipCurrentRevisionRefetch( $skip );
+	$metadataMethod->invoke( $editedTopicQuery, [ $latestRevision ] );
+	check( $editedTopicStorage->previousFetches === 1,
+		'Edited title previous revision is preloaded in both modes' );
+	check( $editedTopicStorage->currentFetches === ( $skip ? 0 : 1 ),
+		'Only the redundant current revision read varies by A/B mode' );
+	check( $previousMethod->invoke( $editedTopicQuery, $latestRevision ) === $previousRevision,
+		'Edited title resolves its previous revision in both modes' );
+	check( $currentMethod->invoke( $editedTopicQuery, $latestRevision ) === $latestRevision,
+		'Edited title preserves identity of its current revision in both modes' );
+	$keys = array_keys( $revisionCacheProperty->getValue( $editedTopicQuery ) );
+	sort( $keys, SORT_STRING );
+	$cacheKeys[] = $keys;
+}
+check( $cacheKeys[0] === $cacheKeys[1],
+	'Original and skip paths cache the same previous/current revision IDs' );
+
 echo 'OK: ' . $GLOBALS['flow_test_assertions'] . " benchmark timing assertions\n";
