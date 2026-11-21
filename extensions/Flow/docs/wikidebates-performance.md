@@ -1163,3 +1163,26 @@ interpreting the time difference. Collect medians without
 to isolate whether `load_metadata` falls. Do **not** activate for
 regular traffic before confirming semantic parity, tests and
 a reproducible whole-render benefit.
+
+### Follow-up: complete response metadata verification
+
+The initial canonical hashes cover revision content, associations and root
+identity, but not all actions, permissions and links. When
+`--diagnose-digests` is enabled, additional HMAC-SHA256 values now cover:
+
+- `diagnostic.full_api_hmac_sha256`: exact serialized API response, in order.
+- `diagnostic.revision_metadata_hmac_sha256`: all revision fields except
+  `content`, sorted by revision ID.
+
+These diagnostics are generated after the timed interval and use the existing
+private site key. Do not print raw API payloads or the HMAC key. The full API
+digest is intentionally sensitive to paging order and volatile fields (such as
+per-request action tokens). If it differs, inspect whether the difference is
+expected, rather than removing or normalizing security-relevant fields.
+
+Before enabling the optimization for public traffic, run independent-process
+A/B trials for both `updated` and `newest`, with identical user context and
+stable page data. Check all previous canonical hashes, the new metadata HMAC,
+and the full response HMAC; include moderated/hidden and edited-title fixtures
+in functional regression tests. Keep `--breakdown` out of primary wall-clock
+timings; use it separately for `query_detail_ms.load_metadata`.

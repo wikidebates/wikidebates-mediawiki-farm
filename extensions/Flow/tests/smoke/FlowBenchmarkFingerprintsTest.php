@@ -72,6 +72,40 @@ $compare = FlowBenchmarkFingerprints::inspect( $postReassigned, $key );
 assertFlowFingerprint( $original['posts_sorted_by_id_sha256'] !== $compare['posts_sorted_by_id_sha256'],
 	'Different post-revision mapping is detected' );
 
+// Metadata-only differences must be detected even when HTML and IDs match.
+$metadataChanged = $list;
+$metadataChanged['revisions']['revision-a']['actions'] = [ 'reply' => false ];
+$metadataCompare = FlowBenchmarkFingerprints::inspect( $metadataChanged, $key );
+assertFlowFingerprint(
+	$original['content_sorted_by_revision_id_sha256'] ===
+		$metadataCompare['content_sorted_by_revision_id_sha256'],
+	'Metadata regression fixture keeps the same HTML'
+);
+assertFlowFingerprint(
+	$original['revision_metadata_hmac_sha256'] !==
+		$metadataCompare['revision_metadata_hmac_sha256'],
+	'Action and permission metadata changes are detected'
+);
+assertFlowFingerprint(
+	$original['full_api_hmac_sha256'] !== $metadataCompare['full_api_hmac_sha256'],
+	'Full API digest detects changes beyond revision HTML'
+);
+
+$outsideRevision = $list;
+$outsideRevision['links'] = [ 'next' => '/wiki/next' ];
+$outsideCompare = FlowBenchmarkFingerprints::inspect( $outsideRevision, $key );
+assertFlowFingerprint(
+	$original['full_api_hmac_sha256'] !== $outsideCompare['full_api_hmac_sha256'],
+	'Full API digest detects top-level links changes'
+);
+assertFlowFingerprint(
+	$original['revision_metadata_hmac_sha256'] ===
+		$outsideCompare['revision_metadata_hmac_sha256'],
+	'Top-level links do not alter revision metadata digest'
+);
+assertFlowFingerprint( !str_contains( json_encode( $original ), $key ),
+	'Extended diagnostics never publish the HMAC key' );
+
 $rejected = false;
 try {
 	FlowBenchmarkFingerprints::inspect( $list, 'weak' );
