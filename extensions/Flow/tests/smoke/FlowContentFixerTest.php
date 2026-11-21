@@ -202,6 +202,43 @@ namespace {
 	check( $fixer->getContent( $revision ) === $source,
 		'Disabling profiling restores the unchanged noninstrumented path' );
 
+
+	// Per-link profiling: distinguish candidate links, real replacements,
+	// LinkRenderer output, HTML fragment parsing, and DOM insertion.
+	$perLinkBatch = new \MediaWiki\Cache\LinkBatch;
+	$perLinkFixer = new \Flow\Parsoid\ContentFixer(
+		new \Flow\Parsoid\Fixer\WikiLinkFixer( $perLinkBatch )
+	);
+	$perLinkFixture = '<body><p><a href="./Existing" rel="mw:WikiLink">Existing</a> ' .
+		'<a href="" rel="mw:WikiLink">Empty</a> ' .
+		'<a href="./Missing" rel="mw:WikiLink">Missing</a> ' .
+		'<a href="./Existing">Not a WikiLink</a></p></body>';
+	$perLinkBaseline = $perLinkFixer->apply( $perLinkFixture, $title );
+	$perLinkEvents = [];
+	$perLinkFixer->setBenchmarkTimer(
+		static function ( string $phase, float $milliseconds ) use ( &$perLinkEvents ): void {
+			$perLinkEvents[$phase][] = $milliseconds;
+		}
+	);
+	check( $perLinkFixer->apply( $perLinkFixture, $title ) === $perLinkBaseline,
+		'Per-link instrumentation preserves exact HTML, redlinks and skipped hrefs' );
+	check( count( $perLinkEvents['format_detail_content_wikilink_candidate'] ?? [] ) === 3,
+		'Candidate count includes empty hrefs matched by WikiLink XPath' );
+	check( count( $perLinkEvents['format_detail_content_wikilink_transformed'] ?? [] ) === 2,
+		'Only two valid links are actually transformed' );
+	foreach ( [ 'render_html', 'parse_fragment', 'insert_node' ] as $phase ) {
+		$key = 'format_detail_content_wikilink_' . $phase;
+		check( count( $perLinkEvents[$key] ?? [] ) === 2,
+			'Two transformed links produce two ' . $phase . ' measurements' );
+		check( min( $perLinkEvents[$key] ) >= 0,
+			'Per-link timing never reports a negative duration for ' . $phase );
+	}
+	$perLinkFixer->setBenchmarkTimer( null );
+	$perLinkEvents = [];
+	check( $perLinkFixer->apply( $perLinkFixture, $title ) === $perLinkBaseline,
+		'Uninstrumented WikiLink rendering still returns the same HTML' );
+	check( $perLinkEvents === [],
+		'Disabling the content profiler also disables nested WikiLink profiling' );
 	// An inherited getContent('html') must still run the XSS hook, decoding
 	// and legacy handling before the experimental single-pass DOM can be used.
 	class SafetyCheckedHtmlRevision extends \Flow\Model\PostRevision {
