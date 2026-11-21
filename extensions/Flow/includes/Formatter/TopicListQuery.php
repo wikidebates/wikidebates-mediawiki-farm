@@ -45,17 +45,16 @@ class TopicListQuery extends AbstractQuery {
 	/** @var callable|null Read-only profiling, enabled only for the maintenance benchmark. */
 	private $benchmarkTimer;
 
-	/** @var bool Maintenance-only A/B; never enabled for normal Flow rendering. */
-	private bool $benchmarkSkipCurrentRevisionRefetch = false;
-
-	public function setBenchmarkSkipCurrentRevisionRefetch( bool $skip ): void {
-		$this->benchmarkSkipCurrentRevisionRefetch = $skip;
-	}
-
+	/**
+	 * collectRevisions() already loads the latest revision of every post.
+	 * getCurrentRevision() returns the same object, so another lookup would
+	 * only populate unused current-revision metadata.
+	 *
+	 * Keep the generic lookup for subclasses: they may override collection
+	 * or current-revision behavior and cannot assume this invariant.
+	 */
 	protected function shouldPreloadCurrentRevisionsForMetadata(): bool {
-		// collectRevisions() already fetched latest PostRevision objects.
-		// Preserve the generic parent path for every unprofiled request.
-		return !$this->benchmarkSkipCurrentRevisionRefetch;
+		return get_class( $this ) !== self::class;
 	}
 
 	public function setBenchmarkTimer( ?callable $observer ): void {
