@@ -74,9 +74,9 @@ abstract class AbstractQuery {
 	}
 
 	/**
-	 * Current revision re-fetching is required by generic/history queries.
-	 * TopicListQuery can suppress it ONLY in the maintenance experiment
-	 * because that query already fetched the latest post revisions.
+	 * Generic and history queries preload the latest collection revisions.
+	 * Standard TopicListQuery can omit this stage because it has already
+	 * collected current posts. Subclasses retain the conservative default.
 	 */
 	protected function shouldPreloadCurrentRevisionsForMetadata(): bool {
 		return true;
