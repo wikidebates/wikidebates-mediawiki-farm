@@ -110,6 +110,12 @@ class RevisionFormatter {
 	 */
 	protected $userLinks = [];
 
+	/** @var User|null The user whose rights were used to generate cached tool links. */
+	private $userLinksViewer;
+
+	/** @var PostRevision[] Current post revisions preloaded only while serializing a topic batch. */
+	private $availablePostRevisions = [];
+
 	/**
 	 * @var UserNameBatch
 	 */
@@ -405,6 +411,11 @@ class RevisionFormatter {
 	 * @return array
 	 */
 	public function serializeUserLinks( $userData ) {
+		$viewer = $this->permissions->getUser();
+		if ( $viewer !== $this->userLinksViewer ) {
+			$this->userLinks = [];
+			$this->userLinksViewer = $viewer;
+		}
 		$name = $userData['name'];
 		if ( isset( $this->userLinks[$name] ) ) {
 			return $this->userLinks[$name];
@@ -506,6 +517,32 @@ class RevisionFormatter {
 	}
 
 	/**
+	 * Reuse revisions already loaded by TopicListQuery instead of reading the
+	 * same reply-parent collections repeatedly while formatting the board.
+	 * Only the current revisions are indexed; history paths fall back to storage.
+	 *
+	 * @param FormatterRow[] $rows
+	 */
+	public function primePostRevisions( array $rows ): void {
+		$this->availablePostRevisions = [];
+		foreach ( $rows as $row ) {
+			$revision = $row->currentRevision;
+			if ( $revision instanceof PostRevision ) {
+				$this->availablePostRevisions[$revision->getPostId()->getAlphadecimal()] = $revision;
+			}
+		}
+	}
+
+	public function clearPrimedPostRevisions(): void {
+		$this->availablePostRevisions = [];
+	}
+
+	private function getReplyParentRevision( UUID $postId ): PostRevision {
+		return $this->availablePostRevisions[$postId->getAlphadecimal()] ??
+			PostCollection::newFromId( $postId )->getLastRevision();
+	}
+
+	/**
 	 * @param FormatterRow $row
 	 * @return array
 	 * @throws FlowException
@@ -578,7 +615,7 @@ class RevisionFormatter {
 					$replyToRevision = $revision;
 					if ( $row->isLastReply ) {
 						$replyToId = $replyToRevision->getReplyToId();
-						$replyToRevision = PostCollection::newFromId( $replyToId )->getLastRevision();
+						$replyToRevision = $this->getReplyParentRevision( $replyToId );
 					}
 
 					/*
@@ -587,7 +624,7 @@ class RevisionFormatter {
 					 */
 					while ( $replyToRevision->getDepth() >= $this->maxThreadingDepth ) {
 						$replyToId = $replyToRevision->getReplyToId();
-						$replyToRevision = PostCollection::newFromId( $replyToId )->getLastRevision();
+						$replyToRevision = $this->getReplyParentRevision( $replyToId );
 					}
 
 					$links['reply'] = $this->urlGenerator->replyAction(

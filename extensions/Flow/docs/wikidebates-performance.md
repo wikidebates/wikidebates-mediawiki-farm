@@ -46,3 +46,53 @@ python3 extensions/Flow/scripts/benchmark-topiclist.py \
 Use an existing Flow board title. Requests are sequential, spaced one second apart, with a maximum of ten requests and `maxlag=5`. The helper does not edit, authenticate, purge shared caches or change user preferences. It reports counts, response-body sizes and elapsed time without storing message content. Stop on API errors, HTTP errors and invalid responses. The sample API path must match the farm's actual `api.php` URL.
 
 The first request is not necessarily cold. Times include network and HTTP latency, not just PHP or SQL. Compare the same boards, limits and user state before/after deployment. Collect browser performance traces and server-side SQL/CPU measurements separately before attributing time to the renderer or changing how bodies are loaded.
+
+## Follow-up: in-place optimizations without changing initial topic rendering
+
+This second batch deliberately keeps **all topic messages in the server-rendered
+HTML and in the first API response**. It is unrelated to the rejected
+lightweight-topic-preview proposal (PR #7, closed and never merged).
+
+- `mw.flow.dm.System::fetchMoreTopics()` now counts returned ToC roots using
+  the requested `tocPostsLimit` and releases its shared pending promise after
+  **both success and failure**. Full-render callbacks no longer incorrectly
+  overwrite the independent ToC continuation flag. `APIHandler::getTopicList()`
+  accepts an explicit limit while retaining its previous defaults (50/10).
+- `TopicListFormatter` temporarily indexes the current `PostRevision` objects
+  already delivered by `TopicListQuery`. When `RevisionFormatter::buildActions()`
+  looks up an ancestor for a reply action, it uses this batch first and falls
+  back to `PostCollection::getLastRevision()` when unavailable. The index is
+  cleared even if formatting throws, so it cannot leak between render batches.
+- `WikiLinkFixer` now uses its injected MediaWiki 1.43 `LinkBatch` to preload
+  existence information for the current message's wikilinks **once** before
+  `LinkRenderer::makeLink()` calls. The batch is reset after execution; links
+  created on later messages are still handled and red links are not hardcoded.
+- `ContentFixer` skips `DOMDocument` when the original content is plain text
+  with no HTML markup or entities. All actual HTML continues through the
+  previous fixers, and no markup is removed or deferred.
+- `TopicListBlock::renderTocApi()` reuses an **already complete** initial page
+  for `updated` sorting when there is **no forward pagination link and no
+  requested offset**. This avoids one duplicate first-page query for small
+  boards. On larger boards it deliberately retains the original query:
+  advancing solely by update timestamp can silently skip distinct topics with
+  identical timestamps. A correct composite cursor or shared prefetched pager
+  would need separate integration tests and profiling before deployment.
+- `RevisionFormatter::serializeUserLinks()` clears its user-link cache when the
+  viewer User object changes; viewer-dependent block links are never reused
+  from a different permission context. The cache still applies within a
+  request for the same viewer.
+
+Run the new isolated checks (requires PHP's `dom` extension for the HTML test):
+
+```sh
+php extensions/Flow/tests/smoke/FlowFormatterOptimizationTest.php
+php extensions/Flow/tests/smoke/FlowContentFixerTest.php
+node extensions/Flow/tests/smoke/flow-pagination.test.js
+```
+
+GitHub Actions runs the smoke checks under PHP 8.1 and PHP 8.4. Isolated tests
+are not proof of improved production latency. Measure before/after SQL queries,
+`ContentFixer::apply()` CPU time, rendered HTML equivalence, ToC continuation,
+link existence (including newly created pages) and reply actions at maximum
+threading depth on the MediaWiki 1.43 farm. Neither DB migrations nor Composer
+changes are required. Full browser and permission testing is still necessary.

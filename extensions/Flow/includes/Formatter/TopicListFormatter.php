@@ -67,14 +67,19 @@ class TopicListFormatter extends BaseTopicListFormatter {
 	 */
 	public function buildResult( array $workflows, array $found, IContextSource $ctx ) {
 		$revisions = $posts = $replies = [];
-		foreach ( $found as $formatterRow ) {
-			$serialized = $this->serializer->formatApi( $formatterRow, $ctx );
-			if ( !$serialized ) {
-				continue;
+		$this->serializer->primePostRevisions( $found );
+		try {
+			foreach ( $found as $formatterRow ) {
+				$serialized = $this->serializer->formatApi( $formatterRow, $ctx );
+				if ( !$serialized ) {
+					continue;
+				}
+				$revisions[$serialized['revisionId']] = $serialized;
+				$posts[$serialized['postId']][] = $serialized['revisionId'];
+				$replies[$serialized['replyToId']][] = $serialized['postId'];
 			}
-			$revisions[$serialized['revisionId']] = $serialized;
-			$posts[$serialized['postId']][] = $serialized['revisionId'];
-			$replies[$serialized['replyToId']][] = $serialized['postId'];
+		} finally {
+			$this->serializer->clearPrimedPostRevisions();
 		}
 
 		foreach ( $revisions as $i => $serialized ) {

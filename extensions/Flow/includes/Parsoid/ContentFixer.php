@@ -7,6 +7,7 @@ use DOMXPath;
 use Flow\Conversion\Utils;
 use Flow\Exception\FlowException;
 use Flow\Model\AbstractRevision;
+use Flow\Parsoid\Fixer\WikiLinkFixer;
 use MediaWiki\Title\Title;
 
 class ContentFixer {
@@ -52,6 +53,11 @@ class ContentFixer {
 	 * @return string Html
 	 */
 	public function apply( $content, Title $title ) {
+		// Plain text without HTML syntax or entities cannot contain any node
+		// matched by the fixers, and needs no DOM parsing or reserialization.
+		if ( strpbrk( $content, '<>&' ) === false ) {
+			return $content;
+		}
 		$dom = self::createDOM( $content );
 		$this->applyToDom( $dom, $title );
 		return Utils::getInnerHtml( $dom->getElementsByTagName( 'body' )->item( 0 ) );
@@ -75,6 +81,9 @@ class ContentFixer {
 				continue;
 			}
 
+			if ( $contentFixer instanceof WikiLinkFixer ) {
+				$contentFixer->preload( $found, $title );
+			}
 			foreach ( $found as $node ) {
 				$contentFixer->apply( $node, $title );
 			}

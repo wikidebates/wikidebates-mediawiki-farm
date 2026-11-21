@@ -97,23 +97,32 @@
 			return $.Deferred().resolve( false ).promise();
 		}
 
-		this.fetchPromise = this.api.getTopicList(
+		var promise = this.api.getTopicList(
 			sortOrder,
 			{
 				offset: sortOrder === 'newest' ?
 					this.board.getOffsetId() :
 					this.board.getOffset(),
-				toconly: true
+				toconly: true,
+				limit: this.tocPostsLimit
 			} )
 			.then( function ( topicList ) {
 				var topics = mw.flow.dm.Topic.static.extractTopicsFromAPI( topicList );
-				// Add the topics to the data model
+				// Add the topics to the data model. Compare the page size, not the
+				// number of *new* topics: an existing topic can be returned again.
 				system.board.addItems( topics );
-				system.moreTopicsExistInApi = length === system.tocPostLimit;
-				system.fetchPromise = null;
+				system.moreTopicsExistInApi = topicList.roots.length === system.tocPostsLimit;
 				return system.moreTopicsExistInApi;
 			} );
-		return this.fetchPromise;
+		this.fetchPromise = promise;
+		// A rejected promise must not prevent the next attempt. The same
+		// pending promise can still be shared by simultaneous callers.
+		promise.always( function () {
+			if ( system.fetchPromise === promise ) {
+				system.fetchPromise = null;
+			}
+		} );
+		return promise;
 	};
 
 	/**
@@ -154,7 +163,7 @@
 			( new mw.Api() ).get( apiParams )
 				.then( function ( data ) {
 					var result = data.flow[ 'view-topiclist' ].result;
-					system.populateBoardTopicsFromJson( result.topiclist );
+					system.populateBoardTopicsFromJson( result.topiclist, undefined, true );
 					// HACK: This return value should go away. It is only
 					// here so that we can initialize the board with
 					// handlebars while we migrate things to ooui
@@ -198,9 +207,10 @@
 	 *
 	 * @param {Object} topiclist API object for the board and topic list
 	 * @param {number} [index] The position to enter the items in.
+	 * @param {boolean} [isTocBatch] Whether this response was requested with the ToC limit
 	 * @fires populate
 	 */
-	mw.flow.dm.System.prototype.populateBoardTopicsFromJson = function ( topiclist, index ) {
+	mw.flow.dm.System.prototype.populateBoardTopicsFromJson = function ( topiclist, index, isTocBatch ) {
 		var i, len, topicId, revisionData, topic, posts,
 			topicTitlesById = {},
 			updateTimestampsByTopicId = {},
@@ -239,13 +249,11 @@
 		// Add to board
 		this.getBoard().addItems( topics, index );
 
-		// FIXME: checking against two different values can result in a false positive
-		// We have to remember how many topics we requested and check against that number,
-		// or use a query-continue-like thing
-		this.moreTopicsExistInApi = (
-			topics.length !== this.renderedTopics &&
-			topics.length !== this.tocPostLimit
-		);
+		// A page of rendered discussions (often 10) does not say whether the
+		// separately loaded ToC has more topics. Only the ToC response does.
+		if ( isTocBatch ) {
+			this.moreTopicsExistInApi = topiclist.roots.length === this.tocPostsLimit;
+		}
 
 		// Both of these should be safe to update with extend, since only the latest data should be needed.
 		this.emit( 'populate', {

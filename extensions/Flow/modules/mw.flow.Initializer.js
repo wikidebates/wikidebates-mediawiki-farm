@@ -286,7 +286,7 @@
 			this.system.populateBoardDescriptionFromJson( dataBlob.blocks.header || {} );
 			// Populate the ToC topics
 			if ( dataBlob.toc ) {
-				this.system.populateBoardTopicsFromJson( dataBlob.toc );
+				this.system.populateBoardTopicsFromJson( dataBlob.toc, undefined, true );
 			}
 		} else {
 			this.system.populateBoardFromApi();
