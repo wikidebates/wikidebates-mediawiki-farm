@@ -153,6 +153,16 @@ namespace {
 	check( $workflowOne->checks === 6, 'Fresh batch does not reuse an old decision' );
 	$renderer->clearPrimedPostRevisions();
 
+	// A new formatting batch must reflect changed rights on the very same
+	// User object (never keep edit decisions beyond the old batch).
+	$reader->rights = [ 'read', 'block' ];
+	$renderer->primePostRevisions( [] );
+	check( $editCheck->invoke( $renderer, $workflowOne, $reader ),
+		'A later batch reflects updated rights on the same User object' );
+	check( $workflowOne->checks === 7, 'Rights are checked again in the new batch' );
+	$renderer->clearPrimedPostRevisions();
+	$reader->rights = [ 'read' ];
+
 	class SpyFormatter extends RevisionFormatter {
 		public int $primeCount = 0;
 		public int $clearCount = 0;
