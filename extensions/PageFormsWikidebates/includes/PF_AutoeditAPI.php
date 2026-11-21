@@ -12,6 +12,7 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\Request\FauxRequest;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Title\Title;
+use MediaWiki\WikiMap\WikiMap;
 
 /**
  * @ingroup PageForms
@@ -1067,7 +1068,7 @@ class PFAutoeditAPI extends ApiBase {
 			$out->addParserOutputMetadata( $parserOutput );
 			$out->addJsConfigVars( 'wgPageFormsDraftContext', [
 				'enabled' => (bool)( $GLOBALS['wgPageFormsEnableLocalDrafts'] ?? true ),
-				'wiki' => wfWikiID(),
+				'wiki' => WikiMap::getCurrentWikiId(),
 				'user' => $this->getUser()->getId(),
 				'form' => $formTitle->getPrefixedText(),
 				'formRevision' => (int)$formTitle->getLatestRevID(),
