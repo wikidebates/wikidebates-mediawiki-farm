@@ -88,15 +88,32 @@ $.fn.extend({
 		const tree = new pf.TreeInput(this);
 		const options = tree.setOptions();
 
-		$(this).jstree(options);
-
-		$(this).bind('select_node.jstree', (evt, data) => {
-			tree.check(data.node.text);
-		});
-		$(this).bind('deselect_node.jstree', (evt, data) => {
-			tree.uncheck(data.node.text);
-		});
-
+		const $element = $( this );
+		// The saved value may have been restored before a lazy tree is created.
+		// Apply that value to the visual widget once jsTree has loaded.
 		tree.setCurValue();
+		$element.on( 'ready.jstree.pfRestore', ( event, data ) => {
+			const widget = data && data.instance ? data.instance : $element.jstree( true );
+			if ( !widget || typeof widget.get_json !== 'function' ||
+				typeof widget.deselect_all !== 'function' || typeof widget.select_node !== 'function' ) {
+				return;
+			}
+			const nodes = widget.get_json( '#', { flat: true } );
+			const chosen = tree.values.map( ( name ) => nodes.filter( ( node ) => node.text === name ) );
+			if ( chosen.some( ( matches ) => matches.length !== 1 ) ) {
+				// Never choose an arbitrary node when two labels are identical.
+				return;
+			}
+			widget.deselect_all( true );
+			chosen.forEach( ( matches ) => widget.select_node( matches[ 0 ].id, true, true ) );
+		} );
+		$element.jstree( options );
+
+		$element.on( 'select_node.jstree', ( evt, data ) => {
+			tree.check( data.node.text );
+		} );
+		$element.on( 'deselect_node.jstree', ( evt, data ) => {
+			tree.uncheck( data.node.text );
+		} );
 	}
 });
