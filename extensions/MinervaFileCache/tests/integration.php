@@ -92,10 +92,19 @@ try {
 	ensure(cacheStatus(request($query, true, ['Cookie: ' . $cookie])) === 'BYPASS', 'Authenticated visitors bypass files');
 	ensure(cacheStatus(request(['title' => 'Uncacheable'])) === 'BYPASS', 'Client-cache veto prevents storing a dynamic response');
 	ensure(cacheStatus(request(['title' => 'Study_redirect'])) !== 'HIT', 'Redirect is excluded');
+	// The cached HTML is still physically on disk when access is revoked.
+	// A policy change does not necessarily invoke a TitleSquidURLs purge.
+	$cachedBeforeRights = glob($state . '/mobile-cache/*/*/*/*.cache') ?: [];
+	ensure(count($cachedBeforeRights) > 0, 'Public mobile HTML already exists before read revocation');
 	touch($state . '/deny-read');
 	$denied = request($query);
-	ensure(cacheStatus($denied) !== 'HIT' && !str_contains($denied['body'], 'ARGUMENT_VERSION_ONE'), 'Read authorization is checked before accessing a warm file');
+	ensure(cacheStatus($denied) !== 'HIT' && !str_contains($denied['body'], 'ARGUMENT_VERSION_ONE'),
+		'Read authorization is checked before accessing an already-published file');
+	ensure(count(glob($state . '/mobile-cache/*/*/*/*.cache') ?: []) >= count($cachedBeforeRights),
+		'Read-denied request does not depend on an earlier physical file purge');
 	unlink($state . '/deny-read');
+	ensure(cacheStatus(request($query)) === 'HIT',
+		'Restoring public read can reuse a previously written visible revision');
 	touch($state . '/epoch-changed');
 	ensure(cacheStatus(request($query)) === 'MISS', 'Deployment epoch invalidates warm files');
 	ensure(cacheStatus(request($query)) === 'HIT', 'New epoch fills normally');
