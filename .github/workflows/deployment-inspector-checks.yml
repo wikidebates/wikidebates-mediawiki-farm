@@ -35,6 +35,7 @@ jobs:
             exit 1
           fi
           grep -q 'UNINITIALIZED extensions/Wikidebates' "$RUNNER_TEMP/audit.txt"
+          grep -q 'OPTIONAL_UNINITIALIZED extensions/CrawlerProtection/build' "$RUNNER_TEMP/audit.txt"
           grep -q 'REVIEW REQUIRED' "$RUNNER_TEMP/audit.txt"
           test "$(git rev-parse HEAD)" = "$before"
           git diff --exit-code
