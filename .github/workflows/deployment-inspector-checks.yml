@@ -1,0 +1,40 @@
+name: Read-only deployment inspector checks
+on:
+  pull_request:
+    paths:
+      - 'maintenance/inspectFarmDeployment.sh'
+      - 'docs/wikidebates-deployment-readonly-audit.md'
+      - '.github/workflows/deployment-inspector-checks.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'maintenance/inspectFarmDeployment.sh'
+      - 'docs/wikidebates-deployment-readonly-audit.md'
+      - '.github/workflows/deployment-inspector-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspector:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Check bash syntax
+        run: bash -n maintenance/inspectFarmDeployment.sh
+      - name: Verify missing submodules are detected without mutation
+        run: |
+          before=$(git rev-parse HEAD)
+          if bash maintenance/inspectFarmDeployment.sh > "$RUNNER_TEMP/audit.txt" 2>&1; then
+            echo 'Uninitialized submodules should require review.'
+            exit 1
+          fi
+          grep -q 'UNINITIALIZED extensions/Wikidebates' "$RUNNER_TEMP/audit.txt"
+          grep -q 'REVIEW REQUIRED' "$RUNNER_TEMP/audit.txt"
+          test "$(git rev-parse HEAD)" = "$before"
+          git diff --exit-code
