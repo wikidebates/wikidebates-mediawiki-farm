@@ -63,15 +63,17 @@ class InterlanguageCentralExtensionPurgeJob extends Job {
 			}
 			$apiUrl .= '?' . wfArrayToCGI( array(
 				'action'	=> 'purge',
-				'format'	=> 'json', //Smallest response
+				'format'	=> 'json',
+				'formatversion' => 2, // Native JSON booleans, including purged:true
 				'titles'	=> implode( '|', array_keys( $pages ) )
 			) );
 //			Http::post( $apiUrl );
 			$response = $mwServices->getHttpRequestFactory()->post( $apiUrl, [], __METHOD__ );
 			$result = is_string( $response ) ? json_decode( $response, true ) : null;
-			// MediaWiki ApiPurge returns a "purge" array even when a user is
-			// denied the "purge" right. Only "purged":true confirms success.
-			// Also reject partial batches; do not automatically retry.
+			// Request formatversion=2: in version 1 a successful purged flag
+			// is an empty string, not the JSON boolean true. With version 2
+			// strictly require purged:true for each item. Reject partial batches
+			// and do not automatically retry.
 			$items = is_array( $result ) ? ( $result['purge'] ?? null ) : null;
 			$purged = is_array( $items ) && count( $items ) === count( $pages ) && $items !== [];
 			if ( $purged ) {

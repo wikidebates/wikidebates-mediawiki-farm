@@ -88,12 +88,16 @@ Nettoyage du depot (22 novembre 2026)
 - La verification de syntaxe CI parcourt desormais tous les fichiers PHP presents, sans exception pour la copie supprimee.
 - Aucun changement a la pagination de `ApiQueryLangLinks`, aux ecritures pendant le rendu ou aux purges distantes ; ces comportements demandent des essais fonctionnels FR/EN avant modification.
 
-Audit de la purge distante (22 novembre 2026)
-- Le module natif MediaWiki 1.43 action=purge peut renvoyer une liste purge
+Audit de la purge distante (23 novembre 2026)
+- Attention : sans formatversion=2, le JSON MediaWiki renvoie un indicateur
+  de succes purged comme une chaine vide, et non comme un booleen true.
+  Les premiers diagnostics de purge ont donc affiche a tort ECHEC alors que
+  la reponse avait une entree purged et aucune erreur ni avertissement.
+- Le job demande maintenant formatversion=2, avec booleens JSON natifs.
+  Il verifie purged:true sur chaque page et le nombre de resultats ; sinon
+  il journalise un avertissement sans retry ni changement de permissions.
+- Le module natif MediaWiki 1.43 action=purge peut aussi renvoyer une liste
   sans purged:true lorsqu'une autorisation est refusee.
-- Verifier chaque indicateur purged:true et le nombre de pages de la reponse :
-  sinon le job journalise un avertissement sans ajouter de tentative ni modifier
-  les permissions ou les parametres d'authentification.
 - La journalisation ne garantit pas une purge effective ; recette interwikis
   et permissions API requises avant toute politique de reessais.
 
@@ -105,3 +109,10 @@ Audit de la purge distante (22 novembre 2026)
 - Le job agregere les destinations sans prefixe ou sans URL API dans un
   seul avertissement par execution, avec au maximum cinq codes interwikis
   et sans nom de page, URL ni secret. Aucun nouvel appel HTTP ni reessai.
+
+- Mise a jour du 23 novembre 2026 : iw_api du prefixe en a ete renseigne
+  sur FR, puis le cache interwiki invalide. Le nouveau test HTTP depuis FR
+  a renvoye une reponse JSON avec batchcomplete, purge et un indicateur
+  purged, sans error ni warnings. Ce resultat correspond a une purge
+  vraisemblablement reussie sous formatversion=1 ; l'ancien script de
+  diagnostic comparait a tort la chaine vide au booleen true.
