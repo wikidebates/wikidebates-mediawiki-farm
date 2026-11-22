@@ -286,7 +286,13 @@ class ApiQueryLangLinks extends ApiQueryBase {
 
 		$goodTitles = $this->getPageSet()->getGoodTitles();
 		if ( self::getInterlanguageExtensionDB() ) {
-			$llFrom = $this->centralPageIdsForTitles( 'interlanguage_links', 'ill', $goodTitles );
+			// The local title may be represented in either central table.
+			// A native link can identify a central page that has additional
+			// translations but no local-language interlanguage_links row.
+			$llFrom = array_values( array_unique( array_merge(
+				$this->centralPageIdsForTitles( 'langlinks', 'll', $goodTitles ),
+				$this->centralPageIdsForTitles( 'interlanguage_links', 'ill', $goodTitles )
+			) ) );
 			// Inferred links belong only to the first response, not continuations.
 			if ( $params['continue'] === null && $continuation === null ) {
 				$this->addResultByPageId( $llFrom, $params, $prop, $goodTitles );
