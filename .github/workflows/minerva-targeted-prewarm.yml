@@ -1,0 +1,32 @@
+name: Minerva targeted page-id prewarm
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/MinervaFileCache/maintenance/prewarm.php'
+      - 'extensions/MinervaFileCache/tests/prewarm-command-unit.php'
+      - 'extensions/MinervaFileCache/src/Prewarm.php'
+      - '.github/workflows/minerva-targeted-prewarm.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Syntax check and isolated page-id prewarm regressions
+        run: |
+          php -l extensions/MinervaFileCache/maintenance/prewarm.php
+          php -l extensions/MinervaFileCache/tests/prewarm-command-unit.php
+          php extensions/MinervaFileCache/tests/prewarm-unit.php
+          php extensions/MinervaFileCache/tests/prewarm-category-unit.php
+          php extensions/MinervaFileCache/tests/prewarm-command-unit.php
