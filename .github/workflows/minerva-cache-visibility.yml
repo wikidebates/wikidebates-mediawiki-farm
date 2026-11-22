@@ -1,0 +1,60 @@
+name: Minerva cached-HTML visibility and invalidation
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/MinervaFileCache/src/CacheView.php'
+      - 'extensions/MinervaFileCache/src/PublicPageGuard.php'
+      - 'extensions/MinervaFileCache/src/Hooks.php'
+      - 'extensions/MinervaFileCache/tests/integration.php'
+      - 'extensions/MinervaFileCache/tests/public-page-guard-unit.php'
+      - '.github/workflows/minerva-cache-visibility.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  visibility-unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Validate PRIMARY visibility guard and HTTP cache adapter
+        run: |
+          php -l extensions/MinervaFileCache/src/PublicPageGuard.php
+          php -l extensions/MinervaFileCache/src/CacheView.php
+          php -l extensions/MinervaFileCache/tests/public-page-guard-unit.php
+          php extensions/MinervaFileCache/tests/public-page-guard-unit.php
+          php extensions/MinervaFileCache/tests/unit.php
+
+  visibility-http:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: mbstring,intl,xml,dom,pdo_sqlite,sqlite3,curl
+      - name: Initialize marked disposable MediaWiki 1.43
+        run: |
+          LAB="$RUNNER_TEMP/minerva-visibility-$GITHUB_RUN_ID"
+          python3 extensions/MinervaFileCache/tests/prepare.py "$LAB"
+          echo "MINERVA_TEST_ROOT=$LAB" >> "$GITHUB_ENV"
+          export MINERVA_TEST_ROOT="$LAB"
+          php extensions/MinervaFileCache/tests/manage.php initialize
+      - name: Check already-cached anonymous pages through real HTTP
+        run: |
+          php -l extensions/MinervaFileCache/tests/integration.php
+          php extensions/MinervaFileCache/tests/integration.php
