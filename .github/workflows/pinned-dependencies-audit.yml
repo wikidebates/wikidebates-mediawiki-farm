@@ -1,0 +1,67 @@
+name: Pinned dependencies and Composer security audit
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * 1'
+  pull_request:
+    paths:
+      - '.gitmodules'
+      - 'composer.lock'
+      - 'composer.json'
+      - 'tests/ci/auditPinnedDependencies.py'
+      - '.github/workflows/pinned-dependencies-audit.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - '.gitmodules'
+      - 'composer.lock'
+      - 'composer.json'
+      - 'tests/ci/auditPinnedDependencies.py'
+      - '.github/workflows/pinned-dependencies-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  gitlinks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Verify local inventory offline
+        run: |
+          python3 -m py_compile tests/ci/auditPinnedDependencies.py
+          python3 tests/ci/auditPinnedDependencies.py --offline
+      - name: Compare pinned gitlinks with tracked upstream branch heads
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tests/ci/auditPinnedDependencies.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pinned-dependency-inventory
+          path: submodule-audit.json
+
+  composer-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            composer.json
+            composer.local.json
+            composer.lock
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - name: Audit locked Composer dependencies for security advisories
+        run: composer audit --locked --no-interaction --abandoned=report
