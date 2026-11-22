@@ -19,7 +19,7 @@
 	"config": {
 		"MinervaFileCacheEnabled": {"value": true},
 		"MinervaFileCacheDirectory": {"value": false},
-		"MinervaFileCacheTTL": {"value": 2592000},
+		"MinervaFileCacheTTL": {"value": 0, "description": "Maximum age in seconds of eligible anonymous HTML files; 0 disables age expiry."},
 		"MinervaFileCacheEpoch": {"value": "1"},
 		"MinervaFileCacheDebugHeaders": {"value": true},
 		"MinervaFileCacheMaxBytes": {"value": 4194304}
