@@ -1,0 +1,65 @@
+name: Temporary developer-tool security lock resolver
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/composer-security-resolution.yml'
+      - 'composer.json'
+      - 'composer.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+          sparse-checkout: |
+            composer.json
+            composer.local.json
+            composer.lock
+            .github/workflows/composer-security-resolution.yml
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          tools: composer:v2
+      - name: Resolve patched developer tools without install scripts
+        run: |
+          cp composer.lock /tmp/composer.lock.before
+          composer update phpcsstandards/phpcsutils squizlabs/php_codesniffer --with-all-dependencies --no-scripts --no-interaction --no-progress --no-install
+      - name: Emit exact lock changes for reviewed PR patch
+        run: |
+          php -r '
+          $old = json_decode(file_get_contents("/tmp/composer.lock.before"), true, 512, JSON_THROW_ON_ERROR);
+          $new = json_decode(file_get_contents("composer.lock"), true, 512, JSON_THROW_ON_ERROR);
+          $changed = [];
+          foreach (["packages", "packages-dev"] as $group) {
+              $before = array_column($old[$group], null, "name");
+              foreach ($new[$group] as $pkg) {
+                  if (!isset($before[$pkg["name"]]) || $pkg !== $before[$pkg["name"]]) {
+                      $changed[$group][$pkg["name"]] = $pkg;
+                  }
+              }
+          }
+          $removed = [];
+          foreach (["packages", "packages-dev"] as $group) {
+              $after = array_column($new[$group], null, "name");
+              foreach ($old[$group] as $pkg) {
+                  if (!isset($after[$pkg["name"]])) $removed[$group][] = $pkg["name"];
+              }
+          }
+          echo "COMPOSER_PATCH_JSON=" . json_encode([
+              "changes" => $changed,
+              "removed" => $removed,
+              "hash" => $new["content-hash"],
+              "plugin" => $new["plugin-api-version"] ?? null
+          ], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n";
+          '
+      - name: Verify no locked Composer security advisories remain
+        run: composer audit --locked --no-interaction
