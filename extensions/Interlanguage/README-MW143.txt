@@ -12,7 +12,10 @@ Adaptations faites pour MediaWiki 1.43 :
 
 Installation
 1. Déposer ce dossier dans extensions/Interlanguage
-2. Sur le wiki central : require_once "$IP/extensions/Interlanguage/InterlanguageCentral.php";
+2. Sur le wiki central : wfLoadExtension( 'Interlanguage' );
+   L'ancien require_once "$IP/extensions/Interlanguage/InterlanguageCentral.php";
+   reste compatible : il charge maintenant le meme extension.json.
+   Choisir une seule de ces deux methodes sur FR pour eviter tout double chargement.
 3. Sur les wikis dépendants : require_once "$IP/extensions/Interlanguage/Interlanguage.php";
 4. Régler les variables globales comme dans votre installation actuelle
 5. Sur le wiki central, lancer update.php pour créer la table interlanguage_links
@@ -36,6 +39,7 @@ Tests sans demarrer MediaWiki (sans reseau ni ecriture SQL) :
 	php extensions/Interlanguage/tests/InterlanguageDatabaseSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguageCentralSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguageCentralEntrypointSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php
 
 Verifier la syntaxe :
@@ -87,3 +91,14 @@ Nettoyage du depot (22 novembre 2026)
 - La sauvegarde historique `InterlanguageExtension (Copie).php` a ete retiree du repertoire actif : elle definissait la meme classe que `InterlanguageExtension.php` mais utilisait des API et une deserialisation obsoletes. Le fichier demeure recuperable dans l'historique Git.
 - La verification de syntaxe CI parcourt desormais tous les fichiers PHP presents, sans exception pour la copie supprimee.
 - Aucun changement a la pagination de `ApiQueryLangLinks`, aux ecritures pendant le rendu ou aux purges distantes ; ces comportements demandent des essais fonctionnels FR/EN avant modification.
+
+Audit FR, 23 novembre 2026 : la configuration effective n'enregistre pas le
+type de job purgeDependentWikis (JobQueueGroup::getQueueTypes). L'ancien
+InterlanguageCentral.php ne declarait ni les hooks centraux, ni JobClasses ;
+son extension.json declarait pourtant correctement ParserFirstCallInit,
+LinksUpdate, LanguageLinks et le job. Le point d'entree historique charge
+desormais ce manifeste. Avant de fusionner : verifier quel fichier est
+reellement charge dans LocalSettings, puis tester les hooks et le traitement
+reel des jobs sur une instance FR/EN de preproduction. L'API distante de EN
+est maintenant configuree dans l'entree interwiki FR et des requetes de
+purge unitaires ont repondu avec le marqueur purged en JSON formatversion=1.

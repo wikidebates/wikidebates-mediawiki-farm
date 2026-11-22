@@ -1,16 +1,11 @@
 <?php
+/**
+ * Backward-compatible entry point for the central wiki.
+ *
+ * Load the manifest instead of maintaining separate hook and job registries.
+ * This ensures that LinksUpdate, LanguageLinks and purgeDependentWikis are
+ * registered when a wiki uses the historical InterlanguageCentral.php include.
+ */
+$wgInterlanguageCentralExtensionIndexUrl = '';
 
-$wgInterlanguageCentralExtensionIndexUrl = "";
-
-$wgExtensionCredits['parserhook'][] = [
-	'name' => 'Interlanguage Central',
-	'author' => 'Nikola Smolenski',
-	'url' => 'https://www.mediawiki.org/wiki/Extension:Interlanguage',
-	'version' => '2.0.0',
-	'descriptionmsg' => 'interlanguagecentral-desc',
-];
-
-$wgMessagesDirs['InterlanguageCentral'] = __DIR__ . '/i18n/central';
-
-$wgAutoloadClasses['InterlanguageCentralExtensionPurgeJob'] =
-	__DIR__ . '/InterlanguageCentralExtensionPurgeJob.php';
+wfLoadExtension( 'Interlanguage', __DIR__ . '/extension.json' );
