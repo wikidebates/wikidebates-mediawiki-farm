@@ -1,0 +1,27 @@
+name: Minerva User-Agent audit PHP lint
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/MinervaFileCache/tests/**'
+      - '.github/workflows/minerva-ua-audit-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Validate isolated audit PHP syntax
+        run: |
+          php -l extensions/MinervaFileCache/tests/ua-matrix.php
+          php extensions/MinervaFileCache/tests/unit.php
