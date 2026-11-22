@@ -50,3 +50,5 @@ jobs:
         run: php extensions/Interlanguage/tests/InterlanguagePaginationSmokeTest.php
       - name: Pagination real SQLite regression test
         run: php extensions/Interlanguage/tests/InterlanguagePaginationSqlSmokeTest.php
+      - name: Central-wiki replica pagination SQL test
+        run: php extensions/Interlanguage/tests/InterlanguageForeignPaginationSqlSmokeTest.php
