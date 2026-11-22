@@ -13,7 +13,8 @@ for path in \
     extensions/Wikidebates \
     extensions/VEForAll \
     extensions/VisualEditor \
-    extensions/Echo; do
+    extensions/Echo \
+	extensions/AbuseFilter; do
     expected=$(git ls-files --stage -- "$path" | awk '$1 == "160000" { print $2 }')
     actual=$(git -C "$path" rev-parse HEAD 2>/dev/null || true)
     if [[ -z "$expected" || "$actual" != "$expected" ]]; then
@@ -37,6 +38,10 @@ php -l extensions/Wikidebates/src/AutoParentLink.php
 php extensions/Wikidebates/tests/autoParentLinkSyntax.php
 php -l extensions/VEForAll/includes/VEForAllHooks.php
 php -l extensions/Flow/includes/Hooks.php
+php -l extensions/AbuseFilter/includes/SpecsFormatter.php
+php -l extensions/AbuseFilter/includes/Parser/AbuseFilterTokenizer.php
+php -l extensions/AbuseFilter/includes/View/AbuseFilterViewRevert.php
+php -l extensions/AbuseFilter/includes/View/AbuseFilterViewTestBatch.php
 node --check extensions/Wikidebates/modules/common/parse.js
 
 config=$(mktemp -d)
@@ -65,6 +70,7 @@ wfLoadExtension( 'VEForAll' );
 wfLoadExtension( 'PageFormsWikidebates' );
 wfLoadExtension( 'Flow' );
 wfLoadExtension( 'Wikidebates' );
+wfLoadExtension( 'AbuseFilter' );
 PHP
 export MW_CONFIG_FILE="$config/LocalSettings.php"
 # Flow ships abstract schema JSON but no pre-generated SQLite SQL file.
@@ -79,3 +85,10 @@ vendor/bin/phpunit tests/phpunit/integration/WikidebatesFarmCombinedExtensionTes
 vendor/bin/phpunit \
     --filter 'PF(FluidEditing|ValuesUtilsRegression|MappingUtilsRegression|AutoeditAPICompatibility|ResourceLoaderDependency)Test' \
     extensions/PageFormsWikidebates/tests/phpunit
+
+# Run targeted upstream AbuseFilter tests against the pinned 1.43 code.
+# These include HTML escaping, tokenizer cache keys and protected-filter views.
+vendor/bin/phpunit extensions/AbuseFilter/tests/phpunit/unit/SpecsFormatterTest.php
+vendor/bin/phpunit extensions/AbuseFilter/tests/phpunit/unit/Parser/TokenizerTest.php
+vendor/bin/phpunit extensions/AbuseFilter/tests/phpunit/unit/Special/SpecialAbuseFilterTest.php
+vendor/bin/phpunit extensions/AbuseFilter/tests/phpunit/integration/Special/SpecialAbuseFilterTest.php

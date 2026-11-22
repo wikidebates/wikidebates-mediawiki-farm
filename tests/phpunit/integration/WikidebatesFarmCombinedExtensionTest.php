@@ -11,7 +11,7 @@ class WikidebatesFarmCombinedExtensionTest extends MediaWikiIntegrationTestCase 
 	public function testCoreExtensionsCoexistWithPinnedSubmodules(): void {
 		$registry = \MediaWiki\Registration\ExtensionRegistry::getInstance();
 		foreach ( [
-			'Wikidebates', 'VEForAll', 'VisualEditor', 'Flow', 'PageForms Wikidebates'
+			'Wikidebates', 'VEForAll', 'VisualEditor', 'Flow', 'PageForms Wikidebates', 'AbuseFilter'
 		] as $name ) {
 			$this->assertTrue( $registry->isLoaded( $name ), "$name should load from the pinned farm" );
 		}
