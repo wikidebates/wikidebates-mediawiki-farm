@@ -40,9 +40,14 @@ try {
 		throw new RuntimeException('Cannot enable disposable extension');
 	}
 	putenv('MW_INSTALL_PATH=' . $root . '/mediawiki');
+	// CLI maintenance insists on a readable config file. The lab's marked
+	// bootstrap callback supplies its actual isolated SQLite configuration.
+	$localSettings = $state . '/LocalSettings.php';
+	file_put_contents($localSettings, "<?php\n");
+	chmod($localSettings, 0600);
 
 	$command = [PHP_BINARY, '-d', 'auto_prepend_file=' . __DIR__ . '/bootstrap.php',
-		dirname(__DIR__) . '/maintenance/prewarm.php', '--page-id=' . $targetId, '--delay-ms=250'];
+		dirname(__DIR__) . '/maintenance/prewarm.php', '--conf=' . $localSettings, '--page-id=' . $targetId, '--delay-ms=250'];
 	$process = proc_open($command, [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $pipes);
 	if (!is_resource($process)) { throw new RuntimeException('Cannot start single-page prewarm'); }
 	fclose($pipes[0]);
