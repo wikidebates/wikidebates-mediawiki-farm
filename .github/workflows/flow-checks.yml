@@ -9,13 +9,14 @@
 		},
 		"push": {
 			"branches": [
-				"wikidebates-REL1_43-stable-2026-07-11"
+				"wikidebates-REL1_43-stable-2026-07-09"
 			],
 			"paths": [
 				"extensions/Flow/**",
 				".github/workflows/flow-checks.yml"
 			]
-		}
+		},
+		"workflow_dispatch": {}
 	},
 	"permissions": {
 		"contents": "read"

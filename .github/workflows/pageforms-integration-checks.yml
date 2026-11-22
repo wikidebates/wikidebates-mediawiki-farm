@@ -3,8 +3,7 @@
 	"on": {
 		"push": {
 			"branches": [
-				"improve/pageforms-fluid-editing",
-				"wikidebates-REL1_43-stable-2026-07-11"
+				"wikidebates-REL1_43-stable-2026-07-09"
 			],
 			"paths": [
 				"extensions/PageFormsWikidebates/**",
@@ -16,7 +15,8 @@
 				"extensions/PageFormsWikidebates/**",
 				".github/workflows/pageforms-integration-checks.yml"
 			]
-		}
+		},
+		"workflow_dispatch": {}
 	},
 	"permissions": {
 		"contents": "read"
