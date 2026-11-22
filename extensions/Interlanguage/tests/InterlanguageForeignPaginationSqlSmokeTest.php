@@ -67,6 +67,28 @@ namespace {
 				" ({$prefix}_from, {$prefix}_lang, {$prefix}_title) VALUES (?, ?, ?)"
 			)->execute( [ $id, $lang, $title ] );
 		}
+		public function select( $table, $fields, $conditions, $caller ): array {
+			$prefix = $table === 'langlinks' ? 'll' : 'ill';
+			if ( !in_array( $table, [ 'langlinks', 'interlanguage_links' ], true ) ) {
+				throw new RuntimeException( 'Unexpected central table' );
+			}
+			if ( $fields === [ 'page_id', 'page_namespace', 'page_title' ] ) {
+				throw new RuntimeException( 'Inferred links disabled in this test' );
+			}
+			$allowed = [ "{$prefix}_from", "{$prefix}_title" ];
+			if ( $fields !== $allowed ) {
+				throw new RuntimeException( 'Unexpected selected fields' );
+			}
+			$titles = (array)$conditions["{$prefix}_title"];
+			$values = [ $conditions["{$prefix}_lang"], ...$titles ];
+			$query = 'SELECT ' . implode( ', ', $fields ) .
+				' FROM ' . $this->tableName( $table ) .
+				" WHERE {$prefix}_lang = ? AND {$prefix}_title IN (" .
+				implode( ',', array_fill( 0, count( $titles ), '?' ) ) . ')';
+			$statement = $this->pdo->prepare( $query );
+			$statement->execute( $values );
+			return $statement->fetchAll( PDO::FETCH_OBJ );
+		}
 		public function selectFieldValues( $table, $field, $conditions, $caller ): array {
 			$prefix = $table === 'langlinks' ? 'll' : 'ill';
 			if ( $field !== "{$prefix}_from" ) {
@@ -211,22 +233,36 @@ namespace {
 		[ 'interlanguage_links', 102, 'fr', 'Only secondary' ],
 		[ 'interlanguage_links', 102, 'ja', 'Japanese' ],
 		[ 'interlanguage_links', 102, 'pt', 'Portuguese' ],
+		[ 'langlinks', 103, 'fr', 'Another local' ],
+		[ 'langlinks', 103, 'nl', 'Dutch' ],
+		[ 'interlanguage_links', 103, 'sv', 'Swedish' ],
 	] as $row ) {
 		$db->insert( ...$row );
 	}
 	$params = [ 'prop' => [], 'url' => false, 'dir' => 'ascending', 'limit' => 1 ];
 	checkForeign(
 		collectCentralLinks( $params, [ 17 => 'Local topic' ] ) === [
-			[ 101, 'de', 'Deutsch' ], [ 101, 'it', 'Italiano' ],
-			[ 101, 'en', 'Topic:With colon' ], [ 101, 'es', 'Spanish' ],
+			[ 17, 'de', 'Deutsch' ], [ 17, 'it', 'Italiano' ],
+			[ 17, 'en', 'Topic:With colon' ], [ 17, 'es', 'Spanish' ],
 		],
 		'Central-wiki mapping lost, duplicated or truncated links'
 	);
 	checkForeign(
 		collectCentralLinks( $params, [ 19 => 'Only secondary' ] ) === [
-			[ 102, 'ja', 'Japanese' ], [ 102, 'pt', 'Portuguese' ],
+			[ 19, 'ja', 'Japanese' ], [ 19, 'pt', 'Portuguese' ],
 		],
 		'Fallback to interlanguage_links does not paginate'
+	);
+	checkForeign(
+		collectCentralLinks( [ ...$params, 'limit' => 2 ], [
+			17 => 'Local topic',
+			21 => 'Another local',
+		] ) === [
+			[ 17, 'de', 'Deutsch' ], [ 17, 'it', 'Italiano' ],
+			[ 21, 'nl', 'Dutch' ], [ 17, 'en', 'Topic:With colon' ],
+			[ 17, 'es', 'Spanish' ], [ 21, 'sv', 'Swedish' ],
+		],
+		'Multiple titles must keep each central ID mapped to its local API page'
 	);
 	echo "Interlanguage foreign-database pagination SQL tests: OK\n";
 }

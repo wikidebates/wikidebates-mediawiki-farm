@@ -30,9 +30,56 @@ use MediaWiki\MediaWikiServices;
 class ApiQueryLangLinks extends ApiQueryBase {
 
 	protected $wikirougeForeignDb;
+	private array $localPageIdsByCentralId = [];
+	private array $inferredPageLinks = [];
 
 	public function __construct( ApiQuery $query, $moduleName ) {
 		parent::__construct( $query, $moduleName, 'll' );
+	}
+
+
+	/**
+	 * Translate central-wiki page IDs to the local ApiPageSet page IDs.
+	 * Query the central table once per phase; never send a central page ID
+	 * to addPageSubItem(), which addresses the local wiki's result pages.
+	 *
+	 * @param array<int,Title> $goodTitles
+	 * @return int[] Central page IDs used solely for querying/continuation.
+	 */
+	private function centralPageIdsForTitles(
+		string $table, string $prefix, array $goodTitles
+	): array {
+		global $wgLanguageCode;
+
+		$localIdsByCanonicalTitle = [];
+		foreach ( $goodTitles as $localPageId => $title ) {
+			$canonical = InterlanguageExtension::getCanonicalTitleText( $title );
+			$localIdsByCanonicalTitle[$canonical][] = (int)$localPageId;
+		}
+		if ( $localIdsByCanonicalTitle === [] ) {
+			return [];
+		}
+
+		$from = "{$prefix}_from";
+		$titleField = "{$prefix}_title";
+		$rows = $this->getDB()->select(
+			$table,
+			[ $from, $titleField ],
+			[
+				$titleField => array_keys( $localIdsByCanonicalTitle ),
+				"{$prefix}_lang" => $wgLanguageCode,
+			],
+			__METHOD__
+		);
+		$centralIds = [];
+		foreach ( $rows as $row ) {
+			$centralId = (int)$row->$from;
+			foreach ( $localIdsByCanonicalTitle[$row->$titleField] ?? [] as $localId ) {
+				$this->localPageIdsByCentralId[$centralId][$localId] = true;
+			}
+			$centralIds[$centralId] = $centralId;
+		}
+		return array_values( $centralIds );
 	}
 
 	/**
@@ -49,7 +96,6 @@ class ApiQueryLangLinks extends ApiQueryBase {
 		}
 
 		$llLang = substr( $wgInterlanguageExtensionInterwiki, 0, -1 );
-		$gt = current( $goodTitles );
 
 		$db = $this->getDB();
 		$res = $db->select(
@@ -63,9 +109,15 @@ class ApiQueryLangLinks extends ApiQueryBase {
 			$obj = [
 				'll_lang' => $llLang,
 				'll_title' => InterlanguageExtension::getCanonicalTitleText( $title ),
-				'll_from' => $gt->getArticleID(),
+				'll_from' => $row->page_id,
 			];
-			$this->addResult( (object)$obj, $params, $prop );
+			foreach ( array_keys( $this->localPageIdsByCentralId[(int)$row->page_id] ?? [] ) as $localId ) {
+				if ( isset( $this->inferredPageLinks[$localId] ) ) {
+					continue;
+				}
+				$this->inferredPageLinks[$localId] = true;
+				$this->addResult( (object)$obj, $params, $prop );
+			}
 		}
 	}
 
@@ -84,7 +136,15 @@ class ApiQueryLangLinks extends ApiQueryBase {
 			$entry['autonym'] = Language::fetchLanguageName( $row->ll_lang );
 		}
 		ApiResult::setContentValue( $entry, 'title', $row->ll_title );
-		return $this->addPageSubItem( $row->ll_from, $entry );
+		$localIds = self::getInterlanguageExtensionDB()
+			? array_keys( $this->localPageIdsByCentralId[(int)$row->ll_from] ?? [] )
+			: [ (int)$row->ll_from ];
+		foreach ( $localIds as $localId ) {
+			if ( !$this->addPageSubItem( $localId, $entry ) ) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public function execute() {
@@ -136,22 +196,10 @@ class ApiQueryLangLinks extends ApiQueryBase {
 
 		$goodTitles = $this->getPageSet()->getGoodTitles();
 		if ( self::getInterlanguageExtensionDB() ) {
-			$canonicalTitleText = [];
-			foreach ( $goodTitles as $t ) {
-				$canonicalTitleText[] = InterlanguageExtension::getCanonicalTitleText( $t );
+			$llFrom = $this->centralPageIdsForTitles( 'langlinks', 'll', $goodTitles );
+			if ( $params['continue'] === null ) {
+				$this->addResultByPageId( $llFrom, $params, $prop, $goodTitles );
 			}
-
-			$db = $this->getDB();
-			$llFrom = $db->selectFieldValues(
-				'langlinks',
-				'll_from',
-				[
-					'll_title' => $canonicalTitleText,
-					'll_lang' => $wgLanguageCode,
-				],
-				__METHOD__
-			);
-			$this->addResultByPageId( $llFrom, $params, $prop, $goodTitles );
 		} else {
 			$llFrom = array_keys( $goodTitles );
 		}
@@ -238,23 +286,9 @@ class ApiQueryLangLinks extends ApiQueryBase {
 
 		$goodTitles = $this->getPageSet()->getGoodTitles();
 		if ( self::getInterlanguageExtensionDB() ) {
-			$canonicalTitleText = [];
-			foreach ( $goodTitles as $t ) {
-				$canonicalTitleText[] = InterlanguageExtension::getCanonicalTitleText( $t );
-			}
-
-			$db = $this->getDB();
-			$llFrom = $db->selectFieldValues(
-				'interlanguage_links',
-				'ill_from',
-				[
-					'ill_title' => $canonicalTitleText,
-					'ill_lang' => $wgLanguageCode,
-				],
-				__METHOD__
-			);
-			// The foreign-wiki link was already emitted on the first page.
-			if ( $continuation === null ) {
+			$llFrom = $this->centralPageIdsForTitles( 'interlanguage_links', 'ill', $goodTitles );
+			// Inferred links belong only to the first response, not continuations.
+			if ( $params['continue'] === null && $continuation === null ) {
 				$this->addResultByPageId( $llFrom, $params, $prop, $goodTitles );
 			}
 		} else {
