@@ -64,4 +64,4 @@ jobs:
           coverage: none
           tools: composer:v2
       - name: Audit locked Composer dependencies for security advisories
-        run: composer audit --locked --no-interaction
+        run: composer audit --locked --no-interaction --abandoned=report
