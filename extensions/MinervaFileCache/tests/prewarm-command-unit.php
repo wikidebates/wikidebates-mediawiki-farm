@@ -112,6 +112,7 @@ namespace {
 	class TestPrewarmServices {
 		private TestPrewarmConfig $config;
 		private TestPrewarmDb $db;
+		private TestPrewarmDb $primaryDb;
 		public function __construct(string $directory) {
 			$this->config = new TestPrewarmConfig($directory);
 			$this->db = new TestPrewarmDb();
@@ -122,14 +123,29 @@ namespace {
 				(object)['page_id'=>4,'page_namespace'=>0,'page_title'=>'Redirect','page_is_redirect'=>1],
 				(object)['page_id'=>5,'page_namespace'=>0,'page_title'=>'Five','page_is_redirect'=>0],
 			];
+			$this->primaryDb = new TestPrewarmDb();
+			$this->primaryDb->pages = $this->db->pages;
+		}
+		public function setPrimaryPageTitle(int $id, string $title): void {
+			foreach ($this->primaryDb->pages as $index => $page) {
+				if ($page->page_id === $id) {
+					$this->primaryDb->pages[$index] = (object)(array_replace(
+						(array)$page, ['page_title' => $title]
+					));
+				}
+			}
 		}
 		public function getMainConfig(): TestPrewarmConfig { return $this->config; }
 		public function getHttpRequestFactory(): TestPrewarmHttp { return new TestPrewarmHttp(); }
 		public function getConnectionProvider() {
 			$db = $this->db;
-			return new class($db) {
-				public function __construct(private TestPrewarmDb $db) {}
+			$primary = $this->primaryDb;
+			return new class($db, $primary) {
+				public function __construct(
+					private TestPrewarmDb $db, private TestPrewarmDb $primary
+				) {}
 				public function getReplicaDatabase(): TestPrewarmDb { return $this->db; }
+				public function getPrimaryDatabase(): TestPrewarmDb { return $this->primary; }
 			};
 		}
 	}
@@ -220,6 +236,25 @@ namespace {
 		checkPrewarmCli(count($GLOBALS['prewarmRequests']) === 1 &&
 			str_contains($GLOBALS['prewarmRequests'][0][0], '/Two'),
 			'Targeted prewarm fetches the exact page only');
+		// Simulate replica lag after a move: same page ID, stale old title
+		// in replica, current new title on the primary. Only the targeted
+		// command must select the current title, without warming the old URL.
+		$GLOBALS['prewarmServices']->setPrimaryPageTitle(2, 'Two_moved');
+		$GLOBALS['prewarmRequests'] = [];
+		$runner = new PrewarmMinervaFileCache();
+		$runner->setOptions(['page-id' => '2', 'delay-ms' => '250']);
+		checkPrewarmCli($runner->execute() === true &&
+			count($GLOBALS['prewarmRequests']) === 1 &&
+			str_contains($GLOBALS['prewarmRequests'][0][0], '/Two_moved'),
+			'Single-page Minerva prewarm resolves its target against PRIMARY after a move');
+		$GLOBALS['prewarmRequests'] = [];
+		$runner = new PrewarmMinervaFileCache();
+		$runner->setOptions(['limit' => '2', 'delay-ms' => '250']);
+		checkPrewarmCli($runner->execute() === true &&
+			str_contains($GLOBALS['prewarmRequests'][1][0], '/Two') &&
+			!str_contains($GLOBALS['prewarmRequests'][1][0], '/Two_moved'),
+			'Bulk Minerva scans keep using the replica connection');
+
 		$GLOBALS['prewarmRequests'] = [];
 		$runner = new PrewarmMinervaFileCache();
 		$runner->setOptions(['page-id' => '4', 'delay-ms' => '250']);
