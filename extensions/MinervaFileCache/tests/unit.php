@@ -328,6 +328,22 @@ try {
 	$snapshot = $alias->read('A', 'canonical-path', $identity);
 	check($alias->publish('A', 'canonical-path', $identity, $snapshot['generation'], 'CANONICAL', []),
 		'Equivalent noncanonical directory paths still publish atomically');
+	$long = new Store($dir, 'long-wiki', 99999999, 4096);
+	$longSnapshot = $long->read('A', 'common', $identity);
+	check($long->publish('A', 'common', $identity, $longSnapshot['generation'], 'LONG', []),
+		'Long configured retention is accepted');
+	$longEntry = $long->read('A', 'common', $identity)['entry'];
+	check($longEntry['expires'] > $longEntry['created'] + 2592000,
+		'Configured retention exceeds thirty days');
+	$unlimited = new Store($dir, 'unlimited-wiki', 0, 4096);
+	$unlimitedSnapshot = $unlimited->readIfPresent('A', 'common', $identity);
+	check($unlimited->publish('A', 'common', $identity, $unlimitedSnapshot['generation'],
+		'UNLIMITED', [], PHP_INT_MAX, true), 'Zero TTL accepts long-lived content');
+	check($unlimited->read('A', 'common', $identity)['entry']['expires'] === PHP_INT_MAX,
+		'Zero TTL retains caller expiry without truncation');
+	check($unlimited->prune() === 0, 'Unlimited retention survives prune');
+	check(!$unlimited->publish('A', 'expired', $identity, $unlimitedSnapshot['generation'],
+		'NOT_STORED', [], time() - 1), 'Caller expiry still prevents publication');
 	echo json_encode(['assertions' => $assertions, 'result' => 'PASS']) . "\n";
 } finally {
 	$iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);
