@@ -31,7 +31,7 @@ jobs:
           coverage: none
       - name: Lint active Interlanguage files
         run: |
-          find extensions/Interlanguage -type f -name '*.php' ! -name '*Copie*' -print0 |
+          find extensions/Interlanguage -type f -name '*.php' -print0 |
             xargs -0 -n 1 php -l
       - name: Run isolated regression tests
         run: |

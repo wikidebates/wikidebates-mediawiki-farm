@@ -82,3 +82,8 @@ Verification non destructive de l'API avant/apres deploiement
 - Les requetes ci-dessus sont des lectures ; elles ne purgent rien et ne
   modifient pas les pages. Les tests de changement de liens se font
   uniquement sur une installation de test distincte.
+
+Nettoyage du depot (22 novembre 2026)
+- La sauvegarde historique `InterlanguageExtension (Copie).php` a ete retiree du repertoire actif : elle definissait la meme classe que `InterlanguageExtension.php` mais utilisait des API et une deserialisation obsoletes. Le fichier demeure recuperable dans l'historique Git.
+- La verification de syntaxe CI parcourt desormais tous les fichiers PHP presents, sans exception pour la copie supprimee.
+- Aucun changement a la pagination de `ApiQueryLangLinks`, aux ecritures pendant le rendu ou aux purges distantes ; ces comportements demandent des essais fonctionnels FR/EN avant modification.
