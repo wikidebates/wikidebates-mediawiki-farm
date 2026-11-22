@@ -45,8 +45,11 @@ jobs:
           php -l extensions/Wikidebates/maintenance/prepareReadingCache.php
           php -l extensions/Wikidebates/maintenance/preparePendingCaches.php
           php -l extensions/Wikidebates/src/Reading/CachePreparationCommands.php
+          php -l extensions/Wikidebates/src/Reading/SemanticTouchBarrier.php
+          php -l extensions/Wikidebates/src/Reading/SemanticCachePurgeJob.php
           php -l extensions/MinervaFileCache/maintenance/prewarm.php
           php extensions/Wikidebates/tests/readingFragments/preparationQueue.php
           php extensions/Wikidebates/tests/readingFragments/coordinatedPreparation.php
+          php extensions/Wikidebates/tests/readingFragments/semanticTouchBarrier.php
           php extensions/MinervaFileCache/tests/prewarm-command-unit.php
           php extensions/MinervaFileCache/tests/unit.php
