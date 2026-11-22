@@ -16,6 +16,7 @@ class PrewarmMinervaFileCache extends Maintenance {
 		$this->addDescription('Prewarm MinervaFileCache for all non-redirect pages through anonymous mobile HTTP GETs.');
 		$this->requireExtension('MinervaFileCache');
 		$this->addOption('limit', 'Maximum pages to visit (0 = all; default 0).', false, true);
+		$this->addOption('page-id', 'Prepare exactly one page_id; incompatible with filters and resume.', false, true);
 		$this->addOption('delay-ms', 'Pause between requests in milliseconds (default 6000, minimum 250).', false, true);
 		$this->addOption('timeout', 'HTTP request timeout in seconds (default 30).', false, true);
 		$this->addOption('retries', 'Extra retries for transient failures (0-3, default 0); obey Retry-After.', false, true);
@@ -36,6 +37,8 @@ class PrewarmMinervaFileCache extends Maintenance {
 			$timeout = Prewarm::number($this->getOption('timeout', 30), '--timeout', 1, 120);
 			$retries = Prewarm::number($this->getOption('retries', 0), '--retries', 0, 3);
 			$afterId = Prewarm::number($this->getOption('after-id', 0), '--after-id', 0, PHP_INT_MAX);
+			$pageId = $this->hasOption('page-id') ?
+				Prewarm::number($this->getOption('page-id'), '--page-id', 1, PHP_INT_MAX) : null;
 			$device = (string)$this->getOption('device', 'android');
 			$userAgent = Prewarm::userAgent($device);
 			$namespace = $this->hasOption('namespace') ?
@@ -62,6 +65,11 @@ class PrewarmMinervaFileCache extends Maintenance {
 		$resume = $this->hasOption('resume');
 		$reset = $this->hasOption('reset');
 		$dryRun = $this->hasOption('dry-run');
+		if ($pageId !== null && ($resume || $reset || $afterId !== 0 ||
+			$namespace !== null || $category !== null || $recursive || $limit > 1)) {
+			$this->fatalError('--page-id cannot be combined with pagination, namespace/category filters or resume.');
+			return false;
+		}
 		if (($resume && ($dryRun || $afterId !== 0)) || ($reset && !$resume)) {
 			$this->fatalError('--resume cannot be combined with --dry-run or --after-id; --reset needs --resume.');
 			return false;
@@ -142,7 +150,12 @@ class PrewarmMinervaFileCache extends Maintenance {
 				$this->output('Selected ' . count($categories) . " categories.\n");
 			}
 			while (true) {
-				$conditions = ['page_is_redirect' => 0, 'page_id > ' . (int)$lastId];
+				$conditions = ['page_is_redirect' => 0];
+				if ($pageId !== null) {
+					$conditions['page_id'] = $pageId;
+				} else {
+					$conditions[] = 'page_id > ' . (int)$lastId;
+				}
 				if ($namespace !== null) {
 					$conditions['page_namespace'] = $namespace;
 				}
