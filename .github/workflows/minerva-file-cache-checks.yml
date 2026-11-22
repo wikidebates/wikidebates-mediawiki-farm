@@ -1,0 +1,40 @@
+name: Minerva file cache store checks
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/MinervaFileCache/**'
+      - '.github/workflows/minerva-file-cache-checks.yml'
+  push:
+    branches:
+      - 'wikidebates-REL1_43-stable-2026-07-11'
+    paths:
+      - 'extensions/MinervaFileCache/**'
+      - '.github/workflows/minerva-file-cache-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  minerva:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: mbstring,xml,dom
+      - name: PHP syntax
+        run: |
+          find extensions/MinervaFileCache/src extensions/MinervaFileCache/tests -type f -name '*.php' -print0 |
+            xargs -0 -n 1 php -l
+      - name: Isolated disk-store and response-header regression tests
+        run: |
+          php extensions/MinervaFileCache/tests/unit.php
+          php extensions/MinervaFileCache/tests/prewarm-unit.php
+          php extensions/MinervaFileCache/tests/prewarm-category-unit.php
+          php extensions/MinervaFileCache/tests/prewarm-command-unit.php
