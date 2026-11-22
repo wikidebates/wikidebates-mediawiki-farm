@@ -96,3 +96,12 @@ Audit de la purge distante (22 novembre 2026)
   les permissions ou les parametres d'authentification.
 - La journalisation ne garantit pas une purge effective ; recette interwikis
   et permissions API requises avant toute politique de reessais.
+
+- Dans la configuration verifiee le 22 novembre 2026, la liaison interwiki
+  du wiki central FR vers EN ne retourne pas d'URL API. Le job central saute
+  donc les purges EN : les droits anonymes purge sont pourtant OUI sur les
+  deux wikis. La presence du prefixe interwiki et de son champ iw_api
+  doit etre controlee dans la configuration effective du wiki central.
+- Le job agregere les destinations sans prefixe ou sans URL API dans un
+  seul avertissement par execution, avec au maximum cinq codes interwikis
+  et sans nom de page, URL ni secret. Aucun nouvel appel HTTP ni reessai.

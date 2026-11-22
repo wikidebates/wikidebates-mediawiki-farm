@@ -44,13 +44,23 @@ class InterlanguageCentralExtensionPurgeJob extends Job {
 		$ill = $this->params['ill'];
 
 		$mwServices = MediaWikiServices::getInstance();
+		$missingInterwiki = [];
+		$missingApi = [];
 
-		foreach($ill as $lang => $pages) {
-//			$iw = Interwiki::fetch( $lang );
+		foreach ( $ill as $lang => $pages ) {
+			if ( !$pages ) {
+				continue;
+			}
 			$iw = $mwServices->getInterwikiLookup()->fetch( $lang );
-			if( !$iw ) continue;
+			if ( !$iw ) {
+				$missingInterwiki[] = $lang;
+				continue;
+			}
 			$apiUrl = $iw->getAPI();
-			if( !$apiUrl ) continue;
+			if ( !$apiUrl ) {
+				$missingApi[] = $lang;
+				continue;
+			}
 			$apiUrl .= '?' . wfArrayToCGI( array(
 				'action'	=> 'purge',
 				'format'	=> 'json', //Smallest response
@@ -79,6 +89,22 @@ class InterlanguageCentralExtensionPurgeJob extends Job {
 				);
 			}
 			// Keep the existing non-retrying behavior until remote API permissions are verified.
+		}
+
+		if ( $missingInterwiki || $missingApi ) {
+			// Aggregate once per job to avoid a warning for every missing
+			// destination. Do not log page titles, URLs or credentials.
+			LoggerFactory::getInstance( 'Interlanguage' )->warning(
+				'Remote purge skipped: {missing_prefixes} missing interwiki prefixes and ' .
+				'{missing_apis} destinations without API URLs; sample: {languages}',
+				[
+					'missing_prefixes' => count( $missingInterwiki ),
+					'missing_apis' => count( $missingApi ),
+					'languages' => implode( ', ', array_slice(
+						array_merge( $missingInterwiki, $missingApi ), 0, 5
+					) ),
+				]
+			);
 		}
 
 		return true;

@@ -32,9 +32,21 @@ namespace MediaWiki {
 		}
 	}
 
+	class InterlanguagePurgeTestMissingApiInterwiki extends InterlanguagePurgeTestInterwiki {
+		public function getAPI(): string {
+			return '';
+		}
+	}
+
 	class InterlanguagePurgeTestInterwikiLookup {
 		public function fetch( string $lang ) {
-			return $lang === 'en' ? new InterlanguagePurgeTestInterwiki() : false;
+			if ( $lang === 'en' ) {
+				return new InterlanguagePurgeTestInterwiki();
+			}
+			if ( $lang === 'noapi' ) {
+				return new InterlanguagePurgeTestMissingApiInterwiki();
+			}
+			return false;
 		}
 	}
 
@@ -99,7 +111,7 @@ namespace {
 	$logger = \MediaWiki\Logger\LoggerFactory::getInstance( 'Interlanguage' );
 	$job = new \InterlanguageCentralExtensionPurgeJob(
 		new Title(),
-		[ 'ill' => [ 'en' => [ 'Topic:Subtopic' => true ], 'xx' => [ 'Missing' => true ] ] ]
+		[ 'ill' => [ 'en' => [ 'Topic:Subtopic' => true ] ] ]
 	);
 
 	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true}]}';
@@ -161,6 +173,36 @@ namespace {
 	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true}],"error":{"code":"badrequest"}}';
 	assertInterlanguagePurge( $job->run() === true, 'Global API error must not retry' );
 	assertInterlanguagePurge( count( $logger->warnings ) === 8, 'Global API error must still be logged' );
+
+	// Missing interwiki entries and absent API URLs must be observable,
+	// without HTTP calls or any automatic retry.
+	$missingEndpointsJob = new \InterlanguageCentralExtensionPurgeJob(
+		new Title(),
+		[ 'ill' => [
+			'xx' => [ 'Missing entry' => true ],
+			'noapi' => [ 'Missing endpoint' => true ],
+		] ]
+	);
+	$urlsBefore = count( $services->http->urls );
+	assertInterlanguagePurge( $missingEndpointsJob->run() === true,
+		'Missing endpoints must preserve non-retrying job behavior' );
+	assertInterlanguagePurge( count( $services->http->urls ) === $urlsBefore,
+		'Skipped destinations must not generate HTTP traffic' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 9,
+		'Missing endpoints must generate one aggregated warning per job' );
+	$warning = $logger->warnings[8];
+	assertInterlanguagePurge(
+		$warning[1]['missing_prefixes'] === 1 &&
+		$warning[1]['missing_apis'] === 1 &&
+		str_contains( $warning[1]['languages'], 'xx' ) &&
+		str_contains( $warning[1]['languages'], 'noapi' ),
+		'Missing endpoint warning must distinguish missing prefixes and API URLs'
+	);
+	assertInterlanguagePurge(
+		!str_contains( json_encode( $warning ), 'Missing entry' ) &&
+		!str_contains( json_encode( $warning ), 'Missing endpoint' ),
+		'Missing endpoint warning must not reveal page titles'
+	);
 
 	echo "Interlanguage purge smoke tests: OK\n";
 }
