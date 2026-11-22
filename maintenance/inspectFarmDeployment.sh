@@ -31,21 +31,35 @@ printf 'Tracked changes in checkout: %s\n' "$modified"
 count=0
 ok=0
 missing=0
+optional_missing=0
 drift=0
+
+# docker-compose-ci is a build/test helper used by CrawlerProtection's Makefile.
+# It is not required for MediaWiki runtime. Always report it but do not
+# fail an otherwise healthy production checkout solely because it is absent.
+report_uninitialized() {
+    local path="$1" expected="$2"
+    if [[ "$path" == 'extensions/CrawlerProtection/build' ]]; then
+        printf 'OPTIONAL_UNINITIALIZED %s (build/test only; expected %s)\n' "$path" "$expected"
+        optional_missing=$((optional_missing + 1))
+    else
+        printf 'UNINITIALIZED %s (expected %s)\n' "$path" "$expected"
+        missing=$((missing + 1))
+    fi
+}
+
 printf '\nSubmodule gitlinks versus installed checkout:\n'
 while read -r mode expected stage path; do
     [[ "$mode" == '160000' ]] || continue
     count=$((count + 1))
     directory="$root/$path"
     if [[ ! -d "$directory" ]]; then
-        printf 'UNINITIALIZED %s (expected %s)\n' "$path" "$expected"
-        missing=$((missing + 1))
+        report_uninitialized "$path" "$expected"
         continue
     fi
     actual_root=$(git -C "$directory" rev-parse --show-toplevel 2>/dev/null || true)
     if [[ "$actual_root" != "$directory" ]]; then
-        printf 'UNINITIALIZED %s (expected %s)\n' "$path" "$expected"
-        missing=$((missing + 1))
+        report_uninitialized "$path" "$expected"
         continue
     fi
     actual=$(git -C "$directory" rev-parse HEAD 2>/dev/null || true)
@@ -56,7 +70,7 @@ while read -r mode expected stage path; do
         ok=$((ok + 1))
     fi
 done < <(git -C "$root" ls-files --stage)
-printf 'Submodules: %d total, %d matching, %d uninitialized, %d mismatched\n' "$count" "$ok" "$missing" "$drift"
+printf 'Submodules: %d total, %d matching, %d required uninitialized, %d optional uninitialized, %d mismatched\n' "$count" "$ok" "$missing" "$optional_missing" "$drift"
 
 required_missing=0
 for path in extensions/Flow/extension.json extensions/Interlanguage/extension.json extensions/PageFormsWikidebates/extension.json extensions/Wikidebates/src/AutoParentLink.php; do
@@ -74,4 +88,7 @@ if (( modified > 0 || missing > 0 || drift > 0 || required_missing > 0 )); then
     printf 'REVIEW REQUIRED: checkout changes, missing components or submodule drift detected.\n'
     exit 1
 fi
-printf 'GIT CHECK OK: tracked files and initialized submodules match this checkout HEAD.\n'
+printf 'GIT CHECK OK: tracked files and required initialized submodules match this checkout HEAD.\n'
+if (( optional_missing > 0 )); then
+    printf 'NOTE: optional CrawlerProtection Docker build/test submodule is absent; MediaWiki runtime does not require it.\n'
+fi

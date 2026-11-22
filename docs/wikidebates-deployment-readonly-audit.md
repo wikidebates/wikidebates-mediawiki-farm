@@ -14,7 +14,11 @@ Le programme ne fait aucun `git fetch`, `git checkout`, `git submodule update`, 
 
 Il affiche la branche et le SHA du dépôt, la version MediaWiki déclarée, le nombre de fichiers suivis modifiés et le bilan des sous-modules présents par rapport aux **gitlinks** enregistrés dans le commit. Il vérifie aussi la présence de Flow, Interlanguage, PageForms et du fichier AutoParentLink dans le sous-module Wikidebates.
 
-Code de sortie : `0` si l'arbre suivi et tous les sous-modules sont cohérents ; `1` si une anomalie doit être examinée ; `2` si le répertoire n'est pas le bon dépôt Git. Une copie de CI sans sous-modules initialisés renverra normalement `1`.
+Code de sortie : `0` si l'arbre suivi et tous les sous-modules **nécessaires au wiki** sont cohérents ; `1` si une anomalie doit être examinée ; `2` si le répertoire n'est pas le bon dépôt Git. Une copie de CI sans sous-modules initialisés renverra normalement `1`.
+
+**Exception explicite :** `extensions/CrawlerProtection/build` est le sous-module `gesinn-it-pub/docker-compose-ci`, requis par le **Makefile Docker des tests de CrawlerProtection**, mais **pas par son code PHP en production**. Une absence de ce dossier est affichée comme `OPTIONAL_UNINITIALIZED` et n'empêche pas un résultat `GIT CHECK OK` si tous les autres contrôles passent. Un mauvais SHA d'un sous-module *présent*, y compris celui-ci, reste toujours signalé comme `MISMATCH` et fait échouer le contrôle.
+
+Ce relevé vérifie la cohérence avec **le commit déjà installé**, pas sa fraîcheur par rapport à `main` sur GitHub. Un `GIT CHECK OK` ne valide pas un éventuel déploiement en retard.
 
 **Une concordance Git ne garantit pas à elle seule que ces fichiers sont ceux chargés par PHP-FPM ni que les modifications sont déployées.** Vérifier également le document root, les configurations réellement incluses, les éventuelles modifications locales hors Git, les services et les workers.
 
