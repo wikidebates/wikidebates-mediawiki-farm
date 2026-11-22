@@ -91,6 +91,7 @@ namespace MediaWiki {
 }
 
 namespace {
+	const DB_PRIMARY = 0;
 	const DB_REPLICA = 1;
 
 	class InterlanguageCentralExtensionPurgeJob {
