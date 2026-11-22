@@ -97,6 +97,12 @@ trait CacheView {
 		$identity = ['revision' => (int)$this->mPage->getLatest(), 'touched' => $this->mPage->getTouched(),
 			'epoch' => (string)$config->get('MinervaFileCacheEpoch'), 'coreEpoch' => $config->get('CacheEpoch'),
 			'format' => 'MinervaFileCache-0.1.0'];
+		// Existing files may outlive a deferred RevisionDelete purge. Neither
+		// the unchanged revision number nor page_touched proves visibility.
+		if (!PublicPageGuard::matches($this->getTitle(),
+			$identity['revision'], (string)$identity['touched'])) {
+			return $this->bypass('not-public');
+		}
 		$variant = json_encode([$request->getRequestURL(), $request->getProtocol(),
 			$config->get('Server'), $config->get('LanguageCode'),
 			$request->getHeader('Host'), $request->getHeader('User-Agent'),
@@ -172,11 +178,25 @@ trait CacheView {
 					$this->diagnostic('BYPASS', $reason ?? 'response');
 					return $html;
 				}
+				// A RevDel or ACL change can occur while the page renders.
+				if (!PublicPageGuard::matches($this->getTitle(),
+					$identity['revision'], (string)$identity['touched'])) {
+					$this->diagnostic('BYPASS', 'not-public');
+					return $html;
+				}
 				if (!$store->publish($page, $variant, $identity, $snapshot['generation'], $html, $headers,
 					$expires, $snapshot['fresh'] ?? false)) {
 					$this->diagnostic('BYPASS', 'not-stored');
 				} else {
-					$this->privateResponse();
+					// If visibility changes during atomic publication, evict
+					// the new generation instead of retaining that HTML.
+					if (!PublicPageGuard::matches($this->getTitle(),
+						$identity['revision'], (string)$identity['touched'])) {
+						$store->invalidate($page);
+						$this->diagnostic('BYPASS', 'not-public');
+					} else {
+						$this->privateResponse();
+					}
 				}
 			} catch (\Throwable $e) {
 				Hooks::logFailure('write', $e);
