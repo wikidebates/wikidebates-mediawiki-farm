@@ -65,6 +65,18 @@ class Hooks {
 		}
 	}
 
+	/**
+	 * MediaWiki invokes this after a RevisionDelete commit. TitleSquidURLs
+	 * normally purges too, but explicitly invalidate the mobile generation
+	 * even if CDN URL purging was skipped or disabled by configuration.
+	 */
+	public static function onArticleRevisionVisibilitySet($title, $ids, $changes): void {
+		if (MediaWikiServices::getInstance()->getMainConfig()->get('MinervaFileCacheDirectory')) {
+			try { self::store()->invalidate($title->getPrefixedDBkey()); }
+			catch (\Throwable $e) { self::logFailure('visibility-invalidation', $e); }
+		}
+	}
+
 	public static function logFailure(string $operation, \Throwable $e): void {
 		\MediaWiki\Logger\LoggerFactory::getInstance('MinervaFileCache')->warning(
 			'Minerva file cache {operation} failed ({type}); normal rendering remains available.',
