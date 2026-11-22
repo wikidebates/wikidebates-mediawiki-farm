@@ -51,7 +51,7 @@ class ApiQueryBase {
 		return $this->pageSet;
 	}
 
-	public function getDB(): InterlanguagePaginationFakeDb {
+	public function getDB() {
 		return $this->db;
 	}
 
