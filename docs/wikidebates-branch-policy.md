@@ -2,8 +2,13 @@
 
 ## Reference
 
-- Branche par defaut : `wikidebates-REL1_43-stable-2026-07-09` (nom historique conserve).
-- Branche de developpement des mises a jour de novembre 2026 : `wikidebates-REL1_43-stable-2026-07-11`.
+- `main` est la **branche de developpement canonique sans date**, creee depuis la reconciliation des PR #68 et #69 le 22 novembre 2026.
+- `wikidebates-REL1_43-stable-2026-07-09` reste la branche par defaut GitHub **jusqu'au changement explicite du reglage Settings > General > Default branch** ; ne pas la supprimer avant verification des automatisations et references de deploiement.
+- Les branches datees sont historiques ; preferer des tags de publication immuables (`v1.43.11-wikidebates-YYYYMMDD`) et des branches correctives depuis `main` plutot que de nouvelles branches stables datees.
+- Pendant la transition, les CI `push` surveillent **a la fois** `main` et l'ancienne branche par defaut ; toutes les PR doivent cibler `main` des la bascule.
+- Lors de la bascule, verifier les protections de branche, les exigences CI, Dependabot, robots, deploiements, chemins de checkout et toutes references explicites a la branche datee.
+- Ne pas deplacer les sous-modules avec `git submodule update --remote` : leurs SHAs doivent etre mis a jour par des PR explicites apres tests.
+
 - Reconciliation tracee dans la PR #68. Le choix des fichiers lors de cette reconciliation privilegie les versions recentes de `07-11`, sans rejouer les commits PageForms d'octobre devenus incompatibles avec l'architecture asynchrone de novembre.
 - Les branches de fonctionnalites fusionnees par squash ou merge ne doivent pas etre remises automatiquement en oeuvre uniquement parce que leurs historiques Git divergent.
 
@@ -21,7 +26,7 @@
 
 ## Validation et deploiement
 
-- Les quatre workflows principaux (Flow, Interlanguage, PageForms JS, PageForms integration/SMW/navigateurs) ciblent la branche par defaut `wikidebates-REL1_43-stable-2026-07-09` lors des `push` et continuent a tester les PR ; des executions manuelles restent possibles.
+- Les quatre workflows principaux (Flow, Interlanguage, PageForms JS, PageForms integration/SMW/navigateurs) ciblent `main` et, transitoirement, l'ancienne branche par defaut lors des `push` et continuent a tester les PR ; des executions manuelles restent possibles.
 - Verifier la CI Flow, Interlanguage, PageForms (Jest, integration SMW, Chromium et Firefox) ainsi que les tests du sous-module VEForAll. Une suite verte pour un ancien commit n'atteste pas automatiquement du commit final.
 - Tester les formulaires de production FR/EN apres deploiement ; verifier les configurations `LocalSettings.php`, les modifications locales sur serveur et les sous-modules avant toute mise a jour.
 - La fusion GitHub n'applique pas automatiquement les changements sur la ferme en production : les `LocalSettings.php`, cron de prechauffage, invalidations et mises a jour de sous-modules sont des etapes d'exploitation separees.
