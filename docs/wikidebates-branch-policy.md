@@ -1,33 +1,46 @@
-# Gestion des branches et integration Wikidebates
+# Politique Git et deploiement de Wikidebates
 
-## Reference
+## Branches de reference
 
-- `main` est la **branche de developpement canonique sans date**, creee depuis la reconciliation des PR #68 et #69 le 22 novembre 2026.
-- `main` est egalement la **branche par defaut GitHub**, verifiee le 22 novembre 2026. La reconciliation des travaux Minerva et Wikidebates Core a ete fusionnee par la PR #91 au commit `5336ffbcf93dab096ea6eef8c6bab8bfc4951ee1`. GitHub `main` reste la source canonique.
-- `wikidebates-REL1_43-stable-2026-07-09` est une branche historique encore conservee, synchronisee sans force-push avec `main` sur le meme commit au moment de la verification. Ne pas la supprimer avant verification des automates et references de deploiement FR/EN.
-- Les branches datees sont historiques ; preferer des tags de publication immuables (`v1.43.11-wikidebates-YYYYMMDD`) et des branches correctives depuis `main` plutot que de nouvelles branches stables datees.
-- Les nouvelles PR doivent cibler `main`. Les quatre anciens workflows (Flow, Interlanguage et deux PageForms) surveillent encore les `push` sur l'ancienne branche historique comme filet de securite **tant que les deployements FR/EN n'ont pas ete verifies** ; les trois nouveaux workflows (inspection, integration interextensions, audit des dependances) surveillent `main` uniquement. Retirer les anciens declencheurs seulement apres confirmation du basculement operationnel.
-- La bascule de la branche par defaut est confirmee, mais la protection de `main` **n'est pas encore active** (`protected=false`, aucun ruleset au 22 novembre 2026). Configurer une regle avec refus des suppressions et des force-push, revue des PR et checks necessaires, puis verifier Dependabot, robots, deploiements, chemins de checkout et toutes references explicites a la branche datee. Ces reglages exigent un administrateur GitHub et ne sont pas modifies par les PR de code.
-- Ne pas deplacer les sous-modules avec `git submodule update --remote` : leurs SHAs doivent etre mis a jour par des PR explicites apres tests.
+- `main` est la branche canonique et la branche par defaut de `wikidebates-mediawiki-farm`, `wikidebates-core` et `wikidebates-veforall` (verification GitHub du 23 novembre 2026).
+- Toute nouvelle pull request de maintenance vise `main`. Utiliser une branche de travail courte, puis preferer des tags de publication non deplaces aux branches stables datees.
+- Ne pas supprimer automatiquement les branches historiques ou de travail : verifier leur utilisation dans les deploiements, les PR ouvertes et les autres chantiers. Une branche fusionnee par squash peut diverger de `main` sans contenir de changements a rejouer.
+- Les workflows Flow, Interlanguage et PageForms gardent temporairement un declencheur `push` sur `wikidebates-REL1_43-stable-2026-07-09` ; `wikidebates-cache-submodule.yml` conserve aussi un declencheur sur `wikidebates-REL1_43-stable-2026-07-11`. Ne retirer ces declencheurs qu'apres verification des usages reels.
 
-- Reconciliation tracee dans la PR #68. Le choix des fichiers lors de cette reconciliation privilegie les versions recentes de `07-11`, sans rejouer les commits PageForms d'octobre devenus incompatibles avec l'architecture asynchrone de novembre.
-- Les branches de fonctionnalites fusionnees par squash ou merge ne doivent pas etre remises automatiquement en oeuvre uniquement parce que leurs historiques Git divergent.
+## Protections GitHub
 
-## Comportements a conserver
+Le 23 novembre 2026, un ruleset `protect-main` actif existe dans chacun des trois depots principaux. Les trois rulesets :
+- ciblent la branche par defaut ;
+- interdisent la suppression et le force-push ;
+- imposent le passage par une pull request et la resolution des fils de revue ;
+- ne demandent actuellement **aucune approbation** (`required_approving_review_count: 0`) ;
+- ne declarent **aucun controle CI obligatoire** (`required_status_checks` absent).
 
-- `Wikidebates/src/AutoParentLink.php` : ajout synchrone du lien au parent depuis `PageSaveComplete`, avec controle de conflit, nouvelle tentative bornee et protection contre les doublons.
-- `Flow` : extension conservee ; rendu des discussions complet, sans reactiver la PR #7 de topic list allegee abandonnee.
-- `PageFormsWikidebates` : architecture de soumission asynchrone, widgets progressifs et tests recents ; ne pas restaurer par cherry-pick les fichiers anterieurs a ce refactoring.
+Les workflows GitHub Actions continuent de s'executer selon leurs propres declencheurs, mais leurs resultats ne constituent donc pas une condition de fusion imposee par ces rulesets. Toute modification de cette politique doit etre faite dans les parametres GitHub du depot et testee avec des noms de checks stables, notamment lorsque les workflows utilisent des filtres de chemins.
 
-## Sous-modules
+## Sous-modules et reproductibilite
 
-- Les *gitlinks* (SHAs versionnes par la ferme) sont la source de verite pour une version reproductible. Utiliser `git submodule update --init --recursive` sans `--remote` lors d'un deploiement controle.
-- `extensions/VEForAll` est epingle sur `35090688defd17b7650a30dc3d5b37da09d170dc` ; `.gitmodules` suit desormais `main` dans `wikidebates/wikidebates-veforall`. Le fork VEForAll utilise encore `wikidebates-REL1_44` comme branche **par defaut GitHub** ; la bascule manuelle et la protection de son `main` sont suivies dans [VEForAll #14](https://github.com/wikidebates/wikidebates-veforall/issues/14).
-- `extensions/Wikidebates` est epingle sur `f900a2295e48897679abc4d623a4fa30adbd9ede` (Core PR #70-#75 : generations anti-course, barriere post-commit, reprise manuelle, puis controle de visibilite PRIMARY pour les fichiers Vector et fragments Lecture **deja publies**). Avec la PR #103 de la ferme, MinervaFileCache controle egalement `rev_deleted`, les droits de lecture anonyme, la revision, le titre et `page_touched` en PRIMARY avant tout HIT ainsi qu'avant/apres ecriture. Les deux extensions invalident explicitement leurs fichiers sur `ArticleRevisionVisibilitySet`, en plus des purges MediaWiki `TitleSquidURLs`. Les commandes ciblees Vector, Minerva et Lecture resolvent la page en base primaire ; les balayages generaux continuent sur les repliques. Les options `WikidebatesCachePreparationDirectory=false`, `WikidebatesSemanticCacheTracking=false` et `WikidebatesSemanticCacheEagerPurge=false` restent les valeurs par defaut. Aucune activation de cron, modification de TTL ou deploiement sur le serveur n'est autorisee par ce changement. Les controles de permissions au moment de servir du HTML ne remplacent pas une purge CDN ni une restriction d'acces aux fichiers du serveur web.
+- Le depot de la ferme contient 53 gitlinks enregistres au 23 novembre 2026, dont un sous-module d'outillage Docker facultatif sous `extensions/CrawlerProtection/build`.
+- Les gitlinks epinglent les commits deployables ; la valeur `branch` de `.gitmodules` n'actualise pas ces commits.
+- `extensions/VEForAll` est epingle sur `35090688defd17b7650a30dc3d5b37da09d170dc`, avec `branch = main`.
+- `extensions/Wikidebates` est epingle sur `daf094a0a7ba7612d3fb782b9c1d762d5032cffe`, avec `branch = main`.
+- Ne jamais executer `git submodule update --remote` lors d'un deploiement. Les changements de SHA passent par des PR explicites et des tests.
+- Ne pas retirer un sous-module ou modifier son URL sans avoir etabli ses usages en production et dans les scripts.
 
-## Validation et deploiement
+## CI et deploiement
 
-- Onze workflows sont maintenant presents : Flow, Interlanguage, PageForms JS, PageForms integration/SMW/navigateurs, inspection de deploiement en lecture seule, integration transversale de sous-modules, audit des dependances, audit public read-only FR/EN, tests Minerva cible, audit User-Agent Minerva et verification du sous-module Wikidebates Core. Les quatre historiques surveillent `main` et transitoirement `07-09` pour les `push`. Le nouveau test du pin Wikidebates suit `main` et transitoirement `07-11` ; les deux tests Minerva ciblés sont declenches par les PR, et l'audit public FR/EN est manuel ou teste par PR. Les trois workflows de base (inspection, integration, dependances) surveillent `main` uniquement. Toutes les PR nouvelles doivent cibler `main`. Le rapport hebdomadaire des dependances est programme le lundi a 04:17 UTC sur la branche par defaut.
-- Verifier la CI Flow, Interlanguage, PageForms (Jest, integration SMW, Chromium et Firefox) ainsi que les tests du sous-module VEForAll. Une suite verte pour un ancien commit n'atteste pas automatiquement du commit final.
-- Tester les formulaires de production FR/EN apres deploiement ; verifier les configurations `LocalSettings.php`, les modifications locales sur serveur et les sous-modules avant toute mise a jour.
-- La fusion GitHub n'applique pas automatiquement les changements sur la ferme en production : les `LocalSettings.php`, cron de prechauffage, invalidations et mises a jour de sous-modules sont des etapes d'exploitation separees.
+Les workflows couvrent notamment PHP 8.4, Flow, PageForms, Interlanguage, le cache HTML, l'integration interextensions, les sous-modules epingles, Composer et les audits publics en lecture seule. La CI ne remplace pas une validation FR/EN sur le serveur.
+
+Le depot GitHub et le serveur `dialectica` sont deux environnements distincts. Une fusion vers `main` ne deploye rien. Avant toute synchronisation du serveur :
+
+1. Relever `git status -sb`, les fichiers modifies et les fichiers non suivis, y compris dans les sous-modules.
+2. Comparer le commit local et le commit `main` vise, ainsi que les gitlinks attendus.
+3. Preserver les modifications locales et fichiers non suivis avant toute operation ; ne pas utiliser `git reset --hard`, `git clean` ni `git submodule update --force` comme raccourci.
+4. Effectuer ensuite une mise a jour controlee vers un SHA valide, puis `git submodule update --init --recursive` uniquement lorsque l'absence de conflit local est etablie.
+5. Verifier les configurations, les tests et les deux wikis publics. Ne pas modifier `LocalSettings.php`, les crons, la base de donnees ni les caches lors d'une simple synchronisation Git.
+
+Les scripts d'inspection en lecture seule sont a privilegier avant le deploiement. Les sous-modules optionnels doivent etre distingues des dependances indispensables.
+
+## Limites du chantier
+
+Ne pas amalgamer la rationalisation Git avec les changements fonctionnels d'Interlanguage, du cache Vector/Minerva/Lecture, de Flow, de PageForms ou d'AutoParentLink. Conserver leurs tests et leurs mecanismes de securite. Les PR correspondantes suivent leurs propres validations.
