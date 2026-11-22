@@ -101,6 +101,7 @@
 [submodule "extensions/Wikidebates"]
 	path = extensions/Wikidebates
 	url = git@github.com:wikidebates/wikidebates-core.git
+	branch = main
 [submodule "extensions/AdvancedSearch"]
 	path = extensions/AdvancedSearch
 	url = https://gerrit.wikimedia.org/r/mediawiki/extensions/AdvancedSearch
