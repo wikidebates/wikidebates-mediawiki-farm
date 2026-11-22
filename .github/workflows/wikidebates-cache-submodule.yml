@@ -9,7 +9,6 @@ on:
   push:
     branches:
       - main
-      - 'wikidebates-REL1_43-stable-2026-07-11'
     paths:
       - 'extensions/Wikidebates'
       - 'extensions/MinervaFileCache/**'
