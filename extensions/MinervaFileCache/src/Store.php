@@ -10,12 +10,18 @@ class Store {
 
 	public function __construct(string $directory, string $wiki, int $ttl, int $maxBytes) {
 		$directory = realpath($directory) ?: '';
-		if (!is_dir($directory) || !is_writable($directory) || $ttl < 1 || $maxBytes < 512) {
+		if (!is_dir($directory) || !is_writable($directory) || $ttl < 0 || $maxBytes < 512) {
 			throw new \RuntimeException('Cache directory or limits are not usable');
 		}
 		$this->root = rtrim($directory, '/') . '/' . hash('sha256', $wiki);
-		$this->ttl = min($ttl, 2592000);
+		$this->ttl = $ttl;
 		$this->maxBytes = $maxBytes;
+	}
+
+	/** TTL zero disables only the store's own age limit; caller expiry remains authoritative. */
+	private function effectiveExpiry(int $created, int $expires): int {
+		if ($this->ttl === 0) { return $expires; }
+		return min($expires, $created + min($this->ttl, PHP_INT_MAX - $created));
 	}
 
 	private function pageDirectory(string $page, bool $create = true): string {
@@ -43,7 +49,7 @@ class Store {
 			($entry['identity'] ?? null) === $identity &&
 			is_int($entry['expires'] ?? null) &&
 			is_int($entry['created'] ?? null) &&
-			min($entry['expires'], $entry['created'] + $this->ttl) > time() &&
+			$this->effectiveExpiry($entry['created'], $entry['expires']) > time() &&
 			is_string($entry['body'] ?? null) &&
 			is_array($entry['headers'] ?? null);
 	}
@@ -126,7 +132,7 @@ class Store {
 					(string)$v[7] !== (string)$context->getRequest()->getHeader('X-Subdomain')) {
 					continue;
 				}
-				$entry['expires'] = min($entry['expires'], $entry['created'] + $this->ttl);
+				$entry['expires'] = $this->effectiveExpiry($entry['created'], $entry['expires']);
 				return $entry;
 			}
 			return null;
@@ -152,7 +158,7 @@ class Store {
 		if (strlen($body) > $this->maxBytes) { return false; }
 		$dir = $this->pageDirectory($page);
 		$created = time();
-		$expires = min($created + $this->ttl, $expires);
+		$expires = $this->effectiveExpiry($created, $expires);
 		if ($expires <= $created) { return false; }
 		$entry = ['generation' => $generation, 'identity' => $identity, 'created' => $created,
 			'expires' => $expires, 'variant' => $variant, 'body' => $body, 'headers' => $headers];
@@ -250,13 +256,13 @@ class Store {
 					$modified = @filemtime($path);
 					// New files carry the expiry in mtime, so most live files
 					// need no decompression. Reject implausibly future timestamps.
-					if ($modified !== false && $modified > $now && $modified <= $now + $this->ttl) {
+					if ($modified !== false && $modified > $now && ($this->ttl === 0 || $modified <= $now + $this->ttl)) {
 						continue;
 					}
 					// Legacy files and expired candidates still receive full validation.
 					$entry = $this->decode($path);
 					$expires = is_int($entry['expires'] ?? null) && is_int($entry['created'] ?? null)
-						? min($entry['expires'], $entry['created'] + $this->ttl) : 0;
+						? $this->effectiveExpiry($entry['created'], $entry['expires']) : 0;
 					if ($expires <= $now) {
 						$count += (int)@unlink($path);
 					} else {
