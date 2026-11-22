@@ -44,6 +44,20 @@ try {
 		$gzip['body'] === $hit['body'], 'Normal MediaWiki output compression encodes a hit exactly once: state=' .
 		cacheState($gzip) . ' encoding=' . json_encode($gzip['headers']['content-encoding'] ?? []) .
 		' equal=' . (int)($gzip['body'] === $hit['body']));
+	// Simulate dispatch of MediaWiki's postcommit RevisionDelete hook
+	// without modifying the actual revision; verify that the old mobile
+	// generation is physically removed, independent of the CDN URL hook.
+	$beforeVisibilityFiles = glob($state . '/mobile-cache/*/*/*/*.cache') ?: [];
+	ensure(count($beforeVisibilityFiles) > 0, 'A mobile HTML file exists before visibility hook');
+	operation('visibility-hook');
+	$afterVisibilityFiles = glob($state . '/mobile-cache/*/*/*/*.cache') ?: [];
+	ensure(count($afterVisibilityFiles) < count($beforeVisibilityFiles),
+		'RevisionDelete postcommit hook evicts previously published mobile HTML');
+	ensure(cacheStatus(request($query)) === 'MISS',
+		'After visibility invalidation, a public unchanged revision is rendered again');
+	ensure(cacheStatus(request($query)) === 'HIT',
+		'New public generation can be cached after the hook purge');
+
 	touch($state . '/debug-off');
 	$before = countLines('render.log');
 	ensure(cacheState(request($query)) === null && countLines('render.log') === $before,
