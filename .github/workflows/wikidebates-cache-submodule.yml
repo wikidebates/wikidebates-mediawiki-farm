@@ -46,6 +46,8 @@ jobs:
           php -l extensions/Wikidebates/maintenance/preparePendingCaches.php
           php -l extensions/Wikidebates/src/Reading/CachePreparationCommands.php
           php -l extensions/Wikidebates/src/Reading/SemanticTouchBarrier.php
+          php -l extensions/Wikidebates/src/Reading/SemanticTouchRecovery.php
+          php -l extensions/Wikidebates/maintenance/recoverSemanticTouch.php
           php -l extensions/Wikidebates/src/Reading/SemanticCachePurgeJob.php
           php -l extensions/MinervaFileCache/maintenance/prewarm.php
           php extensions/Wikidebates/tests/readingFragments/preparationQueue.php
