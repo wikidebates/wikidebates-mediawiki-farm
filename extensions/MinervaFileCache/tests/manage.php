@@ -68,6 +68,14 @@ if ($operation === 'initialize') {
 	if (!$status->isOK()) { throw new RuntimeException('Move failed'); }
 } elseif ($operation === 'purge') {
 	$services->getWikiPageFactory()->newFromTitle(Title::newFromText('Cache study argument'))->doPurge();
+} elseif ($operation === 'visibility-hook') {
+	// Exercise the real postcommit hook dispatch and physical file deletion,
+	// without changing any revision visibility in the disposable test wiki.
+	$title = Title::newFromText('Cache study argument');
+	$revision = (int)$services->getWikiPageFactory()->newFromTitle($title)->getLatest();
+	$services->getHookContainer()->run('ArticleRevisionVisibilitySet', [
+		$title, [$revision], [$revision => ['oldBits' => 0, 'newBits' => 1]]
+	]);
 } else {
 	throw new RuntimeException('Unknown laboratory operation');
 }
