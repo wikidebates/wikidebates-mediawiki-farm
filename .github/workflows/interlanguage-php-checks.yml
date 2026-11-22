@@ -33,12 +33,17 @@ jobs:
         run: |
           find extensions/Interlanguage -type f -name '*.php' -print0 |
             xargs -0 -n 1 php -l
-      - name: Run isolated regression tests
-        run: |
-          php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguageApiSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguageDatabaseSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguageCentralSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguagePaginationSmokeTest.php
+      - name: Base isolated regression test
+        run: php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
+      - name: API isolated regression test
+        run: php extensions/Interlanguage/tests/InterlanguageApiSmokeTest.php
+      - name: Database isolated regression test
+        run: php extensions/Interlanguage/tests/InterlanguageDatabaseSmokeTest.php
+      - name: Parser isolated regression test
+        run: php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
+      - name: Central isolated regression test
+        run: php extensions/Interlanguage/tests/InterlanguageCentralSmokeTest.php
+      - name: Purge isolated regression test
+        run: php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php
+      - name: Pagination isolated regression test
+        run: php extensions/Interlanguage/tests/InterlanguagePaginationSmokeTest.php
