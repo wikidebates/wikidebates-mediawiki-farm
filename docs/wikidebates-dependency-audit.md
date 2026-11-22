@@ -1,0 +1,11 @@
+# Audit régulier des dépendances Git et Composer
+
+L'inventaire du 22 novembre 2026 est suivi dans [l'issue #78](https://github.com/wikidebates/wikidebates-mediawiki-farm/issues/78) : 53 sous-modules, dont 44 externes (42 références différentes du sommet de leur branche, 2 identiques). Les neuf forks Wikidebates étaient épinglés sur leur branche suivie via le connecteur GitHub autorisé.
+
+Le workflow `pinned-dependencies-audit.yml` produit un rapport **en lecture seule** pour les 53 gitlinks (SHA épinglé, branche suivie et SHA amont) et exécute `composer audit --locked` sur les versions PHP réellement verrouillées. Les résultats sont disponibles dans le résumé du job et l'artifact JSON, sans écrire de commit, déployer, purger ou changer un sous-module.
+
+**Limites :** les branches Gerrit sont vérifiées via les miroirs Wikimedia GitHub ; ces miroirs peuvent avoir du retard. Le jeton Actions de la ferme ne peut pas accéder au fork privé MinervaNeue sans autorisation inter-dépôts. Une divergence de SHA n'est ni une preuve de faille ni une obligation de mise à jour. Les alertes de sécurité doivent être analysées, puis toute mise à jour passer par une PR et des tests sur MediaWiki 1.43.
+
+Le déclencheur hebdomadaire `schedule` n'exécutera ce workflow de `main` qu'une fois `main` définie comme branche par défaut dans les paramètres GitHub. Suivi administratif : [#71](https://github.com/wikidebates/wikidebates-mediawiki-farm/issues/71).
+
+**Hors champ :** aucune modification des caches SMW ou de leurs options. La fraîcheur sémantique reste différée : [Wikidebates Core #61](https://github.com/wikidebates/wikidebates-core/issues/61).
