@@ -144,7 +144,12 @@ class PrewarmMinervaFileCache extends Maintenance {
 			($category === null ? '' : ' category=' . $category . ($recursive ? ' [recursive]' : '')) .
 			($dryRun ? ' [dry-run]' : '') . "\n");
 		try {
-			$dbr = $services->getConnectionProvider()->getReplicaDatabase();
+			// A targeted page ID must resolve against PRIMARY. A stale replica
+			// could still associate this ID with the previous title after a move,
+			// causing an anonymous GET for the wrong page. Broad prewarm scans
+			// continue to use replicas to avoid unnecessary primary load.
+			$dbr = $pageId !== null ? $services->getConnectionProvider()->getPrimaryDatabase() :
+				$services->getConnectionProvider()->getReplicaDatabase();
 			$categories = $category === null ? null : Prewarm::categories($dbr, $category, $recursive);
 			if ($categories !== null) {
 				$this->output('Selected ' . count($categories) . " categories.\n");
