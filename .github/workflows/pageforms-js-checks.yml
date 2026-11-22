@@ -1,0 +1,44 @@
+{
+	"name": "PageForms JavaScript checks",
+	"on": {
+		"push": {
+			"branches": [ "fix/pageforms-safe-async-submit", "wikidebates-REL1_43-stable-2026-07-11" ],
+			"paths": [ "extensions/PageFormsWikidebates/**", "resources/lib/jquery/**", ".github/workflows/pageforms-js-checks.yml" ]
+		},
+		"pull_request": {
+			"paths": [ "extensions/PageFormsWikidebates/**", "resources/lib/jquery/**", ".github/workflows/pageforms-js-checks.yml" ]
+		}
+	},
+	"permissions": { "contents": "read" },
+	"jobs": {
+		"jest": {
+			"runs-on": "ubuntu-latest",
+			"timeout-minutes": 10,
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"sparse-checkout": "extensions/PageFormsWikidebates\nresources/lib/jquery"
+					}
+				},
+				{
+					"uses": "actions/setup-node@v5",
+					"with": { "node-version": "22" }
+				},
+				{
+					"name": "Check JavaScript syntax and JSON",
+					"run": "for file in PF_formSubmission PF_submit PF_preview PF_editWarning PF_ComboBoxInput PageForms; do\n\tnode --check \"extensions/PageFormsWikidebates/libs/$file.js\"\ndone\npython3 - <<'PY'\nimport json\nfrom pathlib import Path\nroot = Path('extensions/PageFormsWikidebates')\nfor path in [root / 'extension.json', *(root / 'i18n' / f'{lang}.json' for lang in ['en', 'fr', 'qqq'])]:\n\tjson.loads(path.read_text())\nPY"
+				},
+				{
+					"name": "Install isolated test dependencies",
+					"run": "mkdir -p /tmp/pf-jest\nprintf '{\"private\":true}' > /tmp/pf-jest/package.json\nnpm install --prefix /tmp/pf-jest --ignore-scripts --no-audit --no-fund --save-exact jest@29.7.0 jest-environment-jsdom@29.7.0\nln -s /tmp/pf-jest/node_modules node_modules"
+				},
+				{
+					"name": "Run PageForms regressions",
+					"run": "node_modules/.bin/jest --config extensions/PageFormsWikidebates/tests/jest/jest.config.js --runInBand"
+				}
+			]
+		}
+	}
+}

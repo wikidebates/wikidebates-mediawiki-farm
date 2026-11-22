@@ -5,6 +5,7 @@ namespace Flow\Block;
 use Flow\Container;
 use Flow\Data\Pager\Pager;
 use Flow\Data\Pager\PagerPage;
+use Flow\Data\Pager\TopicListCursor;
 use Flow\Exception\FailCommitException;
 use Flow\Formatter\TocTopicListFormatter;
 use Flow\Formatter\TopicListFormatter;
@@ -72,6 +73,36 @@ class TopicListBlock extends AbstractBlock {
 	 * The limit of Table of Contents topics that are rendered per request
 	 */
 	private const TOCLIMIT = 50;
+
+	/** @var PagerPage|null The full, unfiltered page already loaded for initial rendering. */
+	private $fullPageForToc;
+
+	/** @var Workflow[] Workflows already fetched for the full page. */
+	private $fullWorkflowsForToc = [];
+
+	/** @var string|null Sort mode of the saved initial page. */
+	private $fullPageSortForToc;
+
+	/** @var callable|null Optional phase timing observer for read-only maintenance benchmarking. */
+	private $benchmarkTimer;
+
+	/**
+	 * Record timings only when explicitly requested by the maintenance benchmark.
+	 * Standard API and page rendering do not install an observer.
+	 */
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+	}
+
+	private function beginBenchmarkPhase(): ?int {
+		return $this->benchmarkTimer !== null ? hrtime( true ) : null;
+	}
+
+	private function endBenchmarkPhase( string $phase, ?int $started ): void {
+		if ( $started !== null && $this->benchmarkTimer !== null ) {
+			( $this->benchmarkTimer )( $phase, round( ( hrtime( true ) - $started ) / 1000000, 3 ) );
+		}
+	}
 
 	protected function validate() {
 		// for now, new topic is considered a new post; perhaps some day topic creation should get it's own permissions?
@@ -213,6 +244,35 @@ class TopicListBlock extends AbstractBlock {
 		// submitted or defaulted to this is the resulting sort. ex: newest
 		$tocApiParams['sortby'] = $findOptions['sortby'];
 
+		// If the initial updated-sort page has no continuation, it contains
+		// every visible topic. Reuse its root revisions and workflows instead of
+		// running an identical first-page query. Never use a timestamp offset
+		// for partial pages: several topics may share the same update time.
+		if (
+			$tocApiParams['sortby'] === 'updated' && $this->fullPageForToc !== null &&
+			$this->fullPageSortForToc === 'updated' &&
+			!isset( $findOptions['pager-offset'] ) &&
+			count( $this->fullPageForToc->getResults() ) <= self::TOCLIMIT &&
+			!isset( $this->fullPageForToc->getPagingLinksOptions()['fwd'] )
+		) {
+			$roots = [];
+			$workflows = [];
+			foreach ( $this->fullWorkflowsForToc as $workflow ) {
+				$id = $workflow->getId()->getAlphadecimal();
+				if ( isset( $this->topicRootRevisionCache[$id] ) ) {
+					$roots[$id] = $this->topicRootRevisionCache[$id];
+					$workflows[$id] = $workflow;
+				}
+			}
+			/** @var TocTopicListFormatter $formatter */
+			$formatter = Container::get( 'formatter.topiclist.toc' );
+			return [
+				'submitted' => $this->wasSubmitted() ? $this->submitted : $tocApiParams,
+				'errors' => $this->errors,
+				'sortby' => $findOptions['sortby'],
+			] + $formatter->formatApi( $this->workflow, $roots, $workflows, $this->fullPageForToc );
+		}
+
 		// In the case of 'newest' sort, we could save ourselves trouble and only
 		// produce the necessary 40 topics that are missing from the ToC, by taking
 		// the latest UUID from the topic list.
@@ -237,6 +297,7 @@ class TopicListBlock extends AbstractBlock {
 	}
 
 	public function renderApi( array $options ) {
+		$phaseStarted = $this->beginBenchmarkPhase();
 		$options = $this->preloadTexts( $options );
 
 		$response = [
@@ -265,19 +326,30 @@ class TopicListBlock extends AbstractBlock {
 		// include the current sortby option.  Note that when 'user' is either
 		// submitted or defaulted to this is the resulting sort. ex: newest
 		$response['sortby'] = $findOptions['sortby'];
+		$this->endBenchmarkPhase( 'prepare', $phaseStarted );
 
 		if ( $this->workflow->isNew() ) {
 			return $response + $serializer->buildEmptyResult( $this->workflow );
 		}
 
+		$phaseStarted = $this->beginBenchmarkPhase();
 		$page = $this->getPage( $findOptions );
+		$this->endBenchmarkPhase( 'page_and_root_revisions', $phaseStarted );
 		$workflowIds = [];
 		/** @var TopicListEntry $topicListEntry */
 		foreach ( $page->getResults() as $topicListEntry ) {
 			$workflowIds[] = $topicListEntry->getId();
 		}
 
+		$phaseStarted = $this->beginBenchmarkPhase();
 		$workflows = $this->storage->getMulti( 'Workflow', $workflowIds );
+		$this->endBenchmarkPhase( 'workflows', $phaseStarted );
+
+		if ( !$isTocOnly ) {
+			$this->fullPageForToc = $page;
+			$this->fullWorkflowsForToc = $workflows;
+			$this->fullPageSortForToc = $findOptions['sortby'];
+		}
 
 		if ( $isTocOnly ) {
 			// We don't need any further data, so we skip the TopicListQuery.
@@ -294,14 +366,44 @@ class TopicListBlock extends AbstractBlock {
 			return $response + $serializer->formatApi( $this->workflow, $topicRootRevisionsByWorkflowId, $workflowsByWorkflowId, $page );
 		}
 
+		$phaseStarted = $this->beginBenchmarkPhase();
 		/** @var TopicListQuery $query */
 		$query = Container::get( 'query.topiclist' );
-		$found = $query->getResults( $page->getResults() );
+		$prefetchedRoots = [];
+		foreach ( $workflowIds as $id ) {
+			$alpha = $id->getAlphadecimal();
+			if ( isset( $this->topicRootRevisionCache[$alpha] ) ) {
+				$prefetchedRoots[$alpha] = $this->topicRootRevisionCache[$alpha];
+			}
+		}
+		if ( $this->benchmarkTimer !== null ) {
+			$query->setBenchmarkTimer( $this->benchmarkTimer );
+		}
+		try {
+			$found = $query->getResults( $page->getResults(), $prefetchedRoots );
+		} finally {
+			if ( $this->benchmarkTimer !== null ) {
+				$query->setBenchmarkTimer( null );
+			}
+		}
+		$this->endBenchmarkPhase( 'messages_and_permissions', $phaseStarted );
 		wfDebugLog( 'FlowDebug', 'Rendering topiclist for ids: ' . implode( ', ', array_map( static function ( UUID $id ) {
 			return $id->getAlphadecimal();
 		}, $workflowIds ) ) );
 
-		return $response + $serializer->formatApi( $this->workflow, $workflows, $found, $page, $this->context );
+		$phaseStarted = $this->beginBenchmarkPhase();
+		if ( $this->benchmarkTimer !== null ) {
+			$serializer->setBenchmarkTimer( $this->benchmarkTimer );
+		}
+		try {
+			$formatted = $serializer->formatApi( $this->workflow, $workflows, $found, $page, $this->context );
+		} finally {
+			if ( $this->benchmarkTimer !== null ) {
+				$serializer->setBenchmarkTimer( null );
+			}
+		}
+		$this->endBenchmarkPhase( 'formatting', $phaseStarted );
+		return $response + $formatted;
 	}
 
 	/**
@@ -384,8 +486,9 @@ class TopicListBlock extends AbstractBlock {
 				$findOptions = [
 					// @phan-suppress-next-line PhanUselessBinaryAddRight
 					'sortby' => 'updated',
-					'sort' => 'workflow_last_update_timestamp',
+					'sort' => TopicListCursor::SORT,
 					'order' => 'desc',
+					'pager-composite-cursor' => true,
 				] + $findOptions;
 
 				if ( $requestOptions['offset-id'] ) {
@@ -416,7 +519,13 @@ class TopicListBlock extends AbstractBlock {
 		if ( $requestOptions['offset-id'] ) {
 			$findOptions['pager-offset'] = UUID::create( $requestOptions['offset-id'] );
 		} elseif ( $requestOptions['offset'] ) {
-			$findOptions['pager-offset'] = intval( $requestOptions['offset'] );
+			if ( $findOptions['sortby'] === 'updated' ) {
+				$cursor = (string)$requestOptions['offset'];
+				TopicListCursor::parse( $cursor );
+				$findOptions['pager-offset'] = $cursor;
+			} else {
+				$findOptions['pager-offset'] = intval( $requestOptions['offset'] );
+			}
 		}
 
 		if ( $requestOptions['offset-dir'] ) {

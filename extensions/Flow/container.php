@@ -129,6 +129,8 @@ $c['storage.workflow'] = static function ( $c ) {
 		$c['storage.topic_list.indexes.last_updated']
 	);
 	$listeners = [
+		// Invalidate derived request-local data before other listeners use it.
+		'collection.cache' => $c['collection.cache'],
 		'listener.topicpagecreation' => $topicPageCreationListener,
 		'storage.workflow.listeners.topiclist' => $workflowTopicListListener,
 	];
@@ -275,6 +277,8 @@ $c['storage.header'] = static function ( $c ) {
 		]
 	);
 	$listeners = [
+		// Invalidate derived request-local data before other listeners use it.
+		'collection.cache' => $c['collection.cache'],
 		'reference.recorder' => $c['reference.recorder'],
 		'storage.header.listeners.username' => $userNameListener,
 		'listeners.notification' => $c['listeners.notification'],
@@ -338,6 +342,8 @@ $c['storage.post_summary'] = static function ( $c ) {
 		]
 	);
 	$listeners = [
+		// Invalidate derived request-local data before other listeners use it.
+		'collection.cache' => $c['collection.cache'],
 		'listener.recentchanges' => $c['listener.recentchanges'],
 		'storage.post_summary.listeners.username' => $userNameListener,
 		'listeners.notification' => $c['listeners.notification'],
@@ -431,8 +437,9 @@ $c['storage.post'] = static function ( $c ) {
 		$c['watched_items']
 	);
 	$listeners = [
-		'reference.recorder' => $c['reference.recorder'],
+		// Invalidate derived request-local data before other listeners use it.
 		'collection.cache' => $c['collection.cache'],
+		'reference.recorder' => $c['reference.recorder'],
 		'storage.post.listeners.username' => $userNameListener,
 		'storage.post.listeners.watch_topic' => $watchTopicListener,
 		'listeners.notification' => $c['listeners.notification'],

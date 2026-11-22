@@ -317,7 +317,8 @@ class ApiQueryLangLinks extends ApiQueryBase {
 		}
 
 		if ( is_null( $this->wikirougeForeignDb ) ) {
-			$this->wikirougeForeignDb = wfGetDB( DB_REPLICA, [], $interlanguageExtensionDB );
+			$this->wikirougeForeignDb = MediaWikiServices::getInstance()->getConnectionProvider()
+				->getReplicaDatabase( $interlanguageExtensionDB );
 		}
 
 		return $this->wikirougeForeignDb;

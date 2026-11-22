@@ -127,7 +127,10 @@ class PFTreeInput extends PFFormInput {
 		];
 
 		$text = Html::element( 'div', $treeInputAttrs, null );
-		$text .= "<input type='hidden' class='PFTree_data' name='" . $input_name . "'>";
+		// The saved value must be submitted even before the lazy widget runs.
+		$text .= Html::hidden( $input_name, $cur_value, [
+			'class' => 'PFTree_data', 'disabled' => $is_disabled,
+		] );
 
 		$wrapperClass = 'pfTreeInputWrapper';
 		if ( $is_mandatory ) {

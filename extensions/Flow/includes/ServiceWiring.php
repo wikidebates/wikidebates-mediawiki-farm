@@ -297,10 +297,11 @@ return [
 			$services->getService( 'FlowCache' ),
 			$services->getService( 'FlowStorage.TopicList.Backend' ),
 			$services->getService( 'FlowStorage.TopicList.Mapper' ),
-			'flow_topic_list_last_updated:list',
+			// A new key prevents reusing cached, timestamp-only sorted buckets.
+			'flow_topic_list_last_updated:list:v2',
 			[ 'topic_list_id' ],
 			[
-				'sort' => 'workflow_last_update_timestamp',
+				'sort' => [ 'workflow_last_update_timestamp', 'topic_id' ],
 				'order' => 'desc'
 			]
 		);
@@ -468,6 +469,11 @@ return [
 			$badImageRemover,
 			new BaseHrefFixer( $wgArticlePath, $services->getUrlUtils() ),
 			new ExtLinkFixer( $services->getUrlUtils() )
+		);
+		// Read the site setting once per service instance; the benchmark can
+		// override it temporarily without changing the site configuration.
+		$contextFixer->setReuseDecodedDom(
+			$services->getMainConfig()->get( 'FlowReuseDecodedDom' ) === true
 		);
 
 		return new Templating(

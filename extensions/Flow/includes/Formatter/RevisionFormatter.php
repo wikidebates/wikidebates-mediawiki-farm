@@ -110,6 +110,46 @@ class RevisionFormatter {
 	 */
 	protected $userLinks = [];
 
+	/** @var User|null The user whose rights were used to generate cached tool links. */
+	private $userLinksViewer;
+
+	/** @var PostRevision[] Current post revisions preloaded only while serializing a topic batch. */
+
+	private $availablePostRevisions = [];
+
+	/** @var callable|null Optional aggregate timer for the read-only benchmark. */
+	private $benchmarkTimer;
+
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+		// The smoke tests may instantiate a formatter without its dependencies.
+		// Real rendering sets this on the fully constructed Templating service.
+		if ( isset( $this->templating ) ) {
+			$this->templating->setBenchmarkTimer( $observer );
+		}
+		if ( isset( $this->permissions ) ) {
+			$this->permissions->setBenchmarkTimer( $observer );
+		}
+	}
+
+	/**
+	 * Time an individual serializer operation only for the maintenance benchmark.
+	 * Ordinary page rendering uses the original direct method calls.
+	 *
+	 * @return mixed
+	 */
+	private function timeFormattingOperation( string $phase, callable $operation ) {
+		$started = hrtime( true );
+		try {
+			return $operation();
+		} finally {
+			( $this->benchmarkTimer )(
+				'format_detail_' . $phase,
+				round( ( hrtime( true ) - $started ) / 1000000, 3 )
+			);
+		}
+	}
+
 	/**
 	 * @var UserNameBatch
 	 */
@@ -220,7 +260,16 @@ class RevisionFormatter {
 	public function formatApi( FormatterRow $row, IContextSource $ctx, $action = 'view' ) {
 		$this->permissions->setUser( $ctx->getUser() );
 
-		if ( !$this->permissions->isAllowed( $row->revision, $action ) ) {
+		$permissionStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
+		$canView = $this->permissions->isAllowed( $row->revision, $action );
+		if ( $permissionStarted !== null ) {
+			( $this->benchmarkTimer )(
+				'format_detail_revision_view_permission',
+				round( ( hrtime( true ) - $permissionStarted ) / 1000000, 3 )
+			);
+		}
+
+		if ( !$canView ) {
 			LoggerFactory::getInstance( 'Flow' )->debug(
 				__METHOD__ . ': Permission denied for user on action {action}',
 				[
@@ -232,7 +281,14 @@ class RevisionFormatter {
 			return false;
 		}
 
+		$moderationStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$moderatedRevision = $this->templating->getModeratedRevision( $row->revision );
+		if ( $moderationStarted !== null ) {
+			( $this->benchmarkTimer )(
+				'format_detail_moderated_revision_lookup',
+				round( ( hrtime( true ) - $moderationStarted ) / 1000000, 3 )
+			);
+		}
 		$ts = $row->revision->getRevisionId()->getTimestampObj();
 		$res = [
 			ApiResult::META_BC_BOOLS => [
@@ -252,9 +308,17 @@ class RevisionFormatter {
 			'isOriginalContent' => $row->revision->isOriginalContent(),
 			'isModerated' => $moderatedRevision->isModerated(),
 			// These are read urls
-			'links' => $this->buildLinks( $row ),
+			'links' => $this->benchmarkTimer === null
+				? $this->buildLinks( $row )
+				: $this->timeFormattingOperation(
+					'revision_links', fn () => $this->buildLinks( $row )
+				),
 			// These are write urls
-			'actions' => $this->buildActions( $row ),
+			'actions' => $this->benchmarkTimer === null
+				? $this->buildActions( $row )
+				: $this->timeFormattingOperation(
+					'revision_actions', fn () => $this->buildActions( $row )
+				),
 			'size' => [
 				'old' => $row->revision->getPreviousContentLength(),
 				'new' => $row->revision->getContentLength(),
@@ -297,10 +361,18 @@ class RevisionFormatter {
 
 		if ( $this->includeContent ) {
 			$contentFormat = $this->decideContentFormat( $row->revision );
+			$contentStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
+			$content = $this->templating->getContent( $row->revision, $contentFormat );
+			if ( $contentStarted !== null ) {
+				( $this->benchmarkTimer )(
+					'format_detail_content_conversion',
+					round( ( hrtime( true ) - $contentStarted ) / 1000000, 3 )
+				);
+			}
 
 			// @todo better name?
 			$res['content'] = [
-				'content' => $this->templating->getContent( $row->revision, $contentFormat ),
+				'content' => $content,
 				'format' => $contentFormat
 			];
 		}
@@ -357,6 +429,7 @@ class RevisionFormatter {
 			// have a safe parameter to use within l10n for content
 			// output.
 			if ( $row->revision->isTopicTitle() && !isset( $res['properties']['topic-of-post'] ) ) {
+				$titleParamsStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 				$res['properties']['topic-of-post'] = $this->processParam(
 					'topic-of-post',
 					$row->revision,
@@ -385,6 +458,12 @@ class RevisionFormatter {
 					$res['content']['plaintext'] =
 						$res['properties']['topic-of-post-text-from-html']->getValue();
 				}
+				if ( $titleParamsStarted !== null ) {
+					( $this->benchmarkTimer )(
+						'format_detail_topic_title_params',
+						round( ( hrtime( true ) - $titleParamsStarted ) / 1000000, 3 )
+					);
+				}
 			}
 
 			$res['isNewPage'] = $row->isFirstReply && $row->revision->isFirstRevision();
@@ -405,6 +484,11 @@ class RevisionFormatter {
 	 * @return array
 	 */
 	public function serializeUserLinks( $userData ) {
+		$viewer = $this->permissions->getUser();
+		if ( $viewer !== $this->userLinksViewer ) {
+			$this->userLinks = [];
+			$this->userLinksViewer = $viewer;
+		}
 		$name = $userData['name'];
 		if ( isset( $this->userLinks[$name] ) ) {
 			return $this->userLinks[$name];
@@ -465,6 +549,7 @@ class RevisionFormatter {
 	}
 
 	public function serializeUser( $userWiki, $userId, $userIp ) {
+		$userStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$res = [
 			'name' => $this->usernames->get( $userWiki, $userId, $userIp ),
 			'wiki' => $userWiki,
@@ -480,6 +565,12 @@ class RevisionFormatter {
 			$res['links'] = $this->serializeUserLinks( $res );
 		}
 
+		if ( $userStarted !== null ) {
+			( $this->benchmarkTimer )(
+				'format_detail_user_serialization',
+				round( ( hrtime( true ) - $userStarted ) / 1000000, 3 )
+			);
+		}
 		return $res;
 	}
 
@@ -506,6 +597,32 @@ class RevisionFormatter {
 	}
 
 	/**
+	 * Reuse revisions already loaded by TopicListQuery instead of reading the
+	 * same reply-parent collections repeatedly while formatting the board.
+	 * Only the current revisions are indexed; history paths fall back to storage.
+	 *
+	 * @param FormatterRow[] $rows
+	 */
+	public function primePostRevisions( array $rows ): void {
+		$this->availablePostRevisions = [];
+		foreach ( $rows as $row ) {
+			$revision = $row->currentRevision;
+			if ( $revision instanceof PostRevision ) {
+				$this->availablePostRevisions[$revision->getPostId()->getAlphadecimal()] = $revision;
+			}
+		}
+	}
+
+	public function clearPrimedPostRevisions(): void {
+		$this->availablePostRevisions = [];
+	}
+
+	private function getReplyParentRevision( UUID $postId ): PostRevision {
+		return $this->availablePostRevisions[$postId->getAlphadecimal()] ??
+			PostCollection::newFromId( $postId )->getLastRevision();
+	}
+
+	/**
 	 * @param FormatterRow $row
 	 * @return array
 	 * @throws FlowException
@@ -519,7 +636,13 @@ class RevisionFormatter {
 
 		// If a user does not have rights to perform actions on this page return
 		// an empty array of actions.
-		if ( !$workflow->userCan( 'edit', $user ) ) {
+		$canEdit = $this->benchmarkTimer === null
+			? $workflow->userCan( 'edit', $user )
+			: $this->timeFormattingOperation(
+				'action_workflow_edit_permission',
+				fn () => $workflow->userCan( 'edit', $user )
+			);
+		if ( !$canEdit ) {
 			return [];
 		}
 
@@ -538,9 +661,18 @@ class RevisionFormatter {
 		// actions primarily vary by revision type...
 		$links = [];
 		foreach ( $actionTypes as $type ) {
-			if ( !$this->permissions->isAllowed( $revision, $type ) ) {
+			$canPerform = $this->benchmarkTimer === null
+				? $this->permissions->isAllowed( $revision, $type )
+				: $this->timeFormattingOperation(
+					'action_specific_permission',
+					fn () => $this->permissions->isAllowed( $revision, $type )
+				);
+			if ( !$canPerform ) {
 				continue;
 			}
+			// This follows the per-action permission check and includes
+			// URL creation plus any action-specific eligibility work.
+			$actionStarted = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 			switch ( $type ) {
 				case 'thank':
 					$targetedUser = User::newFromId( $revision->getCreatorId() );
@@ -578,7 +710,7 @@ class RevisionFormatter {
 					$replyToRevision = $revision;
 					if ( $row->isLastReply ) {
 						$replyToId = $replyToRevision->getReplyToId();
-						$replyToRevision = PostCollection::newFromId( $replyToId )->getLastRevision();
+						$replyToRevision = $this->getReplyParentRevision( $replyToId );
 					}
 
 					/*
@@ -587,7 +719,7 @@ class RevisionFormatter {
 					 */
 					while ( $replyToRevision->getDepth() >= $this->maxThreadingDepth ) {
 						$replyToId = $replyToRevision->getReplyToId();
-						$replyToRevision = PostCollection::newFromId( $replyToId )->getLastRevision();
+						$replyToRevision = $this->getReplyParentRevision( $replyToId );
 					}
 
 					$links['reply'] = $this->urlGenerator->replyAction(
@@ -719,6 +851,20 @@ class RevisionFormatter {
 				default:
 					wfDebugLog( 'Flow', __METHOD__ . ': unkown action link type: ' . $type );
 					break;
+			}
+			if ( $actionStarted !== null ) {
+				( $this->benchmarkTimer )(
+					'format_detail_action_allowed_branch',
+					round( ( hrtime( true ) - $actionStarted ) / 1000000, 3 )
+				);
+			}
+		}
+
+		if ( $this->benchmarkTimer !== null ) {
+			// Count the resulting write links, not the number of permissions
+			// granted; multiple actions may produce the same output key.
+			foreach ( $links as $link ) {
+				( $this->benchmarkTimer )( 'format_detail_action_output_link', 0.0 );
 			}
 		}
 
@@ -872,6 +1018,14 @@ class RevisionFormatter {
 				default:
 					wfDebugLog( 'Flow', __METHOD__ . ': unkown action link type: ' . $type );
 					break;
+			}
+		}
+
+		if ( $this->benchmarkTimer !== null ) {
+			// Read-link construction is already timed by revision_links;
+			// this counter records the number of links in that output.
+			foreach ( $links as $link ) {
+				( $this->benchmarkTimer )( 'format_detail_read_output_link', 0.0 );
 			}
 		}
 

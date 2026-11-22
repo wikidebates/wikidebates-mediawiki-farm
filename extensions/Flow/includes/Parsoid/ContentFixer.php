@@ -7,6 +7,7 @@ use DOMXPath;
 use Flow\Conversion\Utils;
 use Flow\Exception\FlowException;
 use Flow\Model\AbstractRevision;
+use Flow\Parsoid\Fixer\WikiLinkFixer;
 use MediaWiki\Title\Title;
 
 class ContentFixer {
@@ -14,6 +15,41 @@ class ContentFixer {
 	 * @var Fixer[]
 	 */
 	protected $contentFixers = [];
+
+	/** @var callable|null Profiling observer, set only by the read-only benchmark. */
+	private $benchmarkTimer;
+
+	/** @var bool Site-level renderer setting (the extension defaults to enabled). */
+	private bool $reuseDecodedDom = false;
+
+	/** @var bool|null Maintenance-only override; null follows the site-level setting. */
+	private ?bool $benchmarkReuseDecodedDom = null;
+
+	public function setReuseDecodedDom( bool $reuse ): void {
+		$this->reuseDecodedDom = $reuse;
+	}
+
+	public function setBenchmarkReuseDecodedDom( ?bool $reuse ): void {
+		$this->benchmarkReuseDecodedDom = $reuse;
+	}
+
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+		// Forward profiling to WikiLinkFixer only, without changing the
+		// normal application path or other HTML fixers.
+		foreach ( $this->contentFixers as $fixer ) {
+			if ( $fixer instanceof WikiLinkFixer ) {
+				$fixer->setBenchmarkTimer( $observer );
+			}
+		}
+	}
+
+	private function recordBenchmarkStep( string $phase, int $started ): void {
+		( $this->benchmarkTimer )(
+			'format_detail_content_' . $phase,
+			round( ( hrtime( true ) - $started ) / 1000000, 3 )
+		);
+	}
 
 	/**
 	 * Accepts multiple content fixers.
@@ -37,10 +73,39 @@ class ContentFixer {
 	 * @return string
 	 */
 	public function getContent( AbstractRevision $revision ) {
-		return $this->apply(
-			$revision->getContent( 'html' ),
-			$revision->getCollection()->getTitle()
-		);
+		if ( $this->benchmarkReuseDecodedDom ?? $this->reuseDecodedDom ) {
+			// First request the same HTML through AbstractRevision::getContent,
+			// including the existing XSS hook, legacy conversions and stubs.
+			// The maintenance override and configured path share identical logic.
+			$dom = null;
+			$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
+			$html = $revision->getHtmlWithDecodedDom( $dom );
+			if ( $started !== null ) {
+				$this->recordBenchmarkStep( 'source_html', $started );
+			}
+			$title = $revision->getCollection()->getTitle();
+			if ( $dom instanceof DOMDocument ) {
+				if ( $this->benchmarkTimer !== null ) {
+					( $this->benchmarkTimer )( 'format_detail_content_reused_dom', 0.0 );
+				}
+				return $this->renderFromPreparedDom( $dom, $title );
+			}
+			// A cached, converted, custom or inaccessible revision does not
+			// expose a decoded source DOM and retains the original path.
+			return $this->apply( $html, $title );
+		}
+
+		if ( $this->benchmarkTimer === null ) {
+			return $this->apply(
+				$revision->getContent( 'html' ),
+				$revision->getCollection()->getTitle()
+			);
+		}
+
+		$started = hrtime( true );
+		$html = $revision->getContent( 'html' );
+		$this->recordBenchmarkStep( 'source_html', $started );
+		return $this->apply( $html, $revision->getCollection()->getTitle() );
 	}
 
 	/**
@@ -52,9 +117,38 @@ class ContentFixer {
 	 * @return string Html
 	 */
 	public function apply( $content, Title $title ) {
+		// Plain text without HTML syntax or entities cannot contain any node
+		// matched by the fixers, and needs no DOM parsing or reserialization.
+		if ( strpbrk( $content, '<>&' ) === false ) {
+			return $content;
+		}
+		$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$dom = self::createDOM( $content );
+		if ( $started !== null ) {
+			$this->recordBenchmarkStep( 'dom_parse', $started );
+		}
+
+		return $this->renderFromPreparedDom( $dom, $title );
+	}
+
+	/**
+	 * Complete the original fixers and XML serialization on a DOM prepared by
+	 * either path. The maintenance experiment merely skips the second parse.
+	 * The result must be compared byte-for-byte before enabling this in traffic.
+	 */
+	private function renderFromPreparedDom( DOMDocument $dom, Title $title ): string {
+		$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$this->applyToDom( $dom, $title );
-		return Utils::getInnerHtml( $dom->getElementsByTagName( 'body' )->item( 0 ) );
+		if ( $started !== null ) {
+			$this->recordBenchmarkStep( 'dom_fixers', $started );
+		}
+
+		$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
+		$html = Utils::getInnerHtml( $dom->getElementsByTagName( 'body' )->item( 0 ) );
+		if ( $started !== null ) {
+			$this->recordBenchmarkStep( 'dom_serialize', $started );
+		}
+		return $html;
 	}
 
 	/**
@@ -66,8 +160,20 @@ class ContentFixer {
 	 */
 	public function applyToDom( DOMDocument $dom, Title $title ) {
 		$xpath = new DOMXPath( $dom );
+		$profile = $this->benchmarkTimer !== null;
 		foreach ( $this->contentFixers as $i => $contentFixer ) {
+			if ( $profile ) {
+				// These names are used only by the read-only maintenance profiler.
+				$className = get_class( $contentFixer );
+				$separator = strrpos( $className, '\\' );
+				$name = strtolower( substr( $className, $separator === false ? 0 : $separator + 1 ) );
+				$phase = 'fixer_' . $name . '_';
+				$started = hrtime( true );
+			}
 			$found = $xpath->query( $contentFixer->getXPath() );
+			if ( $profile ) {
+				$this->recordBenchmarkStep( $phase . 'xpath', $started );
+			}
 			if ( !$found ) {
 				wfDebugLog( 'Flow', __METHOD__ . ': Invalid XPath from ' . get_class( $contentFixer ) . ' of: ' .
 					$contentFixer->getXPath() );
@@ -75,8 +181,23 @@ class ContentFixer {
 				continue;
 			}
 
+			if ( $contentFixer instanceof WikiLinkFixer ) {
+				if ( $profile ) {
+					$started = hrtime( true );
+				}
+				$contentFixer->preload( $found, $title );
+				if ( $profile ) {
+					$this->recordBenchmarkStep( $phase . 'preload', $started );
+				}
+			}
+			if ( $profile ) {
+				$started = hrtime( true );
+			}
 			foreach ( $found as $node ) {
 				$contentFixer->apply( $node, $title );
+			}
+			if ( $profile ) {
+				$this->recordBenchmarkStep( $phase . 'apply', $started );
 			}
 		}
 	}

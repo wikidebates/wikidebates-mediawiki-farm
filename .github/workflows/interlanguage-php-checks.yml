@@ -1,0 +1,35 @@
+name: Interlanguage PHP checks
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/Interlanguage/**'
+      - '.github/workflows/interlanguage-php-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  interlanguage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Lint active Interlanguage files
+        run: |
+          find extensions/Interlanguage -type f -name '*.php' ! -name '*Copie*' -print0 |
+            xargs -0 -n 1 php -l
+      - name: Run isolated regression tests
+        run: |
+          php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
+          php extensions/Interlanguage/tests/InterlanguageApiSmokeTest.php
+          php extensions/Interlanguage/tests/InterlanguageDatabaseSmokeTest.php
+          php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
+          php extensions/Interlanguage/tests/InterlanguageCentralSmokeTest.php
+          php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php

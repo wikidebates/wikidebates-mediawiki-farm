@@ -73,97 +73,25 @@ function getPFData() {
 }
 
 
-function createFormErrorHeader( message ) {
-	const scriptPath = mw.config.get( 'wgPageFormsScriptPath' );
-	const $icon = $( '<img>' ).attr( 'src', scriptPath + '/skins/MW-Icon-AlertMark.png' );
-	const $header = $( '<div>' )
-		.attr( 'id', 'form_error_header' )
-		.addClass( 'errorbox pf-form-error-header cdx-message cdx-message--block cdx-message--error' )
-		.append( $icon, ' ', message );
-	const $clear = $( '<div>' ).addClass( 'pf-form-clear' );
-
-	return $( '<div>' ).append( $header, $clear );
-}
-
 function ensureFormErrorHeader( message ) {
-	var $target;
-
-	if ( $( '#form_error_header' ).length !== 0 ) {
-		return;
+	if ( !$( '#form_error_header' ).length ) {
+		mw.pageFormsSubmission.showError( $( '#pfForm' ), message );
 	}
-
-	if ( $( '#contentSub' ).length ) {
-		$target = $( '#contentSub' );
-	} else if ( $( '.page-heading .tagline' ).length ) {
-		$target = $( '.page-heading .tagline' );
-	} else {
-		$target = $( '#firstHeading, .firstHeading' ).first().parent();
-	}
-
-	$target.append( createFormErrorHeader( message ).contents() );
 }
 
 const pfModulePromises = {};
-let pfIntersectionObserver = null;
-
 function loadPFModule( moduleName ) {
-	if ( !pfModulePromises[moduleName] ) {
-		pfModulePromises[moduleName] = mw.loader.using( moduleName );
-	}
-
-	return pfModulePromises[moduleName];
-}
-
-function shouldLazyLoadImmediately( element ) {
-	const rect = element.getBoundingClientRect();
-	const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-	return rect.top < viewportHeight * 1.5 && rect.bottom > -viewportHeight * 0.25;
-}
-
-function createPFIntersectionObserver() {
-	if ( pfIntersectionObserver !== null || typeof window.IntersectionObserver !== 'function' ) {
-		return pfIntersectionObserver;
-	}
-
-	pfIntersectionObserver = new window.IntersectionObserver( ( entries, observer ) => {
-		entries.forEach( ( entry ) => {
-			if ( !entry.isIntersecting ) {
-				return;
-			}
-
-			observer.unobserve( entry.target );
-			const initializer = $( entry.target ).data( 'pfLazyInit' );
-			if ( typeof initializer === 'function' ) {
-				initializer();
-			}
+	if ( !pfModulePromises[ moduleName ] ) {
+		pfModulePromises[ moduleName ] = mw.loader.using( moduleName ).catch( ( error ) => {
+			delete pfModulePromises[ moduleName ];
+			throw error;
 		} );
-	}, {
-		rootMargin: '240px 0px'
-	} );
-
-	return pfIntersectionObserver;
+	}
+	return pfModulePromises[ moduleName ];
 }
 
 function registerLazyWidget( $elements, initializer ) {
-	const observer = createPFIntersectionObserver();
-
-	$elements.each( function() {
-		const $element = $( this );
-		if ( $element.data( 'pfLazyRegistered' ) || $element.closest( '.multipleTemplateStarter' ).length ) {
-			return;
-		}
-
-		$element.data( 'pfLazyRegistered', true );
-		const initialize = () => initializer( $element );
-		$element.data( 'pfLazyInit', initialize );
-
-		if ( shouldLazyLoadImmediately( this ) || observer === null ) {
-			initialize();
-			return;
-		}
-
-		observer.observe( this );
-	} );
+	mw.pageFormsLazyWidgets.register( $elements, initializer );
 }
 
 function initTokensIn( $root ) {
@@ -174,10 +102,10 @@ function initTokensIn( $root ) {
 		return;
 	}
 
-	mw.loader.using( [ 'ext.pageforms.select2', 'ext.pageforms.select2.styles' ] ).then( () => {
+	return mw.loader.using( [ 'ext.pageforms.select2', 'ext.pageforms.select2.styles' ] ).then( () => {
 		$tokens.each( function() {
 			const $element = $( this );
-			if ( $element.hasClass( 'pf-tokens-initialized' ) || $element.next( '.select2' ).length ) {
+			if ( !document.documentElement.contains( this ) || $element.closest( '.pf-removed-instance' ).length || $element.hasClass( 'pf-tokens-initialized' ) || $element.next( '.select2' ).length ) {
 				return;
 			}
 			const tokens = new pf.select2.tokens();
@@ -193,48 +121,11 @@ function initAutoGrowIn( $root ) {
 		return;
 	}
 
-	loadPFModule( 'ext.pageforms.autogrow' ).then( () => {
-		$elements.filter( ':not(.pf-autogrow-initialized)' ).each( function() {
-			$( this ).addClass( 'pf-autogrow-initialized' ).autoGrow();
+	return loadPFModule( 'ext.pageforms.autogrow' ).then( () => {
+		$elements.filter( function () { return document.documentElement.contains( this ) && !$( this ).closest( '.pf-removed-instance' ).length; } ).filter( ':not(.pf-autogrow-initialized)' ).each( function() {
+			$( this ).autoGrow().addClass( 'pf-autogrow-initialized' );
 		} );
 	} );
-}
-
-function initEditSummaryField() {
-	const $summary = $( '#wpSummary' );
-
-	if ( !$summary.length || $summary.is( 'textarea' ) || $summary.data( 'pfSummaryInitialized' ) ) {
-		return;
-	}
-
-	const summaryValue = $summary.val();
-	const summaryClass = ( $summary.attr( 'class' ) || '' ) + ' autoGrow pf-singleline-text pf-summary-textarea';
-
-	const $textarea = $( '<textarea>' )
-		.attr( {
-			id: $summary.attr( 'id' ),
-			name: $summary.attr( 'name' ),
-			tabindex: $summary.attr( 'tabindex' ),
-			accesskey: $summary.attr( 'accesskey' ),
-			placeholder: $summary.attr( 'placeholder' ),
-			maxlength: $summary.attr( 'maxlength' ),
-			rows: 1
-		} )
-		.addClass( summaryClass )
-		.val( summaryValue )
-		.data( 'pfSummaryInitialized', true );
-
-	if ( $summary.prop( 'disabled' ) ) {
-		$textarea.prop( 'disabled', true );
-	}
-
-	if ( $summary.prop( 'readonly' ) ) {
-		$textarea.prop( 'readonly', true );
-	}
-
-	$summary.replaceWith( $textarea );
-
-	initAutoGrowIn( $textarea );
 }
 
 function initRatingsIn( $root ) {
@@ -243,9 +134,10 @@ function initRatingsIn( $root ) {
 		return;
 	}
 
-	mw.loader.using( [ 'ext.pageforms.rating', 'ext.pageforms.rating.styles' ] ).then( () => {
-		$elements.filter( ':not(.pf-rating-initialized)' ).each( function() {
-			$( this ).addClass( 'pf-rating-initialized' ).applyRatingInput();
+	return mw.loader.using( [ 'ext.pageforms.rating', 'ext.pageforms.rating.styles' ] ).then( () => {
+		$elements.filter( function () { return document.documentElement.contains( this ) && !$( this ).closest( '.pf-removed-instance' ).length; } ).filter( ':not(.pf-rating-initialized)' ).each( function() {
+			$( this ).applyRatingInput();
+			$( this ).addClass( 'pf-rating-initialized' );
 		} );
 	} );
 }
@@ -256,9 +148,10 @@ function initTreesIn( $root ) {
 		return;
 	}
 
-	loadPFModule( 'ext.pageforms.jstree' ).then( () => {
-		$elements.filter( ':not(.pf-tree-initialized)' ).each( function() {
-			$( this ).addClass( 'pf-tree-initialized' ).applyJSTree();
+	return loadPFModule( 'ext.pageforms.jstree' ).then( () => {
+		$elements.filter( function () { return document.documentElement.contains( this ) && !$( this ).closest( '.pf-removed-instance' ).length; } ).filter( ':not(.pf-tree-initialized)' ).each( function() {
+			$( this ).applyJSTree();
+			$( this ).addClass( 'pf-tree-initialized' );
 		} );
 	} );
 }
@@ -279,29 +172,25 @@ function initCalendarsIn( $root ) {
 	loadPFModule( 'ext.pageforms.fullcalendar' );
 }
 
-function initComboBoxesIn( $root ) {
-	const $elements = $root.find( '.pfComboBox' ).addBack( '.pfComboBox' )
-		.not( '.multipleTemplateStarter .pfComboBox, .pf-combobox-initialized' );
-	if ( $elements.length === 0 ) {
-		return;
-	}
-
-	loadPFModule( 'ext.pageforms.ooui.combobox' ).then( () => {
-		$elements.each( function() {
-			new pf.ComboBoxInput( {} ).apply( $( this ) );
-		} );
-	} );
-}
-
 function initVisibleWidgetsIn( $root ) {
 	registerLazyWidget( $root.find( '.pfTokens' ).addBack( '.pfTokens' ), initTokensIn );
-	registerLazyWidget( $root.find( '.pfComboBox' ).addBack( '.pfComboBox' ), initComboBoxesIn );
 	registerLazyWidget( $root.find( '.autoGrow' ).addBack( '.autoGrow' ), initAutoGrowIn );
 	registerLazyWidget( $root.find( '.pfRating' ).addBack( '.pfRating' ), initRatingsIn );
 	registerLazyWidget( $root.find( '.pfTreeInput' ).addBack( '.pfTreeInput' ), initTreesIn );
+	// FullCalendar initializes all its instances on module load; leave that
+	// integration unchanged until its own initializer can be scoped safely.
 	registerLazyWidget( $root.find( '.pfFullCalendarJS' ).addBack( '.pfFullCalendarJS' ), initCalendarsIn );
+	registerLazyWidget( $root.find( '.pfComboBox' ).addBack( '.pfComboBox' ), ( $element ) => {
+		return loadPFModule( 'ext.pageforms.ooui.combobox' ).then( () => {
+			if ( document.documentElement.contains( $element[ 0 ] ) && !$element.closest( '.pf-removed-instance' ).length ) {
+				new pf.ComboBoxInput( {} ).apply( $element );
+			}
+		} );
+	} );
 	initImagePreviewIn( $root );
 }
+
+mw.pageFormsInitializeWidgets = initVisibleWidgetsIn;
 
 // Register a validation method
 //
@@ -676,13 +565,8 @@ $.fn.setErrorMessage = function(msg, val) {
 };
 
 // Append an error message to the end of an input.
-$.fn.addErrorMessage = function(msg, val) {
-	this.find('input').addClass('inputError');
-	this.find('select2-container').addClass('inputError');
-	this.append($('<div>').addClass( 'errorMessage' ).text( mw.msg( msg, val ) ));
-	// If this is part of a minimized multiple-template instance, add a
-	// red border around the instance rectangle to make it easier to find.
-	this.parents( '.multipleTemplateInstance.minimized' ).css( 'border', '1px solid red' );
+$.fn.addErrorMessage = function( msg, val ) {
+	mw.pageFormsErrors.add( this, msg, val );
 };
 
 $.fn.isAtMaxInstances = function() {
@@ -762,100 +646,130 @@ $.fn.validateMandatoryField = function() {
 	}
 };
 
-// Build a request separately so synchronous validators can recognize a result
-// for the exact current value and constraints without blocking the browser.
-function getUniqueFieldCheck( $wrapper ) {
-	const $field = $wrapper.find( '.uniqueField' );
-	const value = $field.val();
-	if ( value === undefined || String( value ).trim() === '' || value === $field.prop( 'defaultValue' ) ) {
-		return null;
-	}
-
-	const id = $field.prop( 'id' );
-	const getConstraint = ( suffix ) => $( document.getElementsByName( id + suffix ) ).val();
-	const category = getConstraint( '_unique_for_category' );
-	const namespace = getConstraint( '_unique_for_namespace' );
-	const property = getConstraint( '_unique_property' );
-	let data;
-
-	if ( property !== undefined && property.trim() !== '' ) {
-		let query = '[[' + property + '::' + value + ']]';
-		if ( category !== undefined && category.trim() !== '' ) {
-			query += '[[Category:' + category + ']]';
-		}
-		if ( namespace !== undefined ) {
-			query += namespace.trim() !== '' ? '[[:' + namespace + ':+]]' : '[[:+]]';
-		}
-		const concept = getConstraint( '_unique_for_concept' );
-		if ( concept !== undefined && concept.trim() !== '' ) {
-			query += '[[Concept:' + concept + ']]';
-		}
-		data = { action: 'ask', query: query + '|limit=1', format: 'json' };
-	} else {
-		let table = getConstraint( '_unique_cargo_table' );
-		const field = getConstraint( '_unique_cargo_field' );
-		if ( !table || !table.trim() || !field || !field.trim() ) {
-			return null;
-		}
-		const quote = ( text ) => "'" + String( text ).replace( /'/g, "''" ) + "'";
-		let where = field + ' = ' + quote( value );
-		if ( category !== undefined && category.trim() !== '' ) {
-			where += ' AND cl_to = ' + quote( category.replace( / /g, '_' ) ) + ' AND cl_from = _pageID';
-			table += ',categorylinks';
-		}
-		if ( namespace !== undefined ) {
-			const namespaceId = namespace.trim() === '' ? 0 : ( mw.config.get( 'wgNamespaceIds' ) || {} )[ namespace.toLowerCase() ];
-			if ( namespaceId !== undefined ) {
-				where += ' AND _pageNamespace = ' + namespaceId;
-			}
-		}
-		data = { action: 'cargoquery', tables: table, fields: field, where: where, limit: 1, format: 'json' };
-	}
-	return { data: data, key: JSON.stringify( data ) };
-}
-
-$.fn.validateUniqueFieldAsync = function() {
-	const check = getUniqueFieldCheck( this );
-	if ( check === null ) {
-		return $.when( true );
-	}
+/**
+ * @param {Function} [isCurrent] Whether the containing validation is still current.
+ * @return {Promise<boolean>} Never interpret a failed request as a duplicate.
+ */
+$.fn.validateUniqueField = function( isCurrent ) {
 	const $wrapper = this;
-	const recordResult = ( valid, message ) => {
-		$wrapper.data( 'pfUniqueValidation', { key: check.key, valid: valid, message: message } );
-		return valid;
-	};
-
-	return new mw.Api( { ajax: { timeout: 15000 } } ).get( check.data ).then( ( data ) => {
-		let count;
-		if ( check.data.action === 'ask' && data.query && data.query.meta ) {
-			count = data.query.meta.count;
-		} else if ( check.data.action === 'cargoquery' && Array.isArray( data.cargoquery ) ) {
-			count = data.cargoquery.length;
-		}
-		if ( typeof count !== 'number' ) {
-			return recordResult( false, 'pf_validation_error' );
-		}
-		return recordResult( count === 0, 'pf_not_unique_error' );
-	}, () => recordResult( false, 'pf_validation_error' ) );
-};
-
-// Keep the boolean contract for callers of validateAll(). Network checks must
-// be prepared with validateAllAsync(); missing or stale results fail closed.
-$.fn.validateUniqueField = function() {
-	const check = getUniqueFieldCheck( this );
-	if ( check === null ) {
-		return true;
+	const $field = this.find( '.uniqueField' ).first();
+	const $form = this.closest( 'form' );
+	const value = $field.val();
+	const previous = $field.data( 'pfUniqueRequest' );
+	const request = {};
+	$field.data( 'pfUniqueRequest', request );
+	if ( previous && previous.xhr ) {
+		previous.xhr.abort();
 	}
-	const result = this.data( 'pfUniqueValidation' );
-	this.removeData( 'pfUniqueValidation' );
-	if ( !result || result.key !== check.key ) {
-		this.addErrorMessage( 'pf_validation_error' );
+
+	if ( value === undefined || value === null || String( value ).trim() === '' ) {
+		return Promise.resolve( true );
+	}
+	const saved = $field.data( 'pfUniqueSavedValue' );
+	if ( value === ( saved === undefined ? $field.prop( 'defaultValue' ) : saved ) ) {
+		return Promise.resolve( true );
+	}
+
+	function setting( suffix ) {
+		const name = $field.prop( 'id' ) + suffix;
+		return $form.find( 'input' ).filter( function () { return this.name === name; } ).val();
+	}
+	const category = setting( '_unique_for_category' );
+	const namespace = setting( '_unique_for_namespace' );
+	const property = setting( '_unique_property' );
+	const concept = setting( '_unique_for_concept' );
+	let cargoTable = setting( '_unique_cargo_table' );
+	const cargoField = setting( '_unique_cargo_field' );
+	const data = { format: 'json' };
+
+	if ( property && property.trim() !== '' ) {
+		data.action = 'ask';
+		data.query = '[[' + property + '::' + value + ']]';
+		if ( category && category.trim() !== '' ) {
+			data.query += '[[Category:' + category + ']]';
+		}
+		if ( namespace !== undefined ) {
+			data.query += namespace.trim() !== '' ? '[[:' + namespace + ':+]]' : '[[:+]]';
+		}
+		if ( concept && concept.trim() !== '' ) {
+			data.query += '[[Concept:' + concept + ']]';
+		}
+		data.query += '|limit=1';
+	} else if ( cargoTable && cargoTable.trim() !== '' && cargoField && cargoField.trim() !== '' ) {
+		const quote = ( text ) => "'" + String( text ).replace( /\\/g, '\\\\' ).replace( /'/g, "''" ) + "'";
+		data.action = 'cargoquery';
+		data.fields = cargoField;
+		data.where = cargoField + ' = ' + quote( value );
+		if ( category && category.trim() !== '' ) {
+			data.where += ' AND cl_to = ' + quote( category.replace( / /g, '_' ) ) + ' AND cl_from = _pageID';
+			cargoTable += ',categorylinks';
+		}
+		if ( namespace !== undefined ) {
+			const namespaceIds = mw.config.get( 'wgNamespaceIds' ) || {};
+			const ns = namespace.trim() === '' ? 0 : namespaceIds[ namespace.toLowerCase() ];
+			if ( ns === undefined ) {
+				$wrapper.addErrorMessage( 'pf-unique-check-error' );
+				return Promise.resolve( false );
+			}
+			data.where += ' AND _pageNamespace = ' + ns;
+		}
+		data.tables = cargoTable;
+		data.limit = 1;
+	} else {
+		return Promise.resolve( true );
+	}
+
+	function current() {
+		return $field.data( 'pfUniqueRequest' ) === request && $field.val() === value &&
+			document.documentElement.contains( $field[ 0 ] ) &&
+			!$field.closest( '.hiddenByPF, .multipleTemplateStarter' ).length &&
+			( !isCurrent || isCurrent() );
+	}
+	function fail() {
+		if ( current() ) {
+			$wrapper.addErrorMessage( 'pf-unique-check-error' );
+		}
 		return false;
 	}
-	if ( !result.valid ) {
-		this.addErrorMessage( result.message );
-	}
-	return result.valid;
+
+	return new Promise( ( resolve ) => {
+		request.xhr = $.ajax( {
+			url: mw.util.wikiScript( 'api' ),
+			data: data,
+			dataType: 'json',
+			timeout: 15000
+		} );
+		request.xhr.done( ( result ) => {
+			if ( !current() ) {
+				resolve( false );
+				return;
+			}
+			let count;
+			if ( result && !result.error && !result.errors ) {
+				if ( data.action === 'ask' && result.query && result.query.meta ) {
+					const rawCount = result.query.meta.count;
+					if ( ( typeof rawCount === 'number' || typeof rawCount === 'string' ) && /^\d+$/.test( String( rawCount ) ) ) {
+						count = Number( rawCount );
+					}
+				} else if ( data.action === 'cargoquery' && Array.isArray( result.cargoquery ) ) {
+					count = result.cargoquery.length;
+				}
+			}
+			if ( !Number.isFinite( count ) ) {
+				resolve( fail() );
+				return;
+			}
+			if ( count > 0 ) {
+				$wrapper.addErrorMessage( 'pf_not_unique_error' );
+			}
+			resolve( count === 0 );
+		} ).fail( () => resolve( fail() ) ).always( () => {
+			// Do not remove a newer request started while this one was completing.
+			if ( $field.data( 'pfUniqueRequest' ) === request ) {
+				$field.removeData( 'pfUniqueRequest' );
+			}
+		} );
+	} );
 };
 
 $.fn.validateMandatoryComboBox = function() {
@@ -1039,13 +953,13 @@ $.fn.checkForPipes = function() {
 			// startTag ... endTag | startTag ... endTag
 			if ( matches[1].includes( endTag ) &&
 				matches[2].includes( startTag ) ) {
-				fieldVal = fieldVal.replace( pattern, "$1" + "\2" + "$2");
+				fieldVal = fieldVal.replace( pattern, "$1" + "\u0002" + "$2");
 			} else {
-				fieldVal = fieldVal.replace( pattern, "$1" + "\1" + "$2" );
+				fieldVal = fieldVal.replace( pattern, "$1" + "\u0001" + "$2" );
 			}
 		}
 	}
-	fieldVal = fieldVal.replace( "\2", '|' );
+	fieldVal = fieldVal.replace( "\u0002", '|' );
 
 	// Now check for pipes outside of brackets.
 	let nextPipe,
@@ -1186,217 +1100,196 @@ function validateStartEndDateTimeField( startInput, endInput ) {
 
 }
 
+/**
+ * @return {Promise<boolean>} Callers must await validation before submitting.
+ */
 window.validateAll = function() {
-	const $pfForm = $( "#pfForm" );
+	const $form = $( '#pfForm' );
+	const generation = {};
+	$form.data( 'pfValidationGeneration', generation );
+	return Promise.resolve().then( () => {
+		if ( $form.data( 'pfValidationGeneration' ) !== generation ) {
+			return false;
+		}
+		const $pfForm = $form;
 
-	// Remove all old error messages.
-	$pfForm.find( ".errorMessage" ).remove();
+		// Remove all old error messages.
+		mw.pageFormsErrors.clear( $pfForm );
+		$pfForm.find( '.inputError' ).removeClass( 'inputError' );
+		$( '#form_error_header' ).remove();
+		const pendingValidations = [];
 
-	// Hook that fires on form submission, before the validation.
-	mw.hook('pf.formValidationBefore').fire();
+		// Hook that fires on form submission, before the validation.
+		mw.hook('pf.formValidationBefore').fire();
 
-	const args = {numErrors: 0};
-	mw.hook('pf.formValidation').fire( args );
-	let num_errors = args.numErrors;
+		const args = {numErrors: 0};
+		mw.hook('pf.formValidation').fire( args );
+		let num_errors = args.numErrors;
 
-	// Make sure all inputs are ignored in the "starter" instance
-	// of any multiple-instance template.
-	$pfForm.find( ".multipleTemplateStarter" ).find( "span, div" ).addClass( "hiddenByPF" );
+		// Make sure all inputs are ignored in the "starter" instance
+		// of any multiple-instance template.
+		$pfForm.find( ".multipleTemplateStarter" ).find( "span, div" ).addClass( "hiddenByPF" );
 
-	$pfForm.find( ".multipleTemplateList" ).each( function() {
-		if (! $(this).validateNumInstances() ) {
-			num_errors += 1;
-		}
-	});
+		$pfForm.find( ".multipleTemplateList" ).each( function() {
+			if (! $(this).validateNumInstances() ) {
+				num_errors += 1;
+			}
+		});
 
-	$pfForm.find( "span.inputSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryField() ) {
+		$pfForm.find( "span.inputSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.comboboxSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryComboBox() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.dateInput.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryDateField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.radioButtonSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryRadioButton() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.checkboxesSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryCheckboxes() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "div.pfTreeInputWrapper.mandatory" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateMandatoryTree() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "div.pfPickerWrapper.mandatory" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).find('.pfPicker').validateMandatoryDatePicker() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.inputSpan, span.comboboxSpan" ).not( ".hiddenByPF, .freeText, .pageSection" ).each( function() {
+			if (! $(this).checkForPipes() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.URLInput" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateURLField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.emailInput" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateEmailField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.numberInput" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateNumberField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.integerInput" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateIntegerField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "span.dateInput" ).not( ".hiddenByPF" ).each( function() {
+			if (! $(this).validateDateField() ) {
+				num_errors += 1;
+			}
+		});
+		$pfForm.find( "input.modifiedInput" ).not( ".hiddenByPF" ).each( function() {
+			// No separate function needed.
+			$(this).parent().addErrorMessage( 'pf_modified_input_error' );
 			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.comboboxSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryComboBox() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.dateInput.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryDateField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.radioButtonSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryRadioButton() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.checkboxesSpan.mandatoryFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryCheckboxes() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "div.pfTreeInputWrapper.mandatory" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateMandatoryTree() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "div.pfPickerWrapper.mandatory" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).find('.pfPicker').validateMandatoryDatePicker() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.inputSpan.uniqueFieldSpan" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateUniqueField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.inputSpan, span.comboboxSpan" ).not( ".hiddenByPF, .freeText, .pageSection" ).each( function() {
-		if (! $(this).checkForPipes() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.URLInput" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateURLField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.emailInput" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateEmailField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.numberInput" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateNumberField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.integerInput" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateIntegerField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "span.dateInput" ).not( ".hiddenByPF" ).each( function() {
-		if (! $(this).validateDateField() ) {
-			num_errors += 1;
-		}
-	});
-	$pfForm.find( "input.modifiedInput" ).not( ".hiddenByPF" ).each( function() {
-		// No separate function needed.
-		$(this).parent().addErrorMessage( 'pf_modified_input_error' );
-		num_errors += 1;
-	});
+		});
 
-	const startDateInput = $pfForm.find( "span.startDateInput" ).not( ".hiddenByPF" )
-	const endDateInput = $pfForm.find( "span.endDateInput" ).not( ".hiddenByPF" )
+		const startDateInput = $pfForm.find( "span.startDateInput" ).not( ".hiddenByPF" )
+		const endDateInput = $pfForm.find( "span.endDateInput" ).not( ".hiddenByPF" )
 
-	if ( !validateStartEndDateField( startDateInput, endDateInput ) ) {
-		num_errors += 1;
-	}
+		if ( !validateStartEndDateField( startDateInput, endDateInput ) ) {
+			num_errors += 1;
+		}
 
-	const startDateTimeInput = $pfForm.find( "span.startDateTimeInput" ).not( ".hiddenByPF" )
-	const endDateTimeInput = $pfForm.find( "span.endDateTimeInput" ).not( ".hiddenByPF" )
+		const startDateTimeInput = $pfForm.find( "span.startDateTimeInput" ).not( ".hiddenByPF" )
+		const endDateTimeInput = $pfForm.find( "span.endDateTimeInput" ).not( ".hiddenByPF" )
 
-	if ( !validateStartEndDateTimeField( startDateTimeInput, endDateTimeInput ) ) {
-		num_errors += 1;
-	}
-	// call registered validation functions
-	const pfdata = $pfForm.data( 'PageForms' );
+		if ( !validateStartEndDateTimeField( startDateTimeInput, endDateTimeInput ) ) {
+			num_errors += 1;
+		}
+		// call registered validation functions
+		const pfdata = $pfForm.data( 'PageForms' );
 
-	if ( pfdata && pfdata.validationFunctions.length > 0 ) { // found data object?
+		if ( pfdata && pfdata.validationFunctions.length > 0 ) { // found data object?
 
-		// for every registered input
-		for ( let i = 0; i < pfdata.validationFunctions.length; i++ ) {
+			// for every registered input
+			for ( let i = 0; i < pfdata.validationFunctions.length; i++ ) {
 
-			// if input is not part of multipleTemplateStarter
-			if ( typeof pfdata.validationFunctions[i] !== 'undefined' &&
-				$("#" + pfdata.validationFunctions[i].input).closest(".multipleTemplateStarter").length === 0 &&
-				$("#" + pfdata.validationFunctions[i].input).closest(".hiddenByPF").length === 0 ) {
+				// if input is not part of multipleTemplateStarter
+				if ( typeof pfdata.validationFunctions[i] !== 'undefined' &&
+					$("#" + pfdata.validationFunctions[i].input).closest(".multipleTemplateStarter").length === 0 &&
+					$("#" + pfdata.validationFunctions[i].input).closest(".hiddenByPF").length === 0 ) {
 
-				if (! pfdata.validationFunctions[i].valfunction(
+					pendingValidations.push( Promise.resolve( pfdata.validationFunctions[i].valfunction(
 						pfdata.validationFunctions[i].input,
-						pfdata.validationFunctions[i].parameters)
-					) {
-					num_errors += 1;
+						pfdata.validationFunctions[i].parameters
+					) ) );
 				}
 			}
 		}
-	}
 
-	$pfForm.find( '.pfTokens, .pfComboBox' ).each( function() {
-		const $input = $( this );
-		if ( $input.closest( '.hiddenByPF, .multipleTemplateStarter' ).length === 0 &&
-			( $input.data( 'pfDependentAutocompleteError' ) || $input.data( 'pfDependentAutocompleteRequest' ) ) ) {
-			$input.parent().addErrorMessage( 'pf_autocomplete_error' );
-			num_errors++;
+		const snapshot = mw.pageFormsSubmission.snapshot( $pfForm );
+		const current = () => $pfForm.data( 'pfValidationGeneration' ) === generation &&
+			mw.pageFormsSubmission.snapshot( $pfForm ) === snapshot;
+		if ( num_errors === 0 ) {
+			$pfForm.find( 'span.inputSpan.uniqueFieldSpan' ).filter( function () {
+				return !$( this ).closest( '.hiddenByPF, .multipleTemplateStarter' ).length &&
+					!$( this ).find( '.uniqueField' ).prop( 'disabled' );
+			} ).each( function () {
+				pendingValidations.push( $( this ).validateUniqueField( current ) );
+			} );
 		}
-	} );
+		return Promise.all( pendingValidations ).then( ( results ) => {
+			if ( $pfForm.data( 'pfValidationGeneration' ) !== generation ) {
+				return false;
+			}
+			if ( !current() ) {
+				mw.pageFormsSubmission.showError( $pfForm, mw.msg( 'pf-form-changed-during-validation' ) );
+				mw.hook( 'pf.formValidationAfter' ).fire();
+				return false;
+			}
+			num_errors += results.filter( ( valid ) => !valid ).length;
 
-	if (num_errors > 0) {
-		// add error header, if it's not there already
-		ensureFormErrorHeader( mw.message( 'pf_formerrors_header' ).escaped() );
-		// The "Save page", etc. buttons were disabled to prevent
-		// double-clicking; since there has been an error, re-enable
-		// them so that the form can be submitted again after the
-		// user tries to fix these errors.
-		$( '.editButtons > .oo-ui-buttonElement' ).removeClass( 'oo-ui-widget-disabled' ).addClass( 'oo-ui-widget-enabled' );
-		// Also undo the indicator that the form was submitted.
-		$pfForm.data( 'submitted', false );
-		scroll(0, 0);
-	} else {
-		// Disable inputs hidden due to either "show on select" or
-		// because they're part of the "starter" div for
-		// multiple-instance templates, so that they aren't
-		// submitted by the form.
-		$pfForm.find( '.hiddenByPF' ).find( "input, select, textarea" ).not( ':disabled' )
-		.prop('disabled', true)
-		.addClass('disabledByPF');
-		//remove error box if it exists because there are no errors in the form now
-		$("#contentSub").find(".errorbox").remove();
-	}
+			if (num_errors > 0) {
+				// add error header, if it's not there already
+				ensureFormErrorHeader( mw.msg( 'pf_formerrors_header' ) );
+				mw.pageFormsErrors.summarize( $pfForm );
+			} else {
+				// Disable inputs hidden due to either "show on select" or
+				// because they're part of the "starter" div for
+				// multiple-instance templates, so that they aren't
+				// submitted by the form.
+				$pfForm.find( '.hiddenByPF' ).find( "input, select, textarea" ).not( ':disabled' )
+				.prop('disabled', true)
+				.addClass('disabledByPF');
+				//remove error box if it exists because there are no errors in the form now
+				$( '#form_error_header' ).remove();
+			}
 
-	// Hook that fires on form submission, after the validation.
-	mw.hook('pf.formValidationAfter').fire();
+			// Hook that fires on form submission, after the validation.
+			mw.hook('pf.formValidationAfter').fire();
 
-	return (num_errors === 0);
-};
-
-/**
- * Wait for remote checks before running synchronous validation and its hooks.
- * Duplicate clicks fail closed; a changed form must be submitted again so the
- * submitted values always match the values that were checked.
- *
- * @return {jQuery.Promise<boolean>} Whether the form may be submitted
- */
-window.validateAllAsync = function() {
-	const $form = getPFForm();
-	if ( $form.data( 'pfValidationPending' ) ) {
-		return $.when( false );
-	}
-	$form.data( 'pfValidationPending', true );
-	const snapshot = $form.serialize();
-	const checks = [];
-	$form.find( 'span.inputSpan.uniqueFieldSpan' ).each( function() {
-		const $wrapper = $( this );
-		if ( $wrapper.closest( '.hiddenByPF, .multipleTemplateStarter' ).length === 0 ) {
-			checks.push( $wrapper.validateUniqueFieldAsync() );
+			return (num_errors === 0);
+		} );
+	} ).catch( () => {
+		if ( $form.data( 'pfValidationGeneration' ) === generation ) {
+			$form.removeData( 'pfValidationGeneration' );
+			mw.pageFormsSubmission.showError( $form, mw.msg( 'pf-form-validation-error' ) );
 		}
-	} );
-	$form.find( '.pfTokens, .pfComboBox' ).each( function() {
-		const $input = $( this );
-		const request = $input.data( 'pfDependentAutocompleteRequest' );
-		if ( request && $input.closest( '.hiddenByPF, .multipleTemplateStarter' ).length === 0 ) {
-			checks.push( request.then( () => true, () => false ) );
-		}
-	} );
-	return $.when.apply( $, checks ).then( () => {
-		if ( snapshot !== $form.serialize() ) {
-			ensureFormErrorHeader( mw.message( 'pf_validation_changed' ).escaped() );
-			return false;
-		}
-		return window.validateAll();
-	} ).always( () => {
-		$form.removeData( 'pfValidationPending' );
-		$form.data( 'submitted', false );
-		$( '.editButtons > .oo-ui-buttonElement' ).removeClass( 'oo-ui-widget-disabled' ).addClass( 'oo-ui-widget-enabled' );
+		return false;
 	} );
 };
 
@@ -1428,7 +1321,7 @@ $.fn.possiblyMinimizeAllOpenInstances = function() {
 					return;
 				}
 				const matches = fieldFullName.match(/.*\[.*\]\[(.*)\]/);
-				const fieldRealName = matches[1].toLowerCase();
+				const fieldRealName = matches ? matches[1].toLowerCase() : fieldFullName.toLowerCase();
 				if ( !allDisplayedFields.includes( fieldRealName ) ) {
 					return;
 				}
@@ -1452,7 +1345,7 @@ $.fn.possiblyMinimizeAllOpenInstances = function() {
 				curVal = curVal.slice(0, 70) + "...";
 			}
 			if ( valuesStr !== '' ) {
-				valuesStr += ' &middot; ';
+				valuesStr += ' \u00b7 ';
 			}
 			valuesStr += curVal;
 		});
@@ -1460,7 +1353,7 @@ $.fn.possiblyMinimizeAllOpenInstances = function() {
 		if ( valuesStr === '' ) {
 			$display.append( $( '<em>' ).text( mw.message( 'pf-formedit-nodata' ).text() ) );
 		} else {
-			$display.html( valuesStr );
+			$display.text( valuesStr );
 		}
 		$instance.find( '.instanceMain' ).addClass( 'pf-hidden' );
 		$instance.find( '.fieldValuesDisplay' ).remove();
@@ -1758,144 +1651,9 @@ $.fn.addInstance = function( addAboveCurInstance ) {
 
 	// Hook that fires each time a new template instance is added.
 	// The first parameter is a jQuery selection of the newly created instance div.
+	mw.pageFormsInstances.update( $multipleTemplateList );
 	mw.hook('pf.addTemplateInstance').fire($new_div);
-};
-
-// The first argument is needed, even though it's an attribute of the element
-// on which this function is called, because it's the 'name' attribute for
-// regular inputs, and the 'origName' attribute for inputs in multiple-instance
-// templates.
-$.fn.setDependentAutocompletion = function( dependentField, baseField, baseValue ) {
-	const cargoFields = mw.config.get( 'wgPageFormsCargoFields' ) || {};
-	const properties = mw.config.get( 'wgPageFormsFieldProperties' ) || {};
-	const data = { action: 'pfautocomplete', format: 'json', basevalue: baseValue };
-	if ( Object.prototype.hasOwnProperty.call( cargoFields, dependentField ) ) {
-		const target = cargoFields[ dependentField ].split( '|' );
-		const source = cargoFields[ baseField ].split( '|' );
-		data.cargo_table = target[ 0 ];
-		data.cargo_field = target[ 1 ];
-		data.base_cargo_table = source[ 0 ];
-		data.base_cargo_field = source[ 1 ];
-	} else {
-		data.property = properties[ dependentField ];
-		data.baseprop = properties[ baseField ];
-	}
-
-	return this.loadDependentAutocompleteValues( data );
-};
-
-// Also used by token widgets initialized outside the main form (e.g. calendars).
-$.fn.loadDependentAutocompleteValues = function( data ) {
-	const $input = this;
-	const previousRequest = $input.data( 'pfDependentAutocompleteRequest' );
-	const requestKey = JSON.stringify( data );
-	if ( $input.data( 'pfDependentAutocompleteKey' ) === requestKey ) {
-		if ( previousRequest ) {
-			return previousRequest;
-		}
-		if ( $input.data( 'pfDependentAutocompleteLoaded' ) ) {
-			return $.when( { pfautocomplete: ( $input.data( 'autocompletevalues' ) || [] )
-				.map( ( title ) => ( { title: title } ) ) } );
-		}
-	}
-	if ( previousRequest && typeof previousRequest.abort === 'function' ) {
-		previousRequest.abort();
-	}
-	$input.data( 'pfDependentAutocompleteKey', requestKey );
-	$input.data( 'pfDependentAutocompleteLoaded', false );
-	$input.attr( 'aria-busy', 'true' );
-	$input.data( 'autocompletevalues', [] );
-	$input.data( 'pfDependentAutocompleteError', false );
-	$input.parent().find( '.pf-dependent-error' ).remove();
-
-	const request = new mw.Api( { ajax: { timeout: 15000 } } ).get( data );
-	$input.data( 'pfDependentAutocompleteRequest', request );
-	const showError = () => {
-		$input.data( 'pfDependentAutocompleteError', true );
-		$( '<span>' ).addClass( 'errorMessage pf-dependent-error' ).attr( 'role', 'alert' )
-			.text( mw.msg( 'pf_autocomplete_error' ) ).appendTo( $input.parent() );
-	};
-	request.done( ( response ) => {
-		if ( $input.data( 'pfDependentAutocompleteRequest' ) !== request ) {
-			return;
-		}
-		if ( !Array.isArray( response.pfautocomplete ) ) {
-			showError();
-			return;
-		}
-		$input.data( 'autocompletevalues', response.pfautocomplete.map( ( item ) => item.title ) );
-		$input.data( 'pfDependentAutocompleteLoaded', true );
-	} ).fail( ( code ) => {
-		if ( code !== 'abort' && $input.data( 'pfDependentAutocompleteRequest' ) === request ) {
-			showError();
-		}
-	} ).always( () => {
-		if ( $input.data( 'pfDependentAutocompleteRequest' ) === request ) {
-			$input.removeData( 'pfDependentAutocompleteRequest' );
-			$input.removeAttr( 'aria-busy' );
-		}
-	} );
-	return request;
-};
-
-/**
- * Called on a 'base' field (e.g., for a country) - sets the autocompletion
- * for its 'dependent' field (e.g., for a city).
- *
- * @param {Mixed} partOfMultiple
- * @return {Mixed}
- */
-$.fn.setAutocompleteForDependentField = function( partOfMultiple ) {
-	const curValue = $( this ).val();
-	if ( curValue === null ) {
-		return this;
-	}
-
-	const name = partOfMultiple ? ( $( this ).attr( 'origname' ) || $( this ).attr( 'origName' ) ) : $( this ).attr( 'name' );
-	const wgPageFormsDependentFields = mw.config.get( 'wgPageFormsDependentFields' ) || [];
-	let dependent_on_me = [];
-	for ( let i = 0; i < wgPageFormsDependentFields.length; i++ ) {
-		const dependentFieldPair = wgPageFormsDependentFields[i];
-		if ( dependentFieldPair[0] === name ) {
-			dependent_on_me.push( dependentFieldPair[1] );
-		}
-	}
-	dependent_on_me = $.uniqueSort( dependent_on_me );
-
-	const self = this;
-	$.each( dependent_on_me, function() {
-		let $element;
-		const dependentField = this;
-
-		if ( partOfMultiple ) {
-			$element = $( self ).closest( '.multipleTemplateInstance' )
-				.find( '[origname="' + dependentField + '"], [origName="' + dependentField + '"]' );
-		} else {
-			$element = $( '[name="' + dependentField + '"]' );
-		}
-
-		if ( !$element.length ) {
-			return;
-		}
-
-		const request = $element.setDependentAutocompletion( dependentField, name, curValue );
-		const requestKey = $element.data( 'pfDependentAutocompleteKey' );
-		request.done( () => {
-			// Uninitialized widgets will use the new values when they become
-			// visible. Do not eagerly load every dependent widget here.
-			if ( $element.data( 'pfDependentAutocompleteKey' ) !== requestKey ||
-				$element.data( 'pfDependentAutocompleteError' ) || !$element.data( 'select2' ) ) {
-				return;
-			}
-			if ( $element.hasClass( 'pfTokens' ) ) {
-				new pf.select2.tokens().refresh( $element );
-			} else if ( $element.hasClass( 'pfComboBox' ) ) {
-				new pf.ComboBoxInput( {} ).refresh( $element );
-			}
-		} );
-	} );
-
-	return this;
+	return $new_div;
 };
 
 /**
@@ -1957,25 +1715,10 @@ $.fn.initializeJSElements = function( partOfMultiple ) {
 
 	if ( partOfMultiple ) {
 		// Enable the new remove button
-		$root.find( '.removeButton' ).off( 'click.pfRemoveInstance' ).on( 'click.pfRemoveInstance', function() {
-			var $instance = $( this ).closest( '.multipleTemplateInstance' );
-
-			if ( !$instance.length || $instance.hasClass( 'pf-removing-instance' ) ) {
-				return false;
-			}
-
-			$instance.addClass( 'pf-removing-instance' );
-
-			window.setTimeout( () => {
-				$instance.find( 'input, select, textarea' ).each( function() {
-					$( this ).PageForms_unregisterInputInit();
-					$( this ).PageForms_unregisterInputValidation();
-				} );
-
-				$instance.remove();
-			}, 220 );
-
-			return false;
+		$root.find( '.removeButton' ).off( 'click.pfRemoveInstance' ).on( 'click.pfRemoveInstance', function( event ) {
+			event.preventDefault();
+			event.stopPropagation();
+			mw.pageFormsInstances.remove( $( this ).closest( '.multipleTemplateInstance' ) );
 		} );
 
 		// ...and the new adder
@@ -2079,7 +1822,7 @@ $.fn.initializeJSElements = function( partOfMultiple ) {
 	});
 
 	const $myThis = this;
-	if ( $.fn.applyVisualEditor ) {
+	if ( $.fn.applyVisualEditor && !$root.closest( 'form' ).data( 'pfRestoringDraft' ) ) {
 		if ( partOfMultiple ) {
 			$myThis.find( '.visualeditor' ).applyVisualEditor();
 		} else {
@@ -2133,20 +1876,8 @@ $( () => {
 		return;
 	}
 
-	$pfForm.on( 'focusin', '.pfTokens, .pfComboBox, .autoGrow, .pfRating, .pfTreeInput', function() {
-		const $target = $( this );
-		if ( $target.hasClass( 'pfTokens' ) ) {
-			initTokensIn( $target );
-		} else if ( $target.hasClass( 'pfComboBox' ) ) {
-			initComboBoxesIn( $target );
-		} else if ( $target.hasClass( 'autoGrow' ) ) {
-			initAutoGrowIn( $target );
-		} else if ( $target.hasClass( 'pfRating' ) ) {
-			initRatingsIn( $target );
-		} else if ( $target.hasClass( 'pfTreeInput' ) ) {
-			initTreesIn( $target );
-		}
-	} );
+
+	mw.pageFormsEditState.bind( $pfForm );
 
 	function minimizeInstances( minHeight ) {
 		if ( minHeight >= 0) {
@@ -2188,7 +1919,9 @@ $( () => {
 			}
 
 			$pfForm.initializeJSElements( false );
-			initEditSummaryField();
+			mw.pageFormsErrors.bind( $pfForm );
+			mw.pageFormsDrafts.bind( $pfForm );
+			mw.pageFormsInstances.update( $pfForm );
 
 			$( '.multipleTemplateInstance' ).each( function() {
 				$( this ).initializeJSElements( true );
@@ -2221,6 +1954,8 @@ $( () => {
 							},
 							onEnd: function() {
 								$list.removeClass( 'currentFocus' );
+								mw.pageFormsInstances.update( $list );
+								mw.hook( 'pf.formChanged' ).fire( $pfForm );
 								$list.find( '.multipleTemplateInstance' ).each( function( index ) {
 									$( this ).attr( 'data-instance-order', index );
 								} );
@@ -2254,32 +1989,7 @@ $( () => {
 			}
 
 			// If the form is submitted, validate everything!
-			$pfForm.off( 'submit.pfValidate' ).on( 'submit.pfValidate', function( event ) {
-				if ( event.isDefaultPrevented() ) {
-					return;
-				}
-				event.preventDefault();
-				const form = this;
-				const submitter = event.originalEvent && event.originalEvent.submitter;
-				return window.validateAllAsync().then( ( valid ) => {
-					if ( !valid ) {
-						return false;
-					}
-					const popupSubmit = $pfForm.data( 'pfPopupSubmit' );
-					if ( typeof popupSubmit === 'function' ) {
-						$pfForm.data( 'submitted', true );
-						popupSubmit( event );
-						return true;
-					}
-					const $buttonValue = submitter && submitter.name ? $( '<input>' ).attr( {
-						type: 'hidden', name: submitter.name, value: submitter.value
-					} ).appendTo( form ) : $();
-					$pfForm.data( 'submitted', true );
-					HTMLFormElement.prototype.submit.call( form );
-					$buttonValue.remove();
-					return true;
-				} );
-			} );
+			mw.pageFormsSubmission.bind( $pfForm );
 
 			} finally {
 				$( '#loadingMask' ).removeClass( 'pf-loading-mask--active' );

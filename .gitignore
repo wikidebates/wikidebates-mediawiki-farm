@@ -64,8 +64,6 @@ phpunit.xml
 .phan/local-config.php
 
 # Composer
-/composer.lock
-/composer.local.json
 /composer.phar
 
 # Operating systems
@@ -172,3 +170,8 @@ Wikidebates-AutoParentLink.log
 
 # Fichiers temporaires
 git-add-dry-run.txt
+/extensions/Maps/
+/extensions/SemanticExtraSpecialProperties/
+/extensions/SemanticMediaWiki/
+/extensions/SemanticResultFormats/
+/extensions/SemanticScribunto/

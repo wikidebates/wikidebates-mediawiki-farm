@@ -1,255 +1,201 @@
 /**
- * Javascript handler for the save-and-continue button
- *
- * @author Stephan Gambke
+ * Save a form without leaving it. Share validation and the submission lock with
+ * normal saves and previews; only acknowledge a well-formed successful response.
  */
-
-/*global validateAll */
-
-( function( $, mw ) {
-
+( function ( $, mw ) {
 	'use strict';
 
-	function createFormErrorHeader( message ) {
-		const scriptPath = mw.config.get( 'wgPageFormsScriptPath' );
-		const $icon = $( '<img>' ).attr( 'src', scriptPath + '/skins/MW-Icon-AlertMark.png' );
-		const $header = $( '<div>' )
-			.attr( 'id', 'form_error_header' )
-			.addClass( 'errorbox pf-form-error-header' )
-			.append( $icon, '\u00a0', message );
-		const $clear = $( '<div>' ).addClass( 'pf-form-clear' );
-
-		return $( '<div>' ).append( $header, $clear );
-	}
-
-	let $sacButtons;
+	const submission = mw.pageFormsSubmission;
 	let $form;
+	let $sacButtons;
+	let editVersion = 0;
 
-	function setChanged( event ) {
-		$sacButtons
-			.addClass( 'pf-save_and_continue-changed' )
-			.addClass( 'oo-ui-widget-enabled' )
-			.removeClass( 'oo-ui-widget-disabled' );
-		$sacButtons.children('button').prop( 'disabled', false );
-
-		return true;
+	function enableButtons( enabled ) {
+		$sacButtons.not( '.disabled' )
+			.toggleClass( 'oo-ui-widget-enabled', enabled )
+			.toggleClass( 'oo-ui-widget-disabled', !enabled )
+			.find( 'button, input' ).prop( 'disabled', !enabled );
 	}
 
-	// Prevent multiple submission of form
-	jQuery.fn.preventDoubleSubmission = function() {
-		$form = $( '#pfForm' );
-		$( this ).on( 'submit', (e) => {
-			if ( $form.data('submitted') === true ) {
-				// Previously submitted - don't submit again
-				e.preventDefault();
-			} else {
-				// Mark it so that the next submit can be ignored
-				$form.data('submitted', true);
-				$( '.editButtons > .oo-ui-buttonElement' ).removeClass( 'oo-ui-widget-enabled' ).addClass( 'oo-ui-widget-disabled' );
+	function setChanged() {
+		editVersion++;
+		$sacButtons.addClass( 'pf-save_and_continue-changed' )
+			.removeClass( 'pf-save_and_continue-ok pf-save_and_continue-error' );
+		if ( !$form.data( 'pfSubmissionPending' ) && !$form.data( 'submitted' ) ) {
+			enableButtons( true );
+		}
+	}
+
+	// Preserve the public plugin name without maintaining a second submission lock.
+	$.fn.preventDoubleSubmission = function () {
+		return this.each( function () { submission.bind( $( this ) ); } );
+	};
+
+	function storeHiddenValue( name, value ) {
+		let $input = $form.find( 'input' ).filter( function () { return this.name === name; } );
+		if ( !$input.length ) {
+			$input = $( '<input>' ).attr( { type: 'hidden', name: name } ).appendTo( $form );
+		}
+		$input.val( value );
+	}
+
+	function errorMessage( error ) {
+		let result = error && ( error.pfResult || error.responseJSON );
+		if ( !result && error && typeof error.responseText === 'string' ) {
+			try {
+				result = JSON.parse( error.responseText );
+			} catch ( e ) {
+				// Proxies may return HTML, or the network may return no body at all.
 			}
-		});
-		// Keep chainability
-		return this;
-	};
-	$( '#pfForm' ).preventDoubleSubmission();
-	/**
-	 * Called when the server has sent the preview
-	 *
-	 * @param {Mixed} result
-	 * @param {Mixed} textStatus
-	 * @param {Mixed} jqXHR
-	 */
-	const resultReceivedHandler = function handleResultReceived( result, textStatus, jqXHR ) {
-		// Store the target name
-		let $target = $form.find( 'input[name="target"]' );
-
-		if ( $target.length === 0 ) {
-			$target = $( '<input type="hidden" name="target">' );
-			$form.append ( $target );
 		}
-
-		$target.attr( 'value', result.$target );
-
-		// Store the form name
-		$target = $form.find( 'input[name="form"]' );
-
-		if ( $target.length === 0 ) {
-			$target = $( '<input type="hidden" name="form">' );
-			$form.append ( $target );
+		const messages = [];
+		if ( result && result.error ) {
+			const message = result.error.info || result.error.message || result.error.code;
+			if ( typeof message === 'string' ) {
+				messages.push( message );
+			}
 		}
-
-		$target.attr( 'value', result.form.title );
-
-		$sacButtons
-		.addClass( 'pf-save_and_continue-ok' )
-		.removeClass( 'pf-save_and_continue-wait' )
-		.removeClass( 'pf-save_and_continue-error' );
-
-	};
-
-	const resultReceivedErrorHandler = function handleError( jqXHR ){
-		const errors = $.parseJSON( jqXHR.responseText ).errors;
-
-		$sacButtons
-		.addClass( 'pf-save_and_continue-error' )
-		.removeClass( 'pf-save_and_continue-wait' );
-
-		// Remove all old error messages and set new ones
-		$( '.errorbox' ).remove();
-
-
-		if ( errors.length > 0 ){
-			let i;
-			for ( i = 0; i < errors.length; i += 1 ) {
-				if ( errors[i].level < 2 ) { // show errors and warnings
-					$( '#contentSub' ).append( createFormErrorHeader( errors[i].message ).contents() );
+		if ( result && Array.isArray( result.errors ) ) {
+			result.errors.forEach( ( errorItem ) => {
+				if ( errorItem && ( errorItem.level === undefined || errorItem.level < 2 ) ) {
+					const message = errorItem.message || errorItem.info || errorItem.text || errorItem.code;
+					if ( typeof message === 'string' ) {
+						messages.push( message );
+					}
 				}
-			}
-
-			$( 'html, body' ).scrollTop( $( '#contentSub' ).offset().top );
+			} );
 		}
-	};
+		return messages.length ? messages.join( '\n' ) : mw.msg( 'pf-save-and-continue-error' );
+	}
 
-	function collectData() {
-		const $summaryfield = jQuery( '#wpSummary', $form );
-		const saveAndContinueSummary = mw.msg( 'pf_formedit_saveandcontinue_summary', mw.msg( 'pf_formedit_saveandcontinueediting' ) );
-		let params;
+	function isSuccessful( result ) {
+		return result && Number( result.status ) === 200 && !result.error &&
+			typeof result.target === 'string' && result.target.trim() !== '' &&
+			result.form && typeof result.form.title === 'string' && result.form.title.trim() !== '' &&
+			( !result.errors || ( Array.isArray( result.errors ) && result.errors.every( ( item ) =>
+				item && Number( item.level ) > 0
+			) ) );
+	}
 
-		if ( $summaryfield.length > 0 ) {
+	function collectData( button ) {
+		let params = $form.serializeArray();
+		const get = ( name ) => {
+			const matches = params.filter( ( param ) => param.name === name );
+			return matches.length ? matches[ matches.length - 1 ].value : '';
+		};
+		const set = ( name, value ) => {
+			params = params.filter( ( param ) => param.name !== name );
+			params.push( { name: name, value: value } );
+		};
+		const summary = get( 'wpSummary' );
+		const suffix = mw.msg( 'pf_formedit_saveandcontinue_summary', mw.msg( 'pf_formedit_saveandcontinueediting' ) );
+		set( 'wpSummary', summary ? summary + ' (' + suffix + ')' : suffix );
 
-			const oldsummary = $summaryfield.attr( 'value' );
-
-			if ( oldsummary !== '' ) {
-				$summaryfield.attr( 'value', oldsummary + ' (' + saveAndContinueSummary + ')' );
-			} else {
-				$summaryfield.attr( 'value', saveAndContinueSummary );
-			}
-
-			params = $form.serialize();
-
-			$summaryfield.attr( 'value', oldsummary );
-		} else {
-			params = $form.serialize();
-			params += '&wpSummary=' + saveAndContinueSummary;
-		}
-
+		// Prefer the actual target returned by a previous save over the original URL.
+		let target = get( 'target' );
+		let form = get( 'form' );
 		if ( mw.config.get( 'wgAction' ) === 'formedit' ) {
-			params += '&target=' + encodeURIComponent( mw.config.get( 'wgPageName' ) );
+			target = target || mw.config.get( 'wgPageName' );
 		} else if ( mw.config.get( 'wgCanonicalSpecialPageName' ) === 'FormEdit' ) {
-			const url = mw.config.get( 'wgPageName' );
-
-			let start = url.indexOf( '/' ) + 1; // find start of subpage
-			let stop;
-
-			if ( start >= 0 ) {
-				stop = url.indexOf( '/', start ); // find end of first subpage
-			} else {
-				stop = -1;
-			}
-
-			if ( stop >= 0 ) {
-				params += '&form=' + encodeURIComponent( url.substring( start, stop ) );
-
-				start = stop + 1;
-				params += '&target=' + encodeURIComponent( url.slice( start ) );
-
-			} else {
-				params += '&form=' + encodeURIComponent( url.slice( start ) );
-			}
+			const parts = ( mw.config.get( 'wgPageName' ) || '' ).split( '/' );
+			form = form || mw.util.getParamValue( 'form' ) || parts[ 1 ];
+			target = target || mw.util.getParamValue( 'target' ) || parts.slice( 2 ).join( '/' );
 		}
-
-		params += '&wpMinoredit=1';
-
-		return params;
+		if ( form ) {
+			set( 'form', form );
+		}
+		if ( target ) {
+			set( 'target', target );
+		}
+		set( 'wpMinoredit', '1' );
+		set( 'wpSave', $( button ).val() || '' );
+		return $.param( params );
 	}
 
 	function handleSaveAndContinue( event ) {
-
-		event.stopImmediatePropagation();
 		event.preventDefault();
-		if ( $form.data( 'pfSavePending' ) ) {
+		event.stopImmediatePropagation();
+		if ( $( event.currentTarget ).hasClass( 'disabled' ) || !submission.begin( $form ) ) {
 			return false;
 		}
-		$form.data( 'pfSavePending', true );
-		const buttonValue = $( event.currentTarget ).attr( 'value' );
+		const button = $( event.currentTarget ).find( 'button, input' )[ 0 ] || event.currentTarget;
+		let saved = false;
+		let failed = false;
+		let version;
+		let changedDuringSave = false;
+		$sacButtons.addClass( 'pf-save_and_continue-wait' )
+			.removeClass( 'pf-save_and_continue-changed pf-save_and_continue-ok pf-save_and_continue-error' );
 
-		// remove old error messages
-		const el = document.getElementById( 'form_error_header' );
-
-		if ( el ) {
-			el.parentNode.removeChild( el );
-		}
-
-		window.validateAllAsync().then( ( valid ) => {
+		submission.prepare( $form ).then( ( valid ) => {
 			if ( !valid ) {
-				$form.removeData( 'pfSavePending' );
 				return;
 			}
-			// disable save and continue button
-			$sacButtons
-			.attr( 'disabled', 'disabled' )
-			.addClass( 'pf-save_and_continue-wait' )
-			.removeClass( 'pf-save_and_continue-changed' );
-
-			const $form = $( '#pfForm' );
-
-			const data = {
-				action: 'pfautoedit',
-				format: 'json',
-				query: collectData() // add form values to the data
-			};
-
-			data.query += '&wpSave=' + encodeURIComponent( buttonValue );
-
-			$.ajax( {
-				type: 'POST', // request type ( GET or POST )
-				url: mw.util.wikiScript( 'api' ), // URL to which the request is sent
-				data: data, // data to be sent to the server
-				dataType: 'json', // type of data expected back from the server
-				success: resultReceivedHandler, // function to be called if the request succeeds
-				error: resultReceivedErrorHandler // function to be called on error
-			} ).always( () => {
-				$form.removeData( 'pfSavePending' );
+			version = editVersion;
+			const snapshot = submission.snapshot( $form );
+			const ticket = mw.pageFormsEditState.ticket( $form );
+			const savedUniqueValues = [];
+			$form.find( '.uniqueField:not(:disabled)' ).each( function () {
+				savedUniqueValues.push( [ $( this ), $( this ).val() ] );
 			} );
-
+			$form.find( '.pf-submission-status' ).text( mw.msg( 'pf-form-saving' ) );
+			mw.pageFormsEditState.phase( $form, 'saving' );
+			return Promise.resolve( $.ajax( {
+				type: 'POST',
+				url: mw.util.wikiScript( 'api' ),
+				data: { action: 'pfautoedit', format: 'json', query: collectData( button ) },
+				dataType: 'json',
+				timeout: 60000
+			} ) ).then( ( result ) => {
+				if ( !isSuccessful( result ) ) {
+					const error = new Error( 'Save not confirmed' );
+					error.pfResult = result;
+					throw error;
+				}
+				changedDuringSave = version !== editVersion || submission.snapshot( $form ) !== snapshot;
+				storeHiddenValue( 'target', result.target );
+				storeHiddenValue( 'form', result.form.title );
+				savedUniqueValues.forEach( ( item ) => item[ 0 ].data( 'pfUniqueSavedValue', item[ 1 ] ) );
+				ticket.result = result;
+				changedDuringSave = mw.pageFormsEditState.saved( $form, ticket );
+				saved = true;
+				$sacButtons.toggleClass( 'pf-save_and_continue-ok', !changedDuringSave )
+					.toggleClass( 'pf-save_and_continue-changed', changedDuringSave );
+			} );
+		} ).catch( ( error ) => {
+			failed = true;
+			$sacButtons.addClass( 'pf-save_and_continue-error' ).removeClass( 'pf-save_and_continue-ok' );
+			submission.showError( $form, errorMessage( error ) );
+		} ).then( () => {
+			submission.end( $form );
+			$sacButtons.removeClass( 'pf-save_and_continue-wait' );
+			if ( !saved && !failed ) {
+				$sacButtons.addClass( 'pf-save_and_continue-changed' );
+			}
+			enableButtons( !saved || changedDuringSave );
 		} );
-
 		return false;
 	}
 
-	mw.pageFormsActivateVEFields = function( callback ) {
-		const visualEditors = $.fn.getVEInstances();
-		if ( visualEditors.length > 0 ) {
-			const savingQueue = [];
-			$(visualEditors).each( ( i, ve ) => {
-				savingQueue.push( ve.target.updateContent() );
-			});
-			$.when.apply( $, savingQueue ).then( () => {
-				callback();
-			});
-		} else {
-			callback();
+	$( () => {
+		if ( mw.config.get( 'wgAction' ) !== 'formedit' && mw.config.get( 'wgCanonicalSpecialPageName' ) !== 'FormEdit' ) {
+			return;
 		}
-	};
-
-	if ( mw.config.get( 'wgAction' ) === 'formedit' || mw.config.get( 'wgCanonicalSpecialPageName' ) === 'FormEdit' ) {
-		$(() => { // Wait until DOM is loaded.
-			$form = $( '#pfForm' );
-			$sacButtons = $( '.pf-save_and_continue', $form );
-			$sacButtons.click( handleSaveAndContinue );
-
-			$form
-			.on( 'keyup', 'input,select,textarea', ( event ) => {
-				if ( event.which < 32 ){
-					return true;
+		$form = $( '#pfForm' );
+		$sacButtons = $form.find( '.pf-save_and_continue' );
+		$form.preventDoubleSubmission();
+		mw.pageFormsEditState.bind( $form );
+		$form.on( 'pfEditStateChange.pfSaveState', ( event, dirty ) => {
+			$sacButtons.toggleClass( 'pf-save_and_continue-changed', dirty );
+			if ( !$form.data( 'pfSubmissionPending' ) && !$form.data( 'submitted' ) ) {
+				if ( dirty || $form.data( 'pfEditState' ).savedAt ) {
+					enableButtons( dirty );
 				}
-
-				return setChanged( event );
-			} )
-			.on( 'change', 'input,select,textarea', setChanged )
-			.on( 'click', '.multipleTemplateAdder', setChanged )
-			.on( 'mousedown', '.instanceRearranger,.removeButton', setChanged );
-		});
-	}
-
+			}
+		} );
+		$sacButtons.off( 'click.pfSaveContinue' ).on( 'click.pfSaveContinue', handleSaveAndContinue );
+		$form.off( '.pfSaveContinue' )
+			.on( 'input.pfSaveContinue change.pfSaveContinue', 'input, select, textarea', setChanged )
+			.on( 'click.pfSaveContinue', '.multipleTemplateAdder', setChanged )
+			.on( 'mousedown.pfSaveContinue', '.instanceRearranger, .removeButton', setChanged );
+	} );
 }( jQuery, mediaWiki ) );

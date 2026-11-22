@@ -345,21 +345,27 @@ abstract class Utils {
 	 * This reverses (part of) the transformation done by encodeHeadInfo().
 	 *
 	 * @param string $html HTML (may be a full document, <body> tag  or unwrapped <body> contents)
+	 * @param DOMDocument|null $parsedDocument Optional output: the already parsed
+	 *   and empty-node-normalized source DOM, for read-only benchmark comparison.
 	 * @return string HTML (<html> tag with <head> and <body>) with the <base> tag restored
 	 * @throws WikitextException
 	 * @suppress PhanUndeclaredMethod,PhanTypeMismatchArgumentNullable Apparently a phan bug / wrong built-in PHP stubs
 	 */
-	public static function decodeHeadInfo( $html ) {
+	public static function decodeHeadInfo( $html, ?DOMDocument &$parsedDocument = null ) {
 		$dom = ContentFixer::createDOM( $html );
 		$body = $dom->getElementsByTagName( 'body' )->item( 0 );
 		$baseUrl = $body->getAttribute( 'base-url' );
-		return Html::rawElement( 'html', [],
+		$result = Html::rawElement( 'html', [],
 			Html::rawElement( 'head', [],
 				// Only set base href if there's a value to set.
 				$baseUrl ? Html::element( 'base', [ 'href' => $baseUrl ] ) : ''
 			) .
 			self::getOuterHtml( $body )
 		);
+		// Capturing the first DOM is optional; the returned HTML and all other
+		// callers keep exactly the original decode-and-serialize behavior.
+		$parsedDocument = $dom;
+		return $result;
 	}
 
 	/**

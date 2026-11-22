@@ -4,12 +4,11 @@
  * @author Stephan Gambke
  */
 
-/*global validateAll */
-
 ( function( $, mw ) {
 
 	'use strict';
 
+	const submission = mw.pageFormsSubmission;
 	let $form;
 	let $previewpane;
 	let previewHeight;
@@ -101,7 +100,7 @@
 				'border': 'none',
 				'overflow': 'hidden'
 			} )
-			.load( loadFrameHandler )
+			.on( 'load', loadFrameHandler )
 			.appendTo( $previewpane );
 
 		}
@@ -120,12 +119,15 @@
 	 */
 	const previewButtonClickedHandler = function handlePreviewButtonClicked( event ) {
 		event.preventDefault();
-
-		window.validateAllAsync().then( ( valid ) => {
+		event.stopImmediatePropagation();
+		if ( !submission.begin( $form ) ) {
+			return false;
+		}
+		const button = this;
+		submission.prepare( $form ).then( ( valid ) => {
 			if ( !valid ) {
 				return;
 			}
-
 			// data array to be sent to the server
 			const data = {
 				action: 'pfautoedit',
@@ -166,17 +168,24 @@
 				data.query += '&';
 			}
 
-			data.query += 'wpPreview=' + encodeURIComponent( $( this ).attr( 'value' ) );
+			data.query += 'wpPreview=' + encodeURIComponent( $( button ).val() );
 
-			$.ajax( {
-
-				type: 'POST', // request type ( GET or POST )
-				url: mw.util.wikiScript( 'api' ), // URL to which the request is sent
-				data: data, // data to be sent to the server
-				dataType: 'json', // type of data expected back from the server
-				success: resultReceivedHandler // function to be called if the request succeeds
+			return Promise.resolve( $.ajax( {
+				type: 'POST',
+				url: mw.util.wikiScript( 'api' ),
+				data: data,
+				dataType: 'json',
+				timeout: 60000
+			} ) ).then( ( result ) => {
+				if ( !result || result.error || typeof result.result !== 'string' ) {
+					throw new Error( 'Invalid preview response' );
+				}
+				resultReceivedHandler( result );
 			} );
-		} );
+		} ).catch( () => {
+			submission.showError( $form, mw.msg( 'pf-preview-error' ) );
+		} ).then( () => submission.end( $form ) );
+		return false;
 	};
 
 	/**
@@ -198,7 +207,7 @@
 		}
 
 		// register event handler
-		this.click( previewButtonClickedHandler );
+		this.off( 'click.pfPreview' ).on( 'click.pfPreview', previewButtonClickedHandler );
 
 		return this;
 	};

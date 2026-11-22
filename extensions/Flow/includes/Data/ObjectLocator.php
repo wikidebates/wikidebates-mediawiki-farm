@@ -2,6 +2,7 @@
 
 namespace Flow\Data;
 
+use Flow\Data\Pager\TopicListCursor;
 use Flow\DbFactory;
 use Flow\Exception\NoIndexException;
 use Flow\Model\UUID;
@@ -89,26 +90,45 @@ class ObjectLocator {
 			$options['sort'] = ObjectManager::makeArray( $options['sort'] );
 		}
 
-		try {
-			$index = $this->getIndexFor( $keys, $options );
-			$res = $index->findMulti( $queries, $options );
-		} catch ( NoIndexException $e ) {
-			if ( array_search( 'topic_root_id', $keys ) ) {
-				wfDebugLog(
-					'Flow',
-					__METHOD__ . ': '
-					. json_encode( $keys ) . ' : '
-					. json_encode( $options ) . ' : '
-					. json_encode( array_map( 'get_class', $this->indexes ) )
-				);
-				\MWExceptionHandler::logException( $e );
-			} else {
-				wfDebugLog( 'FlowDebug', __METHOD__ . ': ' . $e->getMessage() );
-			}
+		// The updated-topic cursor may lie beyond TopKIndex's 500-row cache.
+		// Only offset requests use the backing database; the first page still
+		// benefits from the index. This also makes reverse cursors deterministic.
+		if (
+			!empty( $options['composite-cursor'] ) &&
+			( isset( $options['offset-value'] ) || ( $options['offset-dir'] ?? 'fwd' ) === 'rev' )
+		) {
 			$res = $this->storage->findMulti(
 				$this->convertToDbQueries( $queries, $options ),
 				$this->convertToDbOptions( $options )
 			);
+			if ( ( $options['offset-dir'] ?? 'fwd' ) === 'rev' ) {
+				foreach ( $res as &$rows ) {
+					$rows = array_reverse( $rows );
+				}
+				unset( $rows );
+			}
+		} else {
+			try {
+				$index = $this->getIndexFor( $keys, $options );
+				$res = $index->findMulti( $queries, $options );
+			} catch ( NoIndexException $e ) {
+				if ( array_search( 'topic_root_id', $keys ) ) {
+					wfDebugLog(
+						'Flow',
+						__METHOD__ . ': '
+						. json_encode( $keys ) . ' : '
+						. json_encode( $options ) . ' : '
+						. json_encode( array_map( 'get_class', $this->indexes ) )
+					);
+					\MWExceptionHandler::logException( $e );
+				} else {
+					wfDebugLog( 'FlowDebug', __METHOD__ . ': ' . $e->getMessage() );
+				}
+				$res = $this->storage->findMulti(
+					$this->convertToDbQueries( $queries, $options ),
+					$this->convertToDbOptions( $options )
+				);
+			}
 		}
 
 		$output = [];
@@ -333,6 +353,11 @@ class ObjectLocator {
 
 		if ( isset( $options['order'] ) ) {
 			$order = ' ' . $options['order'];
+			// To return the closest previous page, SQL must read in the reverse
+			// direction; findMulti restores canonical order before returning.
+			if ( !empty( $options['composite-cursor'] ) && ( $options['offset-dir'] ?? 'fwd' ) === 'rev' ) {
+				$order = strtoupper( $options['order'] ) === 'DESC' ? ' ASC' : ' DESC';
+			}
 		}
 
 		if ( isset( $options['sort'] ) ) {
@@ -356,6 +381,38 @@ class ObjectLocator {
 	 * @return array Queries for BasicDbStorage class
 	 */
 	protected function convertToDbQueries( array $queries, array $options ) {
+		if (
+			!empty( $options['composite-cursor'] ) && isset( $options['offset-value'] ) &&
+			( $options['sort'] ?? [] ) === TopicListCursor::SORT
+		) {
+			$cursor = TopicListCursor::parse( (string)$options['offset-value'] );
+			$dbr = $this->dbFactory->getDB( DB_REPLICA );
+			$timestamp = $dbr->timestamp( $cursor['timestamp'] );
+			$forward = ( $options['offset-dir'] ?? 'fwd' ) !== 'rev';
+			$operator = $forward ? '<' : '>';
+			$inclusive = !empty( $options['include-offset'] );
+			if ( $cursor['topicId'] !== null ) {
+				$topicOperator = $operator . ( $inclusive ? '=' : '' );
+				$condition = $dbr->orExpr( [
+					$dbr->expr( 'workflow_last_update_timestamp', $operator, $timestamp ),
+					$dbr->andExpr( [
+						$dbr->expr( 'workflow_last_update_timestamp', '=', $timestamp ),
+						$dbr->expr( 'topic_id', $topicOperator, $cursor['topicId']->getBinary() ),
+					] ),
+				] );
+			} else {
+				// Old links contain only the timestamp; retain their original
+				// exclusive/inclusive semantics and issue new composite links.
+				$condition = $dbr->expr( 'workflow_last_update_timestamp',
+					$operator . ( $inclusive ? '=' : '' ), $timestamp );
+			}
+			foreach ( $queries as &$query ) {
+				$query[] = $condition;
+			}
+			unset( $query );
+			return $queries;
+		}
+
 		if ( isset( $options['offset-id'] ) &&
 			isset( $options['sort'] ) && count( $options['sort'] ) === 1 &&
 			preg_match( '/_id$/', $options['sort'][0] )

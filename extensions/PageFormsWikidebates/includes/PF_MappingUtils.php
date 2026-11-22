@@ -134,6 +134,10 @@ class PFMappingUtils {
 		}
 		$res = [];
 		foreach ( $values as $index => $value ) {
+			// Each result key is a value; repeated inputs require no second lookup.
+			if ( array_key_exists( $value, $res ) ) {
+				continue;
+			}
 			// @todo - does this make sense?
 			// if ( $useDisplayTitle ) {
 			// $value = $index;
@@ -169,10 +173,17 @@ class PFMappingUtils {
 		string $mappingTemplate,
 		bool $useDisplayTitle = false
 	): array {
+		if ( $values === [] ) {
+			return [];
+		}
 		$title = Title::makeTitleSafe( NS_TEMPLATE, $mappingTemplate );
-		$templateExists = $title->exists();
+		$templateExists = $title !== null && $title->exists();
 		$res = [];
 		foreach ( $values as $index => $value ) {
+			// Each result key is a value; repeated inputs require no second lookup.
+			if ( array_key_exists( $value, $res ) ) {
+				continue;
+			}
 			// if ( $useDisplayTitle ) {
 			// $value = $index;
 			// }
@@ -317,7 +328,7 @@ class PFMappingUtils {
 		$allDisplayTitles = self::getDisplayTitles( $allTitles );
 		foreach ( $pageNamesForValues as $value => $pageName ) {
 			if ( isset( $allDisplayTitles[ $pageName ] )
-				&& strtolower( $allDisplayTitles[ $pageName ] ) !== strtolower( $value )
+				&& mb_strtolower( $allDisplayTitles[ $pageName ], 'UTF-8' ) !== mb_strtolower( $value, 'UTF-8' )
 			) {
 				$displayValue = sprintf( '%s (%s)', $allDisplayTitles[ $pageName ], $value );
 			} else {

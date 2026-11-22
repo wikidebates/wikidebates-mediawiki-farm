@@ -31,6 +31,7 @@
 		const existingLabel = element.attr( 'data-label' ) || existingValue;
 
 		this.$element = element;
+		element.data( 'pfComboBoxInstance', this );
 		this.id = element.attr( 'id' );
 		this.autocompletedatatype = element.attr( 'autocompletedatatype' );
 		this.autocompletesettings = ( element.attr( 'autocompletesettings' ) || '' ).replace( /\\'/g, "'" );
@@ -219,15 +220,10 @@
 		let name;
 
 		if ( depOn !== null ) {
-			data = this.$element.data( 'autocompletevalues' ) || [];
-			data.forEach( ( item ) => {
-				values.push( {
-					id: item,
-					text: item,
-					title: item
-				} );
-			} );
-			return values;
+			const items = this.$element.data( 'autocompleteitems' );
+			return Array.isArray( items ) ? items.map( ( item ) => ( {
+				id: String( item.title ), text: String( item.displaytitle === undefined ? item.title : item.displaytitle ), title: String( item.title )
+			} ) ) : ( this.$element.data( 'autocompletevalues' ) || [] ).map( ( item ) => ( { id: item, text: item, title: item } ) );
 		}
 
 		if ( autocompleteSettings === 'external data' ) {
@@ -266,14 +262,14 @@
 
 		this.$element.find( 'option' ).each( function () {
 			const value = $( this ).attr( 'value' ) || '';
-			const text = $( this ).text() || value;
-			if ( value === '' && text === '' ) {
+			const optionText = $( this ).text() || value;
+			if ( value === '' && optionText === '' ) {
 				return;
 			}
 			values.push( {
 				id: value,
-				text: text,
-				title: value || text
+				text: optionText,
+				title: value || optionText
 			} );
 		} );
 		return values;
@@ -298,6 +294,16 @@
 		return this.rememberRequest( this.getPageCacheKey( term ), results );
 	};
 
+	comboboxProto.abortPendingRequest = function () {
+		const pendingRequests = pf.ComboBoxInput.static.pendingRequests;
+		const request = pendingRequests[ this.id ];
+		// Invalidate callbacks before abort(), which can synchronously reject the request.
+		delete pendingRequests[ this.id ];
+		if ( request && typeof request.abort === 'function' ) {
+			request.abort();
+		}
+	};
+
 	comboboxProto.getAjaxOptions = function () {
 		const self = this;
 		const inputId = this.id;
@@ -311,37 +317,47 @@
 				const staticData = pf.ComboBoxInput.static;
 				const requestData = params.data || {};
 				const cacheKey = self.getRequestCacheKey( requestData );
-				let xhr;
+				self.abortPendingRequest();
 
 				if ( staticData.requestCache.has( cacheKey ) ) {
-					success( staticData.requestCache.get( cacheKey ) );
+					// Keep frequently reused suggestions in the bounded cache.
+					const response = staticData.requestCache.get( cacheKey );
+					self.rememberRequest( cacheKey, response );
+					success( response );
 					return {
 						abort: function () {}
 					};
 				}
 
-				if ( staticData.pendingRequests[ inputId ] && typeof staticData.pendingRequests[ inputId ].abort === 'function' ) {
-					staticData.pendingRequests[ inputId ].abort();
-				}
-
-				xhr = $.ajax( {
+				const xhr = $.ajax( {
 					url: mw.util.wikiScript( 'api' ),
 					dataType: 'json',
 					data: requestData,
-					success: function ( response ) {
-						delete staticData.pendingRequests[ inputId ];
-						self.rememberRequest( cacheKey, response );
-						success( response );
-					},
-					error: function ( jqXHR, textStatus, errorThrown ) {
-						delete staticData.pendingRequests[ inputId ];
-						if ( textStatus !== 'abort' ) {
-							failure( jqXHR, textStatus, errorThrown );
-						}
-					}
+					timeout: 15000
 				} );
 
+				// Register before attaching callbacks, even for an already settled jqXHR.
 				staticData.pendingRequests[ inputId ] = xhr;
+				xhr.done( ( response ) => {
+					if ( staticData.pendingRequests[ inputId ] !== xhr ) {
+						return;
+					}
+					delete staticData.pendingRequests[ inputId ];
+					if ( !response || response.error || !( Array.isArray( response.pfautocomplete ) || ( response.query && Array.isArray( response.query.prefixsearch ) ) ) ) {
+						failure( xhr, 'error', 'Invalid autocomplete response' );
+						return;
+					}
+					self.rememberRequest( cacheKey, response );
+					success( response );
+				} ).fail( ( jqXHR, textStatus, errorThrown ) => {
+					if ( staticData.pendingRequests[ inputId ] !== xhr ) {
+						return;
+					}
+					delete staticData.pendingRequests[ inputId ];
+					if ( textStatus !== 'abort' ) {
+						failure( jqXHR, textStatus, errorThrown );
+					}
+				} );
 				return xhr;
 			},
 			processResults: function ( data, params ) {
@@ -354,6 +370,11 @@
 		};
 	};
 
+	comboboxProto.destroy = function ( element ) {
+		this.abortPendingRequest();
+		element.off( '.pfComboBox' ).removeClass( 'pf-combobox-initialized' );
+		pf.select2.base.prototype.destroy.call( this, element );
+	};
 
 	comboboxProto.refresh = function ( element ) {
 		const $element = $( element );
@@ -370,13 +391,36 @@
 		this.existingValuesOnly = $element.attr( 'existingvaluesonly' ) === 'true';
 
 		const isDependentField = this.dependentOn() !== null;
+		// Local HTML options are also a data source; read them before rebuilding.
+		const localData = !this.autocompletedatatype && !isDependentField ? this.getLocalData() : null;
 
 		if ( currentOption.length ) {
 			currentLabel = currentOption.text() || currentLabel;
 		}
 
 		if ( isDependentField && Array.isArray( dependentValues ) && currentValue !== '' ) {
-			shouldKeepValue = dependentValues.includes( currentValue ) || !this.existingValuesOnly;
+			shouldKeepValue = dependentValues.includes( currentValue ) || !this.existingValuesOnly || $element.data( 'autocompleteMore' );
+		}
+
+		if ( isDependentField && $element.data( 'select2' ) ) {
+			// Refresh choices in place: rebuilding Select2 would interrupt focus/IME.
+			this.abortPendingRequest();
+			const data = this.getLocalData();
+			const choices = new Set( data.map( ( item ) => String( item.id ) ) );
+			$element.find( 'option' ).each( function () {
+				if ( this.value && !choices.has( this.value ) && !( shouldKeepValue && this.value === currentValue ) ) {
+					$( this ).remove();
+				}
+			} );
+			data.forEach( ( item ) => {
+				if ( !$element.find( 'option' ).filter( function () { return this.value === String( item.id ); } ).length ) {
+					$element.append( new Option( item.text, item.id, false, false ) );
+				}
+			} );
+			$element.val( shouldKeepValue ? currentValue : '' ).trigger( 'change.select2' );
+			$element.attr( { 'data-value': shouldKeepValue ? currentValue : '', 'data-label': shouldKeepValue ? currentLabel : '' } );
+			if ( !shouldKeepValue && currentValue !== '' ) { $element.trigger( 'change' ); }
+			return;
 		}
 
 		if ( $element.data( 'select2' ) ) {
@@ -385,6 +429,11 @@
 		$element.off( '.pfComboBox' );
 		$element.removeClass( 'pf-combobox-initialized' );
 		$element.find( 'option' ).not( '[value=""]' ).remove();
+		if ( localData !== null ) {
+			localData.forEach( ( item ) => {
+				$element.append( new Option( item.text, item.id, false, false ) );
+			} );
+		}
 
 		if ( shouldKeepValue && currentValue !== '' ) {
 			$element.attr( 'data-value', currentValue );
@@ -422,9 +471,10 @@
 				if ( result.loading || term === '' ) {
 					return text;
 				}
-				return $( '<span>' ).html( self.escapeMarkupAndAddHTML( self.textHighlight( text, term ) ) );
+				return $( self.escapeMarkupAndAddHTML( self.textHighlight( String( text ), term ) ) );
 			},
 			language: {
+				errorLoading: function () { return mw.msg( 'pf-autocomplete-error' ); },
 				inputTooShort: function () {
 					return mw.msg( 'pf-autocomplete-input-too-short', self.getMinimumInputLength() );
 				},

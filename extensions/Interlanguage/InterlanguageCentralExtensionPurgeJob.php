@@ -1,5 +1,6 @@
 <?php
 
+use MediaWiki\Logger\LoggerFactory;
 use MediaWiki\MediaWikiServices;
 
 /**
@@ -56,8 +57,15 @@ class InterlanguageCentralExtensionPurgeJob extends Job {
 				'titles'	=> implode( '|', array_keys( $pages ) )
 			) );
 //			Http::post( $apiUrl );
-			$mwServices->getHttpRequestFactory()->post( $apiUrl );
-			//TODO: error handling
+			$response = $mwServices->getHttpRequestFactory()->post( $apiUrl, [], __METHOD__ );
+			$result = is_string( $response ) ? json_decode( $response, true ) : null;
+			if ( !is_array( $result ) || !isset( $result['purge'] ) || isset( $result['error'] ) ) {
+				LoggerFactory::getInstance( 'Interlanguage' )->warning(
+					'Remote purge failed or returned an invalid response for interwiki {language}',
+					[ 'language' => $lang ]
+				);
+			}
+			// Keep the existing non-retrying behavior until remote API permissions are verified.
 		}
 
 		return true;

@@ -1,0 +1,26 @@
+# Gestion des branches et integration Wikidebates
+
+## Reference
+
+- Branche par defaut : `wikidebates-REL1_43-stable-2026-07-09` (nom historique conserve).
+- Branche de developpement des mises a jour de novembre 2026 : `wikidebates-REL1_43-stable-2026-07-11`.
+- Reconciliation tracee dans la PR #68. Le choix des fichiers lors de cette reconciliation privilegie les versions recentes de `07-11`, sans rejouer les commits PageForms d'octobre devenus incompatibles avec l'architecture asynchrone de novembre.
+- Les branches de fonctionnalites fusionnees par squash ou merge ne doivent pas etre remises automatiquement en oeuvre uniquement parce que leurs historiques Git divergent.
+
+## Comportements a conserver
+
+- `Wikidebates/src/AutoParentLink.php` : ajout synchrone du lien au parent depuis `PageSaveComplete`, avec controle de conflit, nouvelle tentative bornee et protection contre les doublons.
+- `Flow` : extension conservee ; rendu des discussions complet, sans reactiver la PR #7 de topic list allegee abandonnee.
+- `PageFormsWikidebates` : architecture de soumission asynchrone, widgets progressifs et tests recents ; ne pas restaurer par cherry-pick les fichiers anterieurs a ce refactoring.
+
+## Sous-modules
+
+- Les *gitlinks* (SHAs versionnes par la ferme) sont la source de verite pour une version reproductible. Utiliser `git submodule update --init --recursive` sans `--remote` lors d'un deploiement controle.
+- `extensions/VEForAll` est epingle sur `35090688defd17b7650a30dc3d5b37da09d170dc` ; la branche suivie par `.gitmodules` est `wikidebates-REL1_43-stable-2026-11-22` dans `wikidebates/wikidebates-veforall`, et non l'ancienne ligne `wikidebates-REL1_44`.
+- `extensions/Wikidebates` est epingle sur `bb60212859c6b1be171f63158558b5d7dadc4fbb`.
+
+## Validation et deploiement
+
+- Verifier la CI Flow, Interlanguage, PageForms (Jest, integration SMW, Chromium et Firefox) ainsi que les tests du sous-module VEForAll. Une suite verte pour un ancien commit n'atteste pas automatiquement du commit final.
+- Tester les formulaires de production FR/EN apres deploiement ; verifier les configurations `LocalSettings.php`, les modifications locales sur serveur et les sous-modules avant toute mise a jour.
+- La fusion GitHub n'applique pas automatiquement les changements sur la ferme en production : les `LocalSettings.php`, cron de prechauffage, invalidations et mises a jour de sous-modules sont des etapes d'exploitation separees.

@@ -132,8 +132,10 @@
 	 *  if given, the topic list will be returned with topics that
 	 *  are after (and including) the topic with the given uuid or
 	 *  after the given timestamp.
-	 * @param {string} [config.toconly] Receive a stripped reply that fits the ToC. For more information
+	 * @param {string} [config.offsetId] Topic UUID to disambiguate updated-sort timestamps
+	 * @param {boolean} [config.toconly] Receive a stripped reply that fits the ToC. For more information
 	 *  see 'toconly' in the API documentation.
+	 * @param {number} [config.limit] Number of topics requested, default 50 for ToC, 10 otherwise
 	 * @return {jQuery.Promise} Promise that is resolved with the topiclist response
 	 */
 	mw.flow.dm.APIHandler.prototype.getTopicList = function ( orderType, config ) {
@@ -144,14 +146,18 @@
 		config = config || {};
 
 		params.vtltoconly = !!config.toconly;
-		params.vtllimit = config.toconly ? 50 : 10;
+		params.vtllimit = config.limit || ( config.toconly ? 50 : 10 );
 		params.vtlsortby = orderType;
 
 		if ( orderType === 'newest' ) {
 			params[ 'vtloffset-id' ] = config.offset;
-		} else if ( orderType === 'updated' ) {
-			// Translate api/object-given offset to MW offset for the API request
+		} else if ( orderType === 'updated' && config.offset != null ) {
+			// A timestamp alone can skip topics with identical last-update times.
+			// Retain the historical timestamp-only format for old callers.
 			params.vtloffset = moment.utc( config.offset ).format( 'YYYYMMDDHHmmss' );
+			if ( config.offsetId ) {
+				params.vtloffset += '|' + config.offsetId;
+			}
 		}
 
 		return this.get( 'view-topiclist', params )

@@ -63,6 +63,52 @@ class RevisionActionPermissions {
 	protected $boardAllowedCache = [];
 
 	/**
+	 * Resolve a revision collection's topic ID only once per viewer/storage
+	 * generation. PostRevision::getCollection() creates a new collection each
+	 * time, so its local cached root ID cannot be reused across permission
+	 * checks for the same post. Only successful lookups are cached: the
+	 * historical-revision fallback must remain specific to its revision ID.
+	 *
+	 * @var array<string,string>
+	 */
+	private $topicCacheKeys = [];
+
+	/** @var int|null Generation of the collection cache used by these decisions. */
+	private $cacheGeneration;
+
+	/** @var callable|null Opt-in read-only benchmark timing observer. */
+	private $benchmarkTimer;
+
+	/** @var callable|null Separate query-only observer: do not mix query and formatting counters. */
+	private $primeBenchmarkTimer;
+
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+	}
+
+	public function setPrimeBenchmarkTimer( ?callable $observer ): void {
+		$this->primeBenchmarkTimer = $observer;
+	}
+
+	/**
+	 * Measure only during the explicit maintenance benchmark.
+	 * Timings are nested and must never be added to their parent stages.
+	 *
+	 * @return mixed
+	 */
+	private function timePermissionOperation( string $phase, callable $operation ) {
+		$started = hrtime( true );
+		try {
+			return $operation();
+		} finally {
+			( $this->benchmarkTimer )(
+				'format_detail_permission_' . $phase,
+				round( ( hrtime( true ) - $started ) / 1000000, 3 )
+			);
+		}
+	}
+
+	/**
 	 * @param FlowActions $actions
 	 * @param User $user
 	 */
@@ -95,13 +141,23 @@ class RevisionActionPermissions {
 	 * @return bool
 	 */
 	public function isAllowed( AbstractRevision $revision, $action ) {
+		$this->ensureCacheIsFresh();
 		$revisionId = $revision->getRevisionId()->getAlphadecimal();
-		$cacheKey = $revisionId . ':' . $action;
+		$cacheKey = $revisionId . ':' . $revision->getModerationState() . ':' . $action;
 		if ( array_key_exists( $cacheKey, $this->isAllowedCache ) ) {
+			if ( $this->benchmarkTimer !== null ) {
+				// A zero duration is a counter event; the underlying cache lookup
+				// and key construction remain included in their parent phase.
+				( $this->benchmarkTimer )( 'format_detail_permission_cache_hit', 0.0 );
+			}
 			return $this->isAllowedCache[$cacheKey];
 		}
 
-		$result = $this->computeIsAllowed( $revision, $action );
+		$result = $this->benchmarkTimer === null
+			? $this->computeIsAllowed( $revision, $action )
+			: $this->timePermissionOperation(
+				'cache_miss', fn () => $this->computeIsAllowed( $revision, $action )
+			);
 		$this->isAllowedCache[$cacheKey] = $result;
 
 		return $result;
@@ -113,35 +169,65 @@ class RevisionActionPermissions {
 	 * @return bool
 	 */
 	protected function computeIsAllowed( AbstractRevision $revision, $action ) {
-		// check if we're allowed to $action on this revision
-		if ( !$this->isRevisionAllowed( $revision, $action ) ) {
+		// Check the requested revision before consulting its topic or board.
+		$revisionAllowed = $this->benchmarkTimer === null
+			? $this->isRevisionAllowed( $revision, $action )
+			: $this->timePermissionOperation(
+				'revision_rights', fn () => $this->isRevisionAllowed( $revision, $action )
+			);
+		if ( !$revisionAllowed ) {
 			return false;
 		}
 
-		$root = $this->getCachedRoot( $revision );
-		// see if we're allowed to perform $action on anything inside this root
-		if ( !$revision->getRevisionId()->equals( $root->getRevisionId() ) &&
-			!$this->isRootAllowedCached( $root, $action )
-		) {
-			return false;
+		$root = $this->benchmarkTimer === null
+			? $this->getCachedRoot( $revision )
+			: $this->timePermissionOperation(
+				'root_lookup', fn () => $this->getCachedRoot( $revision )
+			);
+		// Replies must still be governed by the current root moderation state.
+		if ( !$revision->getRevisionId()->equals( $root->getRevisionId() ) ) {
+			$rootAllowed = $this->benchmarkTimer === null
+				? $this->isRootAllowedCached( $root, $action )
+				: $this->timePermissionOperation(
+					'root_rights', fn () => $this->isRootAllowedCached( $root, $action )
+				);
+			if ( !$rootAllowed ) {
+				return false;
+			}
 		}
 
-		$workflow = $this->getCachedBoardWorkflow( $revision );
-		// see if we're allowed to perform $action on anything inside this board
-		if ( !$this->isBoardAllowedCached( $workflow, $action ) ) {
+		$workflow = $this->benchmarkTimer === null
+			? $this->getCachedBoardWorkflow( $revision )
+			: $this->timePermissionOperation(
+				'board_lookup', fn () => $this->getCachedBoardWorkflow( $revision )
+			);
+		$boardAllowed = $this->benchmarkTimer === null
+			? $this->isBoardAllowedCached( $workflow, $action )
+			: $this->timePermissionOperation(
+				'board_rights', fn () => $this->isBoardAllowedCached( $workflow, $action )
+			);
+		if ( !$boardAllowed ) {
 			return false;
 		}
 
 		/** @var CollectionCache $cache */
 		$cache = Container::get( 'collection.cache' );
-		$last = $cache->getLastRevisionFor( $revision );
-		// Also check if the user would be allowed to perform this
-		// against the most recent revision - the last revision is the
-		// current state of an object, so checking against a revision at
-		// one point in time alone isn't enough.
+		$last = $this->benchmarkTimer === null
+			? $cache->getLastRevisionFor( $revision )
+			: $this->timePermissionOperation(
+				'latest_revision', fn () => $cache->getLastRevisionFor( $revision )
+			);
+		// Historical entries must still be checked against the current state.
 		$isLastRevision = $last->getRevisionId()->equals( $revision->getRevisionId() );
-		if ( !$isLastRevision && !$this->isRevisionAllowed( $last, $action ) ) {
-			return false;
+		if ( !$isLastRevision ) {
+			$lastAllowed = $this->benchmarkTimer === null
+				? $this->isRevisionAllowed( $last, $action )
+				: $this->timePermissionOperation(
+					'latest_revision_rights', fn () => $this->isRevisionAllowed( $last, $action )
+				);
+			if ( !$lastAllowed ) {
+				return false;
+			}
 		}
 
 		return true;
@@ -228,7 +314,11 @@ class RevisionActionPermissions {
 	 */
 	public function isRevisionAllowed( ?AbstractRevision $revision, $action ) {
 		// Users must have the core 'edit' permission to perform any write action in flow
-		$performsWrites = $this->actions->getValue( $action, 'performs-writes' );
+		$performsWrites = $this->benchmarkTimer === null
+			? $this->actions->getValue( $action, 'performs-writes' )
+			: $this->timePermissionOperation(
+				'write_flag_lookup', fn () => $this->actions->getValue( $action, 'performs-writes' )
+			);
 		$pm = MediaWikiServices::getInstance()->getPermissionManager();
 		if ( $performsWrites && !$pm->userHasRight( $this->user, 'edit' ) ) {
 			return false;
@@ -261,18 +351,64 @@ class RevisionActionPermissions {
 		if ( $revision !== null ) {
 			$moderationState = $revision->getModerationState();
 		}
-		$permission = $this->actions->getValue( $action, $type, $moderationState );
+		$permission = $this->benchmarkTimer === null
+			? $this->actions->getValue( $action, $type, $moderationState )
+			: $this->timePermissionOperation(
+				'rule_lookup',
+				fn () => $this->actions->getValue( $action, $type, $moderationState )
+			);
 
 		// Some permissions may be more complex to be defined as simple array
 		// values, in which case they're a Closure (which will accept
 		// AbstractRevision & FlowActionPermissions as arguments)
 		if ( $permission instanceof Closure ) {
-			$permission = $permission( $revision, $this );
+			$permission = $this->benchmarkTimer === null
+				? $permission( $revision, $this )
+				: $this->timePermissionOperation(
+					'rule_closure', fn () => $permission( $revision, $this )
+				);
 		}
 
 		return $permission;
 	}
 
+
+	/**
+	 * Prime only resolved post-to-topic identities that the topic-list tree
+	 * lookup already returned. This method does not make or cache any access
+	 * decisions; every view, root, board and moderation check still runs.
+	 *
+	 * Historical callers and other query types do not provide these keys.
+	 * Do not override previously resolved conflicting keys, and never prime
+	 * topic-title revisions: historical titles retain their original keys.
+	 *
+	 * @param AbstractRevision[] $revisions Current revisions selected by the topic list
+	 * @param array<string,string> $topicIdsByPost Post ID to topic ID (alphadecimal)
+	 */
+	public function primeTopicCacheKeysForView( array $revisions, array $topicIdsByPost ): void {
+		if ( !$topicIdsByPost ) {
+			return;
+		}
+
+		$this->ensureCacheIsFresh();
+		foreach ( $revisions as $revision ) {
+			if ( !( $revision instanceof PostRevision ) || $revision->isTopicTitle() ) {
+				continue;
+			}
+			$postAlpha = $revision->getPostId()->getAlphadecimal();
+			$topicAlpha = $topicIdsByPost[$postAlpha] ?? null;
+			if ( !is_string( $topicAlpha ) || $topicAlpha === '' || $topicAlpha === $postAlpha ) {
+				continue;
+			}
+			$cacheKey = $revision->getRevisionType() . ':' . $postAlpha;
+			if ( isset( $this->topicCacheKeys[$cacheKey] ) &&
+				$this->topicCacheKeys[$cacheKey] !== $topicAlpha
+			) {
+				continue;
+			}
+			$this->topicCacheKeys[$cacheKey] = $topicAlpha;
+		}
+	}
 
 	/**
 	 * Warm per-request caches used by topic list rendering.
@@ -281,13 +417,30 @@ class RevisionActionPermissions {
 	 * @return void
 	 */
 	public function primeCacheForView( array $revisions ) {
+		$this->ensureCacheIsFresh();
+		$rootNanoseconds = 0;
+		$boardNanoseconds = 0;
+		$observer = $this->primeBenchmarkTimer;
 		foreach ( $revisions as $revision ) {
 			if ( !( $revision instanceof AbstractRevision ) ) {
 				continue;
 			}
 
+			$started = $observer !== null ? hrtime( true ) : null;
 			$this->getCachedRoot( $revision );
+			if ( $started !== null ) {
+				$rootNanoseconds += hrtime( true ) - $started;
+			}
+
+			$started = $observer !== null ? hrtime( true ) : null;
 			$this->getCachedBoardWorkflow( $revision );
+			if ( $started !== null ) {
+				$boardNanoseconds += hrtime( true ) - $started;
+			}
+		}
+		if ( $observer !== null ) {
+			$observer( 'query_detail_prime_root_revisions', round( $rootNanoseconds / 1000000, 3 ) );
+			$observer( 'query_detail_prime_board_workflows', round( $boardNanoseconds / 1000000, 3 ) );
 		}
 	}
 
@@ -296,6 +449,14 @@ class RevisionActionPermissions {
 	 * @return AbstractRevision
 	 */
 	protected function getCachedRoot( AbstractRevision $revision ) {
+		// A title (including a historical title) is its own root. Do not let it
+		// populate the per-topic cache: replies must use the latest topic state.
+		if ( !( $revision instanceof PostSummary ) &&
+			!( $revision instanceof PostRevision && !$revision->isTopicTitle() )
+		) {
+			return $revision;
+		}
+
 		$topicKey = $this->getTopicCacheKey( $revision );
 		if ( isset( $this->rootRevisionCache[$topicKey] ) ) {
 			return $this->rootRevisionCache[$topicKey];
@@ -367,9 +528,23 @@ class RevisionActionPermissions {
 			return $revision->getSummaryTargetId()->getAlphadecimal();
 		}
 
+		// Avoid repeatedly traversing the Flow tree when the same post is
+		// checked against many actions. The collection ID, unlike rev_id,
+		// identifies the same post across historical revisions.
 		try {
-			return $revision->getCollection()->getWorkflowId()->getAlphadecimal();
+			$collectionKey = $revision->getRevisionType() . ':' .
+				$revision->getCollectionId()->getAlphadecimal();
+			if ( isset( $this->topicCacheKeys[$collectionKey] ) ) {
+				return $this->topicCacheKeys[$collectionKey];
+			}
+
+			$topicKey = $revision->getCollection()->getWorkflowId()->getAlphadecimal();
+			$this->topicCacheKeys[$collectionKey] = $topicKey;
+			return $topicKey;
 		} catch ( DataModelException $e ) {
+			// No associated root (e.g. an isolated historical revision).
+			// Do not memoize this fallback by collection: separate revisions
+			// must still receive separate cache keys.
 			return $revision->getRevisionId()->getAlphadecimal();
 		}
 	}
@@ -379,11 +554,10 @@ class RevisionActionPermissions {
 	 * @return string
 	 */
 	protected function getBoardWorkflowCacheKey( AbstractRevision $revision ) {
-		try {
-			return $revision->getCollection()->getBoardWorkflow()->getId()->getAlphadecimal();
-		} catch ( DataModelException $e ) {
-			return $this->getTopicCacheKey( $revision );
-		}
+		// Finding the board just to build a key defeats the cache. A topic's
+		// workflow identifies its board lookup; board decisions remain shared
+		// by the actual board ID in isBoardAllowedCached().
+		return $this->getTopicCacheKey( $revision );
 	}
 	/**
 	 * @param AbstractRevision $revision
@@ -427,6 +601,34 @@ class RevisionActionPermissions {
 	 * @param User $user
 	 */
 	public function setUser( User $user ) {
+		// formatApi() calls this for every row. Preserve the cache when the
+		// very same User object is reused, but not for another security context.
+		if ( $this->user !== $user ) {
+			$this->clearCache();
+		}
 		$this->user = $user;
+	}
+
+	/**
+	 * Clear decisions explicitly, e.g. after changing a user's rights in-process.
+	 */
+	public function clearCache(): void {
+		$this->isAllowedCache = [];
+		$this->rootRevisionCache = [];
+		$this->boardWorkflowCache = [];
+		$this->rootAllowedCache = [];
+		$this->boardAllowedCache = [];
+		$this->topicCacheKeys = [];
+	}
+
+	/** Discard decisions and loaded roots after a Flow storage mutation. */
+	private function ensureCacheIsFresh(): void {
+		/** @var CollectionCache $cache */
+		$cache = Container::get( 'collection.cache' );
+		$generation = $cache->getGeneration();
+		if ( $this->cacheGeneration !== $generation ) {
+			$this->clearCache();
+			$this->cacheGeneration = $generation;
+		}
 	}
 }

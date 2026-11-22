@@ -39,7 +39,7 @@ class PFAutocompleteAPI extends ApiBase {
 		$basevalue = $params['basevalue'];
 		$limit = (int)$params['limit'];
 
-		if ( $baseprop === null && $base_cargo_table === null && strlen( $substr ) == 0 ) {
+		if ( $baseprop === null && $base_cargo_table === null && strlen( (string)$substr ) == 0 ) {
 			$this->dieWithError( [ 'apierror-missingparam', 'substr' ], 'param_substr' );
 		}
 
@@ -103,8 +103,10 @@ class PFAutocompleteAPI extends ApiBase {
 				$this->dieWithError( $data, $code );
 			}
 		}
-		// Sort the values by their lengths for better UX.
-		$data = self::sortValuesByLength( $data );
+		// Exact and prefix matches outrank shorter, less relevant labels.
+		$data = $substr !== null && $substr !== '' ?
+			PFAutocompleteSearch::rank( $data, $substr, $map ) : self::sortValuesByLength( $data );
+		$hasMore = count( $data ) > $limit || count( $data ) >= PFValuesUtils::getMaxValuesToRetrieve( $baseprop !== null || $base_cargo_table !== null ? null : $substr );
 		if ( $limit > 0 ) {
 			$data = array_slice( $data, 0, $limit, true );
 		}
@@ -134,6 +136,7 @@ class PFAutocompleteAPI extends ApiBase {
 		$result = $this->getResult();
 		$result->setIndexedTagName( $formattedData, 'p' );
 		$result->addValue( null, $this->getModuleName(), $formattedData );
+		$result->addValue( null, 'pfautocomplete_more', $hasMore );
 	}
 
 	protected function getAllowedParams() {
@@ -195,24 +198,25 @@ class PFAutocompleteAPI extends ApiBase {
 
 	private function getAllValuesForCategory( $category, $substring, $numLevels = 3 ) {
 		global $wgPageFormsCacheAutocompleteValues, $wgPageFormsAutocompleteCacheTimeout;
-
-		if ( !$wgPageFormsCacheAutocompleteValues ) {
+		$compute = static function () use ( $category, $numLevels, $substring ) {
 			return PFValuesUtils::getAllPagesForCategory( $category, $numLevels, $substring );
-		}
-
-		$cache = PFFormUtils::getFormCache();
-		$cacheKey = $cache->makeKey(
-			'pf-autocomplete-category',
-			md5( $category . '|' . $numLevels . '|' . rtrim( (string)$substring ) )
-		);
-
-		return $cache->getWithSetCallback(
-			$cacheKey,
-			$wgPageFormsAutocompleteCacheTimeout,
-			function () use ( $category, $numLevels, $substring ) {
-				return PFValuesUtils::getAllPagesForCategory( $category, $numLevels, $substring );
+		};
+		try {
+			if ( !$wgPageFormsCacheAutocompleteValues ) {
+				return $compute();
 			}
-		);
+			$cache = PFFormUtils::getFormCache();
+			$key = $cache->makeKey( 'pf-autocomplete-category-v2', md5( json_encode( [
+				$category, $numLevels, $substring,
+				$GLOBALS['wgPageFormsUseDisplayTitle'],
+				$GLOBALS['wgPageFormsAutocompleteWordFallback'] ?? true,
+				$GLOBALS['wgPageFormsCategoryTraversalLimit'] ?? 2000,
+				PFValuesUtils::getMaxValuesToRetrieve( $substring ),
+			] ) ) );
+			return $cache->getWithSetCallback( $key, $wgPageFormsAutocompleteCacheTimeout, $compute );
+		} catch ( LengthException $e ) {
+			$this->dieWithError( [ 'pf-category-search-limit', $GLOBALS['wgPageFormsCategoryTraversalLimit'] ?? 2000 ], 'category-limit' );
+		}
 	}
 
 	private function getAllValuesForProperty(
@@ -294,7 +298,7 @@ class PFAutocompleteAPI extends ApiBase {
 
 		$property = SMW\DataValueFactory::getInstance()->newPropertyValueByLabel( $property_name );
 		$propertyHasTypePage = ( $property->getPropertyTypeID() == '_wpg' );
-		$store = smwfGetStore();
+		$store = PFUtils::getSMWStore();
 		if ( $store instanceof SMW\SQLStore\SQLStore ) {
 			$inceptiveProperty = $property->getInceptiveProperty();
 			$propertyTableId = $store->findPropertyTableID( $inceptiveProperty );
@@ -386,7 +390,7 @@ class PFAutocompleteAPI extends ApiBase {
 
 		$cache = PFFormUtils::getFormCache();
 		// Remove trailing whitespace to avoid unnecessary database selects
-		$cacheKeyString = $cargoTable . '|' . $cargoField . '|' . rtrim( $substring );
+		$cacheKeyString = json_encode( [ $cargoTable, $cargoField, $cargoWhere, rtrim( (string)$substring ) ] );
 		if ( $baseCargoTable !== null ) {
 			$cacheKeyString .= '|' . $baseCargoTable . '|' . $baseCargoField . '|' . $baseValue;
 		}

@@ -67,7 +67,7 @@ class TopKIndex extends FeatureIndex {
 
 		if ( isset( $options['sort'] ) && isset( $options['order'] ) ) {
 			return ObjectManager::makeArray( $options['sort'] ) === $this->options['sort']
-				&& strtoupper( $options['order'] ) === $this->options['order'];
+				&& strtoupper( $options['order'] ) === strtoupper( $this->options['order'] );
 		}
 		return true;
 	}

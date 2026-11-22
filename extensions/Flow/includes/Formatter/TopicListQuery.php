@@ -2,6 +2,8 @@
 
 namespace Flow\Formatter;
 
+use Flow\Collection\CollectionCache;
+use Flow\Container;
 use Flow\Data\ManagerGroup;
 use Flow\Exception\FlowException;
 use Flow\Exception\InvalidDataException;
@@ -25,11 +27,55 @@ class TopicListQuery extends AbstractQuery {
 	/** @var UUID[][] */
 	protected $postIdsCache = [];
 
-	/** @var PostSummary[] */
+	/** @var array<string,array<string,string>> Topic ID per post, keyed by topic-list cache key. */
+	private $postTopicKeysCache = [];
+
+	/** @var array<string,string> Only the most recently collected page's post-to-topic keys. */
+	private $lastPostTopicKeys = [];
+
+	/** @var array<string,PostSummary|null> Null means a confirmed missing summary. */
 	protected $summaryCache = [];
 
 	/** @var bool[] */
 	protected $watchStatusCache = [];
+
+	/** @var int|null Generation of the storage snapshot cached by this query. */
+	private $cacheGeneration;
+
+	/** @var callable|null Read-only profiling, enabled only for the maintenance benchmark. */
+	private $benchmarkTimer;
+
+	/**
+	 * collectRevisions() already loads the latest revision of every post.
+	 * getCurrentRevision() returns the same object, so another lookup would
+	 * only populate unused current-revision metadata.
+	 *
+	 * Keep the generic lookup for subclasses: they may override collection
+	 * or current-revision behavior and cannot assume this invariant.
+	 */
+	protected function shouldPreloadCurrentRevisionsForMetadata(): bool {
+		return get_class( $this ) !== self::class;
+	}
+
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+		// Keep query prefetch timings distinct from the formatter's
+		// existing permission_decision metrics.
+		$this->permissions->setPrimeBenchmarkTimer( $observer );
+	}
+
+	private function beginBenchmarkStep(): ?int {
+		return $this->benchmarkTimer !== null ? hrtime( true ) : null;
+	}
+
+	private function endBenchmarkStep( string $phase, ?int $started ): void {
+		if ( $started !== null && $this->benchmarkTimer !== null ) {
+			( $this->benchmarkTimer )(
+				'query_detail_' . $phase,
+				round( ( hrtime( true ) - $started ) / 1000000, 3 )
+			);
+		}
+	}
 
 	/**
 	 * @param ManagerGroup $storage
@@ -50,13 +96,43 @@ class TopicListQuery extends AbstractQuery {
 
 	/**
 	 * @param UUID[]|TopicListEntry[] $topicIdsOrEntries
+	 * @param PostRevision[] $prefetchedRoots Latest, already moderated root revisions indexed by topic ID.
+	 *  They must have been fetched for this page, not copied from a previous request.
 	 * @return FormatterRow[]
 	 * @suppress PhanUndeclaredMethod Types not inferred from instanceof
 	 */
-	public function getResults( array $topicIdsOrEntries ) {
+	public function getResults( array $topicIdsOrEntries, array $prefetchedRoots = [] ) {
+		$started = $this->beginBenchmarkStep();
+		$this->ensureCacheIsFresh();
 		$topicIds = $this->getTopicIds( $topicIdsOrEntries );
+
+		// TopicListBlock has already fetched the current root revisions to filter
+		// hidden/deleted topics. Reuse only roots belonging to this page. Other
+		// callers (e.g. search) continue to use the ordinary revision lookup.
+		$requested = [];
+		foreach ( $topicIds as $id ) {
+			$requested[$id->getAlphadecimal()] = true;
+		}
+		foreach ( $prefetchedRoots as $alpha => $revision ) {
+			if (
+				$revision instanceof PostRevision && isset( $requested[$alpha] ) &&
+				$revision->getPostId()->getAlphadecimal() === $alpha
+			) {
+				$this->postCache[$alpha] = $revision;
+			}
+		}
+		$this->endBenchmarkStep( 'prepare_roots', $started );
+
+		// Subclasses can override collectPostIds; never reuse a previous
+		// page's topic mapping if an override does not provide one.
+		$started = $this->beginBenchmarkStep();
+		$this->lastPostTopicKeys = [];
 		$allPostIds = $this->collectPostIds( $topicIds );
+		$this->endBenchmarkStep( 'collect_post_ids', $started );
+
+		$started = $this->beginBenchmarkStep();
 		$posts = $this->collectRevisions( $allPostIds );
+		$this->endBenchmarkStep( 'collect_revisions', $started );
 
 		$missing = array_diff(
 			array_keys( $allPostIds ),
@@ -69,24 +145,74 @@ class TopicListQuery extends AbstractQuery {
 			);
 		}
 
+		$started = $this->beginBenchmarkStep();
 		$this->loadMetadataBatch( $posts );
-		$this->permissions->primeCacheForView( $posts );
+		$this->endBenchmarkStep( 'load_metadata', $started );
 
+		// These associations came from the very subtree query used to select
+		// the posts. Reuse them for building permission cache keys, without
+		// pre-approving a single permission or bypassing moderation checks.
+		$started = $this->beginBenchmarkStep();
+		if ( $this->lastPostTopicKeys ) {
+			$this->permissions->primeTopicCacheKeysForView( $posts, $this->lastPostTopicKeys );
+		}
+		$this->endBenchmarkStep( 'prime_topic_keys', $started );
+
+		$started = $this->beginBenchmarkStep();
+		$this->permissions->primeCacheForView( $posts );
+		$this->endBenchmarkStep( 'prime_permissions', $started );
+
+		$started = $this->beginBenchmarkStep();
 		$visibleTopicIds = [];
+		$topicPermissionNanoseconds = 0;
 		foreach ( $posts as $post ) {
-			if ( $post->isTopicTitle() && $this->permissions->isAllowed( $post, 'view' ) ) {
+			if ( !$post->isTopicTitle() ) {
+				continue;
+			}
+			$permissionStarted = $started !== null ? hrtime( true ) : null;
+			try {
+				$canView = $this->permissions->isAllowed( $post, 'view' );
+			} finally {
+				if ( $permissionStarted !== null ) {
+					$topicPermissionNanoseconds += hrtime( true ) - $permissionStarted;
+				}
+			}
+			if ( $canView ) {
 				$visibleTopicIds[] = $post->getPostId();
 			}
 		}
+		$this->endBenchmarkStep( 'filter_visible_topics', $started );
+		if ( $started !== null && $this->benchmarkTimer !== null ) {
+			// Aggregated once per query; permission decisions are never skipped.
+			( $this->benchmarkTimer )(
+				'query_detail_visible_topic_permissions',
+				round( $topicPermissionNanoseconds / 1000000, 3 )
+			);
+		}
 
+		$started = $this->beginBenchmarkStep();
 		$topicSummary = $this->collectSummary( $visibleTopicIds );
-		$watchStatus = $this->collectWatchStatus( $visibleTopicIds );
+		$this->endBenchmarkStep( 'collect_summaries', $started );
 
+		$started = $this->beginBenchmarkStep();
+		$watchStatus = $this->collectWatchStatus( $visibleTopicIds );
+		$this->endBenchmarkStep( 'collect_watch_status', $started );
+
+		$started = $this->beginBenchmarkStep();
+		$visiblePermissionNanoseconds = 0;
 		$results = [];
 		$replies = [];
 		foreach ( $posts as $post ) {
 			try {
-				if ( !$this->permissions->isAllowed( $post, 'view' ) ) {
+				$permissionStarted = $started !== null ? hrtime( true ) : null;
+				try {
+					$canView = $this->permissions->isAllowed( $post, 'view' );
+				} finally {
+					if ( $permissionStarted !== null ) {
+						$visiblePermissionNanoseconds += hrtime( true ) - $permissionStarted;
+					}
+				}
+				if ( !$canView ) {
 					continue;
 				}
 				$row = new TopicRow;
@@ -96,7 +222,7 @@ class TopicListQuery extends AbstractQuery {
 				$replyToId = $revision->getReplyToId();
 				$replyToId = $replyToId ? $replyToId->getAlphadecimal() : null;
 				$postId = $revision->getPostId()->getAlphadecimal();
-				$replies[$replyToId ?? ''] = $postId;
+				$replies[$replyToId ?? ''][] = $postId;
 				if ( $post->isTopicTitle() ) {
 					// Attach the summary
 					if ( isset( $topicSummary[$postId] ) ) {
@@ -112,11 +238,20 @@ class TopicListQuery extends AbstractQuery {
 				\MWExceptionHandler::logException( $e );
 			}
 		}
+		$this->endBenchmarkStep( 'build_visible_rows', $started );
+		if ( $started !== null && $this->benchmarkTimer !== null ) {
+			( $this->benchmarkTimer )(
+				'query_detail_visible_row_permissions',
+				round( $visiblePermissionNanoseconds / 1000000, 3 )
+			);
+		}
 
+		$started = $this->beginBenchmarkStep();
 		foreach ( $results as $result ) {
 			$alpha = $result->revision->getPostId()->getAlphadecimal();
 			$result->replies = $replies[$alpha] ?? [];
 		}
+		$this->endBenchmarkStep( 'attach_replies', $started );
 
 		return $results;
 	}
@@ -156,11 +291,41 @@ class TopicListQuery extends AbstractQuery {
 		sort( $cacheKeyParts );
 		$cacheKey = implode( ':', $cacheKeyParts );
 		if ( isset( $this->postIdsCache[$cacheKey] ) ) {
+			$this->lastPostTopicKeys = $this->postTopicKeysCache[$cacheKey] ?? [];
 			return $this->postIdsCache[$cacheKey];
 		}
 
 		// Get the full list of postId's necessary
 		$nodeList = $this->treeRepository->fetchSubtreeNodeList( $topicIds );
+
+		// The subtree result already identifies each reply's topic. Do not
+		// prime ambiguous posts that appear under more than one root or roots
+		// that were not requested; those retain the original lookup path.
+		$requested = array_fill_keys( $cacheKeyParts, true );
+		$topicKeys = [];
+		$ambiguous = [];
+		foreach ( $nodeList as $rootAlpha => $descendants ) {
+			if ( !isset( $requested[$rootAlpha] ) ) {
+				continue;
+			}
+			foreach ( $descendants as $postId ) {
+				if ( !( $postId instanceof UUID ) ) {
+					continue;
+				}
+				$postAlpha = $postId->getAlphadecimal();
+				if ( $postAlpha === $rootAlpha || isset( $ambiguous[$postAlpha] ) ) {
+					continue;
+				}
+				if ( isset( $topicKeys[$postAlpha] ) && $topicKeys[$postAlpha] !== $rootAlpha ) {
+					unset( $topicKeys[$postAlpha] );
+					$ambiguous[$postAlpha] = true;
+				} else {
+					$topicKeys[$postAlpha] = $rootAlpha;
+				}
+			}
+		}
+		$this->postTopicKeysCache[$cacheKey] = $topicKeys;
+		$this->lastPostTopicKeys = $topicKeys;
 
 		// Merge all the children from the various posts into one array
 		if ( !$nodeList ) {
@@ -223,17 +388,15 @@ class TopicListQuery extends AbstractQuery {
 	 * @return PostSummary[]
 	 */
 	protected function collectSummary( $topicIds ) {
+		$this->ensureCacheIsFresh();
 		if ( !$topicIds ) {
 			return [];
 		}
 		$conds = [];
-		$result = [];
 		foreach ( $topicIds as $topicId ) {
 			$alpha = $topicId->getAlphadecimal();
-			if ( isset( $this->summaryCache[$alpha] ) ) {
-				$result[$alpha] = $this->summaryCache[$alpha];
-			} else {
-				$conds[] = [ 'rev_type_id' => $topicId ];
+			if ( !array_key_exists( $alpha, $this->summaryCache ) ) {
+				$conds[$alpha] = [ 'rev_type_id' => $topicId ];
 			}
 		}
 		if ( $conds ) {
@@ -242,14 +405,50 @@ class TopicListQuery extends AbstractQuery {
 				'order' => 'DESC',
 				'limit' => 1,
 			] );
+			// Only cache absence after a successful lookup, not after an error.
+			foreach ( $conds as $alpha => $condition ) {
+				$this->summaryCache[$alpha] = null;
+			}
 			foreach ( $found as $row ) {
+				if ( !$row ) {
+					continue;
+				}
 				$summary = reset( $row );
 				$alpha = $summary->getSummaryTargetId()->getAlphadecimal();
 				$this->summaryCache[$alpha] = $summary;
-				$result[$alpha] = $summary;
+			}
+		}
+
+		$result = [];
+		foreach ( $topicIds as $topicId ) {
+			$alpha = $topicId->getAlphadecimal();
+			if ( isset( $this->summaryCache[$alpha] ) ) {
+				$result[$alpha] = $this->summaryCache[$alpha];
 			}
 		}
 		return $result;
+	}
+
+	/** Invalidate positive and negative results when the storage changes. */
+	private function ensureCacheIsFresh(): void {
+		/** @var CollectionCache $cache */
+		$cache = Container::get( 'collection.cache' );
+		$generation = $cache->getGeneration();
+		if ( $this->cacheGeneration === $generation ) {
+			return;
+		}
+		$this->cacheGeneration = $generation;
+		$this->postIdsCache = [];
+		$this->postTopicKeysCache = [];
+		$this->lastPostTopicKeys = [];
+		$this->summaryCache = [];
+		$this->watchStatusCache = [];
+		$this->rootPostIdCache = [];
+		$this->postCache = [];
+		$this->revisionCache = [];
+		$this->workflowCache = [];
+		$this->currentRevisionsCache = [];
+		$this->identityMap = [];
 	}
 
 	/**

@@ -76,7 +76,8 @@ class Pager {
 		];
 		if ( isset( $this->options['sort'] ) && isset( $this->options['order'] ) ) {
 			$indexOptions += [
-				'sort' => [ $this->options['sort'] ],
+				// Accept both a single column and an ordered list of columns.
+				'sort' => ObjectManager::makeArray( $this->options['sort'] ),
 				'order' => $this->options['order'],
 			];
 		}
@@ -112,6 +113,7 @@ class Pager {
 			'offset-dir' => $this->options['pager-dir'],
 			$storageOffsetKey => $this->options['pager-offset'],
 			'include-offset' => $this->options['pager-include-offset'],
+			'composite-cursor' => !empty( $this->options['pager-composite-cursor'] ),
 		];
 		$offset = $this->options['pager-offset'];
 		$results = [];

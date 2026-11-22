@@ -14,9 +14,15 @@ use MapCacheLRU;
 class CollectionCache extends AbstractListener {
 
 	/**
-	 * Max to cache collection's last revision
+	 * Bound the per-process cache above the number of posts commonly rendered
+	 * on a complete topic-list page. With 50 slots, formatting 242 unique posts
+	 * evicts earlier last revisions, causing repeated lookups on subsequent
+	 * renders in the same process even when other permission caches are warm.
+	 *
+	 * This is a bounded LRU, never a shared or cross-request permission cache.
+	 * Existing insert/update/remove/clear listeners still invalidate entries.
 	 */
-	private const LAST_REV_CACHE_MAX = 50;
+	private const LAST_REV_CACHE_MAX = 512;
 
 	/**
 	 * The last revision for a collection
@@ -24,6 +30,19 @@ class CollectionCache extends AbstractListener {
 	 * @var MapCacheLRU
 	 */
 	protected $lastRevCache;
+
+	/** @var int In-process generation, advanced after writes or an explicit clear. */
+	private $generation = 0;
+
+	/**
+	 * Consumers can discard derived request-local caches after a storage mutation.
+	 * This is deliberately not a shared cache version or a database counter.
+	 *
+	 * @return int
+	 */
+	public function getGeneration(): int {
+		return $this->generation;
+	}
 
 	/**
 	 * Initialize any cache holder in here
@@ -59,22 +78,26 @@ class CollectionCache extends AbstractListener {
 	}
 
 	public function onAfterClear() {
+		$this->generation++;
 		$this->lastRevCache = new MapCacheLRU( self::LAST_REV_CACHE_MAX );
 	}
 
 	public function onAfterInsert( $object, array $new, array $metadata ) {
+		$this->generation++;
 		if ( $object instanceof AbstractRevision ) {
 			$this->lastRevCache->clear( $this->getLastRevCacheKey( $object ) );
 		}
 	}
 
 	public function onAfterUpdate( $object, array $old, array $new, array $metadata ) {
+		$this->generation++;
 		if ( $object instanceof AbstractRevision ) {
 			$this->lastRevCache->clear( $this->getLastRevCacheKey( $object ) );
 		}
 	}
 
 	public function onAfterRemove( $object, array $old, array $metadata ) {
+		$this->generation++;
 		if ( $object instanceof AbstractRevision ) {
 			$this->lastRevCache->clear( $this->getLastRevCacheKey( $object ) );
 		}

@@ -766,6 +766,10 @@
 		"FlowContentFormat": {
 			"value": "html"
 		},
+		"FlowReuseDecodedDom": {
+			"value": true,
+			"description": "Reuse the DOM decoded from Flow HTML instead of parsing it twice (enabled by default). Set false to use the legacy renderer."
+		},
 		"FlowParsoidURL": {
 			"value": null
 		},

@@ -35,7 +35,7 @@ const Sortable = require( 'ext.pageforms.sortable' );
 	pf.select2.tokens.static = pf.select2.tokens.static || {
 		requestCache: new Map(),
 		cacheSize: 200,
-		pendingRequests: {}
+		pendingRequests: Object.create( null )
 	};
 
 	const tokens_proto = new pf.select2.base();
@@ -47,6 +47,11 @@ const Sortable = require( 'ext.pageforms.sortable' );
 	 *
 	 */
 	tokens_proto.apply = function( element ) {
+		this.$element = element;
+		if ( element.data( 'select2' ) ) {
+			return;
+		}
+		element.data( 'pfTokensInstance', this );
 		const existingValuesOnly = (element.attr("existingvaluesonly") == "true");
 		this.existingValuesOnly = existingValuesOnly;
 		this.id = element.attr( "id" );
@@ -70,7 +75,7 @@ const Sortable = require( 'ext.pageforms.sortable' );
 		// Make the tokens sortable, using the SortableJS library.
 		const tokensUL = element.parent().find('ul.select2-selection__rendered');
 		const tokensSelect = element.parents('span.inputSpan').find('select');
-		const sortable = Sortable.create(tokensUL[0], {
+		this.sortable = Sortable.create(tokensUL[0], {
 			ghostClass: 'pfTokensGhost',
 
 			// Somewhat of a @HACK - the tokens are stored in two
@@ -96,6 +101,7 @@ const Sortable = require( 'ext.pageforms.sortable' );
 				for ( let i = 1; i < newTokensOrder.length; i++ ){
 					dropdownItems[newTokensOrder[i]].insertAfter(dropdownItems[newTokensOrder[i - 1]]);
 				}
+				tokensSelect.trigger( 'change' );
 			}
 		});
 
@@ -103,7 +109,7 @@ const Sortable = require( 'ext.pageforms.sortable' );
 		// show up in the order they were entered, not alphabetical
 		// order.
 		// Copied from https://github.com/select2/select2/issues/3106#issuecomment-234702241
-		element.on("select2:select", function (evt) {
+		element.off( 'select2:select.pfTokens' ).on("select2:select.pfTokens", function (evt) {
 			let elem = evt.params.data.element;
 
 			if( !elem ) {
@@ -129,7 +135,9 @@ const Sortable = require( 'ext.pageforms.sortable' );
 		});
 
 		$(inputData.$container[0]).on("keyup",(e) => {
-			if ( existingValuesOnly ) {
+			const originalEvent = e.originalEvent || e;
+			if ( existingValuesOnly || inputData.selection._isComposing ||
+				originalEvent.isComposing || e.which === 229 ) {
 				return ;
 			}
 			if ( e.key === 'Tab' ) {
@@ -156,7 +164,7 @@ const Sortable = require( 'ext.pageforms.sortable' );
 			}
 		});
 		if ( element.attr( "existingvaluesonly" ) !== "true" ) {
-			element.parent().on( "dblclick", "li.select2-selection__choice", ( event ) => {
+			element.parent().off( 'dblclick.pfTokens' ).on( "dblclick.pfTokens", "li.select2-selection__choice", ( event ) => {
 				let $target = $(event.target);
 				// If the target element is the span within li then change it to the parent li
 				if ( $target.is( $("span.select2-match-entire") ) ) {
@@ -186,14 +194,14 @@ const Sortable = require( 'ext.pageforms.sortable' );
 		const self = this;
 		let input_id = this.id;
 		const opts = {};
-		opts.language = {};
+		opts.language = { errorLoading: function () { return mw.msg( 'pf-autocomplete-error' ); } };
 		input_id = "#" + input_id;
 		const input_tagname = $(input_id).prop( "tagName" );
 		const autocomplete_opts = this.getAutocompleteOpts();
 		opts.escapeMarkup = function (m) {
 			return self.escapeMarkupAndAddHTML(m);
 		};
-		if ( autocomplete_opts.autocompletedatatype !== undefined ) {
+		if ( autocomplete_opts.autocompletedatatype !== undefined && this.dependentOn() === null ) {
 			opts.ajax = this.getAjaxOpts();
 			opts.minimumInputLength = this.getMinimumInputLength( autocomplete_opts );
 			opts.language.inputTooShort = function() {
@@ -481,27 +489,16 @@ const Sortable = require( 'ext.pageforms.sortable' );
 				}
 			}
 		} else {
-			const $element = this.getCurrentElement();
-			// The main form prefetches these values. Calendar popups can
-			// initialize tokens directly, so load missing values asynchronously.
-			if ( $element.data( 'autocompletevalues' ) === undefined ) {
-				const options = this.getDependentFieldOpts( dep_on );
-				const request = $element.loadDependentAutocompleteValues( {
-					action: 'pfautocomplete', format: 'json', property: options.prop,
-					baseprop: options.base_prop, basevalue: options.base_value
+			const items = this.getCurrentElement().data( 'autocompleteitems' );
+			if ( Array.isArray( items ) ) {
+				items.forEach( ( item ) => {
+					values.push( { id: String( item.title ), text: String( item.displaytitle || item.title ), title: String( item.title ) } );
 				} );
-				const requestKey = $element.data( 'pfDependentAutocompleteKey' );
-				request.done( () => {
-					if ( $element.data( 'pfDependentAutocompleteKey' ) === requestKey &&
-						!$element.data( 'pfDependentAutocompleteError' ) && $element.data( 'select2' ) ) {
-						this.refresh( $element );
-					}
+			} else {
+				( this.getCurrentElement().data( 'autocompletevalues' ) || [] ).forEach( ( value ) => {
+					values.push( { id: value, text: value, title: value } );
 				} );
 			}
-			data = $element.data( 'autocompletevalues' ) || [];
-			data.forEach( ( value ) => {
-				values.push( { id: value, text: value } );
-			} );
 		}
 
 		return values;
@@ -527,37 +524,37 @@ const Sortable = require( 'ext.pageforms.sortable' );
 				const staticData = pf.select2.tokens.static;
 				const requestData = params.data || {};
 				const cacheKey = self.getRequestCacheKey( requestData );
-				let xhr;
-
+				self.abortPendingRequest();
 				if ( staticData.requestCache.has( cacheKey ) ) {
-					success( staticData.requestCache.get( cacheKey ) );
-					return {
-						abort: function() {}
-					};
+					const response = staticData.requestCache.get( cacheKey );
+					self.rememberRequest( cacheKey, response );
+					success( response );
+					return { abort: function() {} };
 				}
-
-				if ( staticData.pendingRequests[input_id] && typeof staticData.pendingRequests[input_id].abort === 'function' ) {
-					staticData.pendingRequests[input_id].abort();
-				}
-
-				xhr = $.ajax( {
-					url: mw.util.wikiScript( 'api' ),
-					dataType: 'json',
-					data: requestData,
-					success: function( response ) {
-						delete staticData.pendingRequests[input_id];
-						self.rememberRequest( cacheKey, response );
-						success( response );
-					},
-					error: function( jqXHR, textStatus, errorThrown ) {
-						delete staticData.pendingRequests[input_id];
-						if ( textStatus !== 'abort' ) {
-							failure( jqXHR, textStatus, errorThrown );
-						}
+				const xhr = $.ajax( {
+					url: mw.util.wikiScript( 'api' ), dataType: 'json', data: requestData, timeout: 15000
+				} );
+				staticData.pendingRequests[ input_id ] = xhr;
+				xhr.done( ( response ) => {
+					if ( staticData.pendingRequests[ input_id ] !== xhr ) {
+						return;
+					}
+					delete staticData.pendingRequests[ input_id ];
+					if ( !response || response.error || !( Array.isArray( response.pfautocomplete ) || ( response.query && Array.isArray( response.query.prefixsearch ) ) ) ) {
+						failure( xhr, 'error', 'Invalid autocomplete response' );
+						return;
+					}
+					self.rememberRequest( cacheKey, response );
+					success( response );
+				} ).fail( ( jqXHR, textStatus, errorThrown ) => {
+					if ( staticData.pendingRequests[ input_id ] !== xhr ) {
+						return;
+					}
+					delete staticData.pendingRequests[ input_id ];
+					if ( textStatus !== 'abort' ) {
+						failure( jqXHR, textStatus, errorThrown );
 					}
 				} );
-
-				staticData.pendingRequests[input_id] = xhr;
 				return xhr;
 			},
 			processResults: function( data ) {
@@ -566,6 +563,58 @@ const Sortable = require( 'ext.pageforms.sortable' );
 				};
 			}
 		};
+	};
+
+	tokens_proto.abortPendingRequest = function () {
+		const requests = pf.select2.tokens.static.pendingRequests;
+		const xhr = requests[ this.id ];
+		delete requests[ this.id ];
+		if ( xhr && typeof xhr.abort === 'function' ) {
+			xhr.abort();
+		}
+	};
+
+	tokens_proto.destroy = function ( element ) {
+		this.abortPendingRequest();
+		if ( this.sortable && typeof this.sortable.destroy === 'function' ) {
+			this.sortable.destroy();
+		}
+		element.off( '.pfTokens' );
+		element.parent().off( '.pfTokens' );
+		element.removeData( 'pfTokensInstance' ).removeClass( 'pf-tokens-initialized' );
+		if ( element.data( 'select2' ) ) {
+			element.select2( 'destroy' );
+		}
+	};
+
+	tokens_proto.refresh = function ( element ) {
+		const $element = $( element );
+		this.$element = $element;
+		this.id = $element.attr( 'id' );
+		if ( !$element.data( 'select2' ) ) {
+			// Lazy initialization will consume these choices later.
+			return;
+		}
+		this.abortPendingRequest();
+		const values = this.getData( $element.attr( 'autocompletesettings' ) );
+		const allowed = new Map( values.map( ( item ) => [ String( item.id ), item ] ) );
+		const previous = $element.val() || [];
+		const selected = $element.attr( 'existingvaluesonly' ) === 'true' && !$element.data( 'autocompleteMore' ) ? previous.filter( ( value ) => allowed.has( value ) ) : previous;
+		// Keep the widget, focused input and in-progress IME composition intact.
+		$element.find( 'option' ).each( function () {
+			if ( !selected.includes( this.value ) && !allowed.has( this.value ) ) {
+				$( this ).remove();
+			}
+		} );
+		values.forEach( ( item ) => {
+			if ( !$element.find( 'option' ).filter( function () { return this.value === String( item.id ); } ).length ) {
+				$element.append( new Option( item.text, item.id, false, false ) );
+			}
+		} );
+		$element.val( selected ).trigger( 'change.select2' );
+		if ( JSON.stringify( selected ) !== JSON.stringify( previous ) ) {
+			$element.trigger( 'change' );
+		}
 	};
 
 	/*

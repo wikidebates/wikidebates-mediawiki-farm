@@ -26,6 +26,20 @@ class WikiLinkFixer implements Fixer {
 	 */
 	protected $batch;
 
+	/** @var callable|null Optional, read-only maintenance benchmark observer. */
+	private $benchmarkTimer;
+
+	public function setBenchmarkTimer( ?callable $observer ): void {
+		$this->benchmarkTimer = $observer;
+	}
+
+	private function recordBenchmarkStep( string $phase, int $started ): void {
+		( $this->benchmarkTimer )(
+			'format_detail_content_wikilink_' . $phase,
+			round( ( hrtime( true ) - $started ) / 1000000, 3 )
+		);
+	}
+
 	/**
 	 * @param LinkBatch $batch
 	 */
@@ -38,6 +52,36 @@ class WikiLinkFixer implements Fixer {
 	 */
 	public function getXPath() {
 		return '//a[contains(concat(" ",normalize-space(@rel)," ")," mw:WikiLink ")]';
+	}
+
+	/**
+	 * Warm MediaWiki's LinkCache before LinkRenderer formats individual anchors.
+	 * The title resolution must be identical to apply(), including relative links.
+	 *
+	 * @param iterable<DOMNode> $nodes
+	 * @param Title $pageTitle
+	 */
+	public function preload( iterable $nodes, Title $pageTitle ): void {
+		foreach ( $nodes as $node ) {
+			if ( !$node instanceof DOMElement ) {
+				continue;
+			}
+			$href = $node->getAttribute( 'href' );
+			if ( $href === '' ) {
+				continue;
+			}
+			$target = Utils::createRelativeTitle( rawurldecode( $href ), $pageTitle );
+			if ( $target !== null ) {
+				$this->batch->addObj( $target );
+			}
+		}
+		if ( !$this->batch->isEmpty() ) {
+			$this->batch->setCaller( __METHOD__ );
+			$this->batch->execute();
+			// The service is reused while other messages are rendered. Do not
+			// requery earlier titles on a later message.
+			$this->batch->setArray( [] );
+		}
 	}
 
 	/**
@@ -59,6 +103,10 @@ class WikiLinkFixer implements Fixer {
 		if ( !$node instanceof DOMElement ) {
 			return;
 		}
+		if ( $this->benchmarkTimer !== null ) {
+			// Counting-only event: XPath-selected links, including empty hrefs.
+			( $this->benchmarkTimer )( 'format_detail_content_wikilink_candidate', 0.0 );
+		}
 
 		$href = $node->getAttribute( 'href' );
 		if ( $href === '' ) {
@@ -76,19 +124,36 @@ class WikiLinkFixer implements Fixer {
 			$attributes[$attribute->name] = $attribute->value;
 		}
 		// let MW build link HTML based on Parsoid data
+		$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$html = MediaWikiServices::getInstance()->getLinkRenderer()->makeLink(
 			$title,
 			new HtmlArmor( Utils::getInnerHtml( $node ) ),
 			$attributes
 		);
-		// create new DOM from this MW-built link
+		if ( $started !== null ) {
+			$this->recordBenchmarkStep( 'render_html', $started );
+		}
+
+		// Preserve the original fragment parsing, import and replacement.
+		// Timings are nested inside content_fixer_wikilinkfixer_apply.
+		$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		$replacementNode = Utils::createDOM( $html )
 			->getElementsByTagName( 'a' )
 			->item( 0 );
+		if ( $started !== null ) {
+			$this->recordBenchmarkStep( 'parse_fragment', $started );
+		}
+
+		$started = $this->benchmarkTimer !== null ? hrtime( true ) : null;
 		// import MW-built link node into content DOM
 		// @phan-suppress-next-line PhanTypeMismatchArgumentNullableInternal
 		$replacementNode = $node->ownerDocument->importNode( $replacementNode, true );
 		// replace Parsoid link with MW-built link
 		$node->parentNode->replaceChild( $replacementNode, $node );
+		if ( $started !== null ) {
+			$this->recordBenchmarkStep( 'insert_node', $started );
+			// Counting-only event: a link actually transformed.
+			( $this->benchmarkTimer )( 'format_detail_content_wikilink_transformed', 0.0 );
+		}
 	}
 }

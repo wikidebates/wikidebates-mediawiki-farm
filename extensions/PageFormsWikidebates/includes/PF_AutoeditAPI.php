@@ -12,6 +12,7 @@ use MediaWiki\MediaWikiServices;
 use MediaWiki\Request\FauxRequest;
 use MediaWiki\Revision\RevisionRecord;
 use MediaWiki\Title\Title;
+use MediaWiki\WikiMap\WikiMap;
 
 /**
  * @ingroup PageForms
@@ -535,6 +536,7 @@ class PFAutoeditAPI extends ApiBase {
 				throw new MWException( $status->getHTML() );
 
 			case EditPage::AS_SUCCESS_NEW_ARTICLE:
+				$this->getResult()->addValue( null, 'revision', (int)$editor->getArticle()->getPage()->getLatest() );
 				// Article successfully created
 				// @phan-suppress-next-line PhanTypePossiblyInvalidDimOffset
 				$query = $resultDetails['redirect'] ? 'redirect=no' : '';
@@ -575,6 +577,7 @@ class PFAutoeditAPI extends ApiBase {
 				return false;
 
 			case EditPage::AS_SUCCESS_UPDATE:
+				$this->getResult()->addValue( null, 'revision', (int)$editor->getArticle()->getPage()->getLatest() );
 				// Article successfully updated
 				$extraQuery = '';
 				$sectionanchor = $resultDetails['sectionanchor'] ?? '';
@@ -1063,6 +1066,15 @@ class PFAutoeditAPI extends ApiBase {
 			$out = $this->getOutput();
 			$parserOutput = PFUtils::getParser()->getOutput();
 			$out->addParserOutputMetadata( $parserOutput );
+			$out->addJsConfigVars( 'wgPageFormsDraftContext', [
+				'enabled' => (bool)( $GLOBALS['wgPageFormsEnableLocalDrafts'] ?? true ),
+				'wiki' => WikiMap::getCurrentWikiId(),
+				'user' => $this->getUser()->getId(),
+				'form' => $formTitle->getPrefixedText(),
+				'formRevision' => (int)$formTitle->getLatestRevID(),
+				'target' => $targetTitle ? $targetTitle->getPrefixedText() : '',
+				'targetRevision' => $targetTitle ? (int)$targetTitle->getLatestRevID() : 0,
+			] );
 
 			$this->getResult()->addValue( [ 'form' ], 'HTML', $formHTML );
 		}
