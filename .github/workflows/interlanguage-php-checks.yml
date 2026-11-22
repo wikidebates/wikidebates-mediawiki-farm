@@ -1,10 +1,17 @@
 name: Interlanguage PHP checks
 
 on:
+  push:
+    branches:
+      - wikidebates-REL1_43-stable-2026-07-09
+    paths:
+      - 'extensions/Interlanguage/**'
+      - '.github/workflows/interlanguage-php-checks.yml'
   pull_request:
     paths:
       - 'extensions/Interlanguage/**'
       - '.github/workflows/interlanguage-php-checks.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read

@@ -2,14 +2,27 @@
 	"name": "PageForms JavaScript checks",
 	"on": {
 		"push": {
-			"branches": [ "fix/pageforms-safe-async-submit", "wikidebates-REL1_43-stable-2026-07-11" ],
-			"paths": [ "extensions/PageFormsWikidebates/**", "resources/lib/jquery/**", ".github/workflows/pageforms-js-checks.yml" ]
+			"branches": [
+				"wikidebates-REL1_43-stable-2026-07-09"
+			],
+			"paths": [
+				"extensions/PageFormsWikidebates/**",
+				"resources/lib/jquery/**",
+				".github/workflows/pageforms-js-checks.yml"
+			]
 		},
 		"pull_request": {
-			"paths": [ "extensions/PageFormsWikidebates/**", "resources/lib/jquery/**", ".github/workflows/pageforms-js-checks.yml" ]
-		}
+			"paths": [
+				"extensions/PageFormsWikidebates/**",
+				"resources/lib/jquery/**",
+				".github/workflows/pageforms-js-checks.yml"
+			]
+		},
+		"workflow_dispatch": {}
 	},
-	"permissions": { "contents": "read" },
+	"permissions": {
+		"contents": "read"
+	},
 	"jobs": {
 		"jest": {
 			"runs-on": "ubuntu-latest",
@@ -24,7 +37,9 @@
 				},
 				{
 					"uses": "actions/setup-node@v5",
-					"with": { "node-version": "22" }
+					"with": {
+						"node-version": "22"
+					}
 				},
 				{
 					"name": "Check JavaScript syntax and JSON",

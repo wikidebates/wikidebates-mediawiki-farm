@@ -21,6 +21,7 @@
 
 ## Validation et deploiement
 
+- Les quatre workflows principaux (Flow, Interlanguage, PageForms JS, PageForms integration/SMW/navigateurs) ciblent la branche par defaut `wikidebates-REL1_43-stable-2026-07-09` lors des `push` et continuent a tester les PR ; des executions manuelles restent possibles.
 - Verifier la CI Flow, Interlanguage, PageForms (Jest, integration SMW, Chromium et Firefox) ainsi que les tests du sous-module VEForAll. Une suite verte pour un ancien commit n'atteste pas automatiquement du commit final.
 - Tester les formulaires de production FR/EN apres deploiement ; verifier les configurations `LocalSettings.php`, les modifications locales sur serveur et les sous-modules avant toute mise a jour.
 - La fusion GitHub n'applique pas automatiquement les changements sur la ferme en production : les `LocalSettings.php`, cron de prechauffage, invalidations et mises a jour de sous-modules sont des etapes d'exploitation separees.
