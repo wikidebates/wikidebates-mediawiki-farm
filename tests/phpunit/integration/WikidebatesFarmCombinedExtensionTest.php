@@ -39,6 +39,13 @@ class WikidebatesFarmCombinedExtensionTest extends MediaWikiIntegrationTestCase 
 		) );
 	}
 
+	public function testDeferredSemanticCacheAndPreparationDisabledByDefault(): void {
+		$config = \MediaWiki\MediaWikiServices::getInstance()->getMainConfig();
+		$this->assertFalse( $config->get( 'WikidebatesCachePreparationDirectory' ) );
+		$this->assertFalse( $config->get( 'WikidebatesSemanticCacheTracking' ) );
+		$this->assertFalse( $config->get( 'WikidebatesSemanticCacheEagerPurge' ) );
+	}
+
 	public function testNoObsoleteMobileDependenciesDirectory(): void {
 		$this->assertDirectoryDoesNotExist(
 			MW_INSTALL_PATH . '/extensions/VEForAllMobileDeps'
