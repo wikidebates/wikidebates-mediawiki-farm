@@ -46,12 +46,18 @@ jobs:
           php -l extensions/Wikidebates/maintenance/preparePendingCaches.php
           php -l extensions/Wikidebates/src/Reading/CachePreparationCommands.php
           php -l extensions/Wikidebates/src/Reading/AnonymousCacheSafety.php
+          php -l extensions/Wikidebates/src/Reading/ReadingHooks.php
+          php -l extensions/Wikidebates/src/Reading/FragmentService.php
           php -l extensions/Wikidebates/tests/readingFragments/publicSafetyMediawiki.php
           php -l extensions/Wikidebates/src/Reading/SemanticTouchBarrier.php
           php -l extensions/Wikidebates/src/Reading/SemanticTouchRecovery.php
           php -l extensions/Wikidebates/maintenance/recoverSemanticTouch.php
           php -l extensions/Wikidebates/src/Reading/SemanticCachePurgeJob.php
           php -l extensions/MinervaFileCache/maintenance/prewarm.php
+          php -l extensions/MinervaFileCache/src/PublicPageGuard.php
+          php -l extensions/MinervaFileCache/src/CacheView.php
+          php -l extensions/MinervaFileCache/src/Hooks.php
+          php extensions/MinervaFileCache/tests/public-page-guard-unit.php
           php extensions/Wikidebates/tests/readingFragments/preparationQueue.php
           php extensions/Wikidebates/tests/readingFragments/coordinatedPreparation.php
           php extensions/Wikidebates/tests/readingFragments/semanticTouchBarrier.php
