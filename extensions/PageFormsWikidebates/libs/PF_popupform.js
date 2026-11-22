@@ -43,6 +43,7 @@ window.ext.popupform = ( function() {
 	let instance = 0;
 
 	let timer;
+	let stopPendingPopupSubmission = null;
 	let needsRender = true;
 
 	let doc;
@@ -51,6 +52,44 @@ window.ext.popupform = ( function() {
 
 	const padding = 20;
 	let reload;
+	// A submit may be validated asynchronously by a second jQuery instance in
+	// the iframe. Do not leave a 10ms polling loop running indefinitely if
+	// validation never completes or the iframe is replaced.
+	function waitForInnerSubmission( readState, onValid, onDone ) {
+		const deadline = Date.now() + 35000; // PageForms' preparation timeout is 30s.
+		let intervalId = null;
+		function cancel() {
+			if ( intervalId !== null ) {
+				clearInterval( intervalId );
+				intervalId = null;
+				if ( onDone ) {
+					onDone();
+				}
+			}
+		}
+		intervalId = setInterval( () => {
+			if ( Date.now() >= deadline ) {
+				cancel();
+				return;
+			}
+			const accepted = readState();
+			if ( accepted !== null ) {
+				cancel();
+				if ( accepted ) {
+					onValid();
+				}
+			}
+		}, 10 );
+		return cancel;
+	}
+
+	function cancelPendingPopupSubmission() {
+		if ( stopPendingPopupSubmission ) {
+			stopPendingPopupSubmission();
+			stopPendingPopupSubmission = null;
+		}
+	}
+
 	function setVisible( $elem, isVisible, callback, duration ) {
 		const transitionDuration = duration ?? 200;
 
@@ -260,6 +299,7 @@ window.ext.popupform = ( function() {
 	function handleCloseFrame( event ){
 		jQuery(window).unbind( "resize", adjustFrameSize );
 		clearTimeout(timer);
+		cancelPendingPopupSubmission();
 
 		hideWithTransition( container, () => {
 				hideWithTransition( $background, () => {
@@ -447,6 +487,7 @@ window.ext.popupform = ( function() {
 
 	function closeFrameAndFollowLink( link ){
 		clearTimeout(timer);
+		cancelPendingPopupSubmission();
 
 		hideWithTransition( container, () => {
 			showWithTransition( $waitIndicator );
@@ -468,6 +509,7 @@ window.ext.popupform = ( function() {
 	}
 
 	function handleLoadFrame() {
+		cancelPendingPopupSubmission();
 		const $iframecontents = $iframe.contents();
 
 		const containerAlreadyVisible = container.is( ':visible' );
@@ -598,16 +640,20 @@ window.ext.popupform = ( function() {
 			// catch form submit event
 			$form
 			.bind( "submit", ( event ) => {
-				var interval = setInterval(() => {
-					if ( innersubmitprocessed ) {
-						clearInterval( interval );
-						innersubmitprocessed = false;
-						if ( submitok ) {
-							handleSubmitData( event );
+				cancelPendingPopupSubmission();
+				stopPendingPopupSubmission = waitForInnerSubmission(
+					() => {
+						if ( !innersubmitprocessed ) {
+							return null;
 						}
-					}
-
-				}, 10);
+						innersubmitprocessed = false;
+						const accepted = submitok;
+						submitok = false;
+						return accepted;
+					},
+					() => handleSubmitData( event ),
+					() => { stopPendingPopupSubmission = null; }
+				);
 				event.stopPropagation();
 				return false;
 			});
@@ -769,6 +815,8 @@ window.ext.popupform = ( function() {
 	this.handlePopupFormInput = handlePopupFormInput;
 	this.handlePopupFormLink = handlePopupFormLink;
 	this.adjustFrameSize = adjustFrameSize;
+	// Expose the standalone waiter for regression tests and reuse.
+	this.waitForInnerSubmission = waitForInnerSubmission;
 
 	return this;
 }() );
