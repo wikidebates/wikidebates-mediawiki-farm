@@ -1,0 +1,71 @@
+name: Combined farm extensions (pinned commits)
+on:
+  pull_request:
+    paths:
+      - '.gitmodules'
+      - 'composer.json'
+      - 'composer.lock'
+      - 'extensions/Wikidebates'
+      - 'extensions/VEForAll'
+      - 'extensions/VisualEditor'
+      - 'extensions/Echo'
+      - 'skins/MinervaNeue'
+      - 'extensions/PageFormsWikidebates/**'
+      - 'extensions/Flow/**'
+      - 'tests/phpunit/integration/WikidebatesFarmCombinedExtensionTest.php'
+      - 'tests/ci/cross-submodule-integration.sh'
+      - '.github/workflows/farm-cross-extension-checks.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - '.gitmodules'
+      - 'composer.json'
+      - 'composer.lock'
+      - 'extensions/Wikidebates'
+      - 'extensions/VEForAll'
+      - 'extensions/VisualEditor'
+      - 'extensions/Echo'
+      - 'skins/MinervaNeue'
+      - 'extensions/PageFormsWikidebates/**'
+      - 'extensions/Flow/**'
+      - 'tests/phpunit/integration/WikidebatesFarmCombinedExtensionTest.php'
+      - 'tests/ci/cross-submodule-integration.sh'
+      - '.github/workflows/farm-cross-extension-checks.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integrated:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Install pinned submodules through HTTPS (no remote branch updates)
+        run: |
+          git -c 'url.https://github.com/.insteadOf=git@github.com:' \
+            submodule update --init --depth 1 -- \
+            extensions/Wikidebates \
+            extensions/VEForAll \
+            extensions/VisualEditor \
+            extensions/Echo \
+            skins/MinervaNeue
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: sqlite3, pdo_sqlite, intl, mbstring
+          tools: composer:v2
+      - name: Check shell syntax
+        run: bash -n tests/ci/cross-submodule-integration.sh
+      - name: Execute disposable cross-extension integration checks
+        env:
+          CI: 'true'
+          GITHUB_ACTIONS: 'true'
+          COMPOSER_NO_INTERACTION: '1'
+        run: bash tests/ci/cross-submodule-integration.sh
