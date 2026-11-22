@@ -12,7 +12,10 @@ Adaptations faites pour MediaWiki 1.43 :
 
 Installation
 1. Déposer ce dossier dans extensions/Interlanguage
-2. Sur le wiki central : require_once "$IP/extensions/Interlanguage/InterlanguageCentral.php";
+2. Sur le wiki central FR : wfLoadExtension( 'Interlanguage' );
+   Ancien require_once( $IP . '/extensions/Interlanguage/InterlanguageCentral.php' ) :
+   mode historique de repli, qui ne charge pas le manifeste et n'enregistre
+   ni LinksUpdate central ni purgeDependentWikis. Ne pas charger les deux.
 3. Sur les wikis dépendants : require_once "$IP/extensions/Interlanguage/Interlanguage.php";
 4. Régler les variables globales comme dans votre installation actuelle
 5. Sur le wiki central, lancer update.php pour créer la table interlanguage_links
@@ -87,3 +90,43 @@ Nettoyage du depot (22 novembre 2026)
 - La sauvegarde historique `InterlanguageExtension (Copie).php` a ete retiree du repertoire actif : elle definissait la meme classe que `InterlanguageExtension.php` mais utilisait des API et une deserialisation obsoletes. Le fichier demeure recuperable dans l'historique Git.
 - La verification de syntaxe CI parcourt desormais tous les fichiers PHP presents, sans exception pour la copie supprimee.
 - Aucun changement a la pagination de `ApiQueryLangLinks`, aux ecritures pendant le rendu ou aux purges distantes ; ces comportements demandent des essais fonctionnels FR/EN avant modification.
+
+Correction MW 1.43 (23 novembre 2026) : LinksUpdate
+- getLanguageLinks() retourne une liste de chaines "lang:page", sans cle
+  de langue ; le hook central historique construisait un tableau numerique
+  et risquait d'envoyer des jobs aux prefixes 0, 1, etc.
+- Le hook normalise maintenant en langue => titre => true, comme le
+  traitement natif LangLinksTable (premier titre prioritaire), conserve les
+  deux cibles d'un renommage et ne purge pas une page sans ParserOutput.
+- Test sans reseau, SQL reel ou ecriture :
+	php extensions/Interlanguage/tests/InterlanguageCentralJobHookSmokeTest.php
+- Sur une production ou le manifeste vient d'etre active : revenir au
+  chargement historique jusqu'a validation et deploiement de ce correctif.
+
+Validation de la chaine de purge (simulation hors production)
+- Le test InterlanguageCentralPurgePipelineSmokeTest.php utilise les classes
+  reelles du hook central et du job mais simule la base, la file et l'HTTP.
+  Il verifie : pas de job pour un lien inchange ; un job pour une nouvelle
+  cible ; purge des titres EN anciens et nouveaux ; aucune requete sur une
+  autre destination ; aucune erreur API lorsque la purge est acceptee.
+	php extensions/Interlanguage/tests/InterlanguageCentralPurgePipelineSmokeTest.php
+- Ce test ne valide pas les jobs, la base et les caches de production.
+  Activer le manifeste uniquement apres integration des correctifs, puis
+  faire une recette FR/EN sur une modification d'une page de test.
+- LocalSettings sur le wiki central FR, une fois le code deploye :
+	wfLoadExtension( 'Interlanguage' );
+  Sur EN : conserver require_once( $IP . '/extensions/Interlanguage/Interlanguage.php' );
+  Ne pas charger les deux points d'entree sur FR simultanement.
+
+Diagnostic et purge distante API : novembre 2026
+- L'entree interwiki en sur FR contient desormais une URL API correcte,
+  mais la purge automatique requiert le chargement du manifeste central.
+- Le job demande formatversion=2 afin de lire correctement purged:true.
+  Le format JSON 1 retourne une chaine vide pour les indicateurs vrais ;
+  ne jamais comparer directement cette chaine au booleen true.
+- Sur une requete multi-pages, toutes les pages doivent confirmer la purge ;
+  sinon un avertissement agrege est emis (sans titres ni secrets).
+- Les destinations interwiki manquantes ou sans API sont journalisees sans
+  ajouter de tentatives automatiques, et aucun droit n'est elargi.
+- Procedure pre-deploiement, audit des jobs, recette et rollback :
+  DEPLOYMENT-MW143-FR-EN.md. PR #115 reunit les correctifs #111 et #114.

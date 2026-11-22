@@ -44,28 +44,69 @@ class InterlanguageCentralExtensionPurgeJob extends Job {
 		$ill = $this->params['ill'];
 
 		$mwServices = MediaWikiServices::getInstance();
+		$missingInterwiki = [];
+		$missingApi = [];
 
-		foreach($ill as $lang => $pages) {
-//			$iw = Interwiki::fetch( $lang );
+		foreach ( $ill as $lang => $pages ) {
+			if ( !$pages ) {
+				continue;
+			}
 			$iw = $mwServices->getInterwikiLookup()->fetch( $lang );
-			if( !$iw ) continue;
+			if ( !$iw ) {
+				$missingInterwiki[] = $lang;
+				continue;
+			}
 			$apiUrl = $iw->getAPI();
-			if( !$apiUrl ) continue;
+			if ( !$apiUrl ) {
+				$missingApi[] = $lang;
+				continue;
+			}
 			$apiUrl .= '?' . wfArrayToCGI( array(
 				'action'	=> 'purge',
-				'format'	=> 'json', //Smallest response
+				'format'	=> 'json',
+				'formatversion' => 2, // Native JSON booleans, including purged:true
 				'titles'	=> implode( '|', array_keys( $pages ) )
 			) );
 //			Http::post( $apiUrl );
 			$response = $mwServices->getHttpRequestFactory()->post( $apiUrl, [], __METHOD__ );
 			$result = is_string( $response ) ? json_decode( $response, true ) : null;
-			if ( !is_array( $result ) || !isset( $result['purge'] ) || isset( $result['error'] ) ) {
+			// Request formatversion=2: in version 1 a successful purged flag
+			// is an empty string, not the JSON boolean true. With version 2
+			// strictly require purged:true for each item. Reject partial batches
+			// and do not automatically retry.
+			$items = is_array( $result ) ? ( $result['purge'] ?? null ) : null;
+			$purged = is_array( $items ) && count( $items ) === count( $pages ) && $items !== [];
+			if ( $purged ) {
+				foreach ( $items as $item ) {
+					if ( !is_array( $item ) || ( $item['purged'] ?? null ) !== true ) {
+						$purged = false;
+						break;
+					}
+				}
+			}
+			if ( !$purged || isset( $result['error'] ) ) {
 				LoggerFactory::getInstance( 'Interlanguage' )->warning(
 					'Remote purge failed or returned an invalid response for interwiki {language}',
 					[ 'language' => $lang ]
 				);
 			}
 			// Keep the existing non-retrying behavior until remote API permissions are verified.
+		}
+
+		if ( $missingInterwiki || $missingApi ) {
+			// Aggregate once per job to avoid a warning for every missing
+			// destination. Do not log page titles, URLs or credentials.
+			LoggerFactory::getInstance( 'Interlanguage' )->warning(
+				'Remote purge skipped: {missing_prefixes} missing interwiki prefixes and ' .
+				'{missing_apis} destinations without API URLs; sample: {languages}',
+				[
+					'missing_prefixes' => count( $missingInterwiki ),
+					'missing_apis' => count( $missingApi ),
+					'languages' => implode( ', ', array_slice(
+						array_merge( $missingInterwiki, $missingApi ), 0, 5
+					) ),
+				]
+			);
 		}
 
 		return true;

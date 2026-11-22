@@ -32,9 +32,21 @@ namespace MediaWiki {
 		}
 	}
 
+	class InterlanguagePurgeTestMissingApiInterwiki extends InterlanguagePurgeTestInterwiki {
+		public function getAPI(): string {
+			return '';
+		}
+	}
+
 	class InterlanguagePurgeTestInterwikiLookup {
 		public function fetch( string $lang ) {
-			return $lang === 'en' ? new InterlanguagePurgeTestInterwiki() : false;
+			if ( $lang === 'en' ) {
+				return new InterlanguagePurgeTestInterwiki();
+			}
+			if ( $lang === 'noapi' ) {
+				return new InterlanguagePurgeTestMissingApiInterwiki();
+			}
+			return false;
 		}
 	}
 
@@ -99,7 +111,7 @@ namespace {
 	$logger = \MediaWiki\Logger\LoggerFactory::getInstance( 'Interlanguage' );
 	$job = new \InterlanguageCentralExtensionPurgeJob(
 		new Title(),
-		[ 'ill' => [ 'en' => [ 'Topic:Subtopic' => true ], 'xx' => [ 'Missing' => true ] ] ]
+		[ 'ill' => [ 'en' => [ 'Topic:Subtopic' => true ] ] ]
 	);
 
 	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true}]}';
@@ -111,7 +123,8 @@ namespace {
 	assertInterlanguagePurge(
 		count( $services->http->urls ) === 1 &&
 			str_contains( $services->http->urls[0], 'action=purge' ) &&
-			str_contains( $services->http->urls[0], 'Topic%3ASubtopic' ),
+			str_contains( $services->http->urls[0], 'Topic%3ASubtopic' ) &&
+			str_contains( $services->http->urls[0], 'formatversion=2' ),
 		'Purge must target the existing remote wiki and retain the full title'
 	);
 
@@ -122,6 +135,82 @@ namespace {
 	$services->http->response = null;
 	assertInterlanguagePurge( $job->run() === true, 'Network failure must preserve the current job semantics' );
 	assertInterlanguagePurge( count( $logger->warnings ) === 2, 'Missing HTTP responses must be logged' );
+
+	// ApiPurge returns an array even when the anonymous request lacks
+	// the purge right: no "purged":true flag is set, only warnings.
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic"}],"warnings":{"main":{"*":"Permission denied"}}}';
+	assertInterlanguagePurge( $job->run() === true, 'Permission denial must not trigger retries' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 3, 'Missing purged:true must be logged' );
+
+	// The v1 wire format encodes a successful boolean flag as an empty
+	// string. A v2 response must use the JSON true literal instead.
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":""}]}';
+	assertInterlanguagePurge( $job->run() === true, 'Legacy format response must not trigger retries' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 4,
+		'Unexpected legacy boolean format must be reported (formatversion=2 requested)' );
+
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":false}]}';
+	assertInterlanguagePurge( $job->run() === true, 'Purge status false must not retry' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 5, 'Explicit false purge status must be logged' );
+
+	$services->http->response = '{"purge":[]}';
+	assertInterlanguagePurge( $job->run() === true, 'Empty response must not retry' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 6, 'Empty purge list must be logged' );
+
+	// A partial batch is not a successful purge, even if its single
+	// returned page is marked purged:true.
+	$multiJob = new \InterlanguageCentralExtensionPurgeJob(
+		new Title(),
+		[ 'ill' => [ 'en' => [
+			'Topic:Subtopic' => true,
+			'Another title' => true,
+		] ] ]
+	);
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true}]}';
+	assertInterlanguagePurge( $multiJob->run() === true, 'Partial batch must keep current job semantics' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 7, 'Partial purge batch must be logged' );
+
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true},{"title":"Another title","purged":true}]}';
+	assertInterlanguagePurge( $multiJob->run() === true, 'Successful multiple purges must complete' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 7, 'Complete batch should not log warnings' );
+
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true},{"title":"Another title"}]}';
+	assertInterlanguagePurge( $multiJob->run() === true, 'Mixed batch must not retry' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 8, 'One missing success flag must be logged' );
+
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true}],"error":{"code":"badrequest"}}';
+	assertInterlanguagePurge( $job->run() === true, 'Global API error must not retry' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 9, 'Global API error must still be logged' );
+
+	// Missing interwiki entries and absent API URLs must be observable,
+	// without HTTP calls or any automatic retry.
+	$missingEndpointsJob = new \InterlanguageCentralExtensionPurgeJob(
+		new Title(),
+		[ 'ill' => [
+			'xx' => [ 'Missing entry' => true ],
+			'noapi' => [ 'Missing endpoint' => true ],
+		] ]
+	);
+	$urlsBefore = count( $services->http->urls );
+	assertInterlanguagePurge( $missingEndpointsJob->run() === true,
+		'Missing endpoints must preserve non-retrying job behavior' );
+	assertInterlanguagePurge( count( $services->http->urls ) === $urlsBefore,
+		'Skipped destinations must not generate HTTP traffic' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 10,
+		'Missing endpoints must generate one aggregated warning per job' );
+	$warning = $logger->warnings[9];
+	assertInterlanguagePurge(
+		$warning[1]['missing_prefixes'] === 1 &&
+		$warning[1]['missing_apis'] === 1 &&
+		str_contains( $warning[1]['languages'], 'xx' ) &&
+		str_contains( $warning[1]['languages'], 'noapi' ),
+		'Missing endpoint warning must distinguish missing prefixes and API URLs'
+	);
+	assertInterlanguagePurge(
+		!str_contains( json_encode( $warning ), 'Missing entry' ) &&
+		!str_contains( json_encode( $warning ), 'Missing endpoint' ),
+		'Missing endpoint warning must not reveal page titles'
+	);
 
 	echo "Interlanguage purge smoke tests: OK\n";
 }
