@@ -3,6 +3,7 @@
 /**
  * Tests loaded together in a disposable MediaWiki 1.43 installation.
  *
+ * @coversNothing
  * @group WikidebatesFarm
  */
 class WikidebatesFarmCombinedExtensionTest extends MediaWikiIntegrationTestCase {
