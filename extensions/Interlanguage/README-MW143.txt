@@ -39,6 +39,7 @@ Tests sans demarrer MediaWiki (sans reseau ni ecriture SQL) :
 	php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguagePaginationSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguagePaginationSqlSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguageForeignPaginationSqlSmokeTest.php
 
 Verifier la syntaxe :
 	php -l extensions/Interlanguage/Interlanguage.php
@@ -89,3 +90,9 @@ Nettoyage du depot (22 novembre 2026)
 - La sauvegarde historique `InterlanguageExtension (Copie).php` a ete retiree du repertoire actif : elle definissait la meme classe que `InterlanguageExtension.php` mais utilisait des API et une deserialisation obsoletes. Le fichier demeure recuperable dans l'historique Git.
 - La verification de syntaxe CI parcourt desormais tous les fichiers PHP presents, sans exception pour la copie supprimee.
 - Aucun changement a la pagination de `ApiQueryLangLinks`, aux ecritures pendant le rendu ou aux purges distantes ; ces comportements demandent des essais fonctionnels FR/EN avant modification.
+
+Tests de pagination : la CI utilise SQLite en memoire et des doubles des services
+MediaWiki pour verifier les limites, les curseurs et le mapping vers la base
+centrale. Elle ne remplace pas un essai de l'API reelle MediaWiki 1.43 avec
+FR/EN et les liens inferes du wiki central ; cette validation reste obligatoire
+avant fusion de la PR #97 et tout deploiement.
