@@ -20,20 +20,21 @@ final class PublicPageGuard {
 		}
 		$services = MediaWikiServices::getInstance();
 		$db = $services->getConnectionProvider()->getPrimaryDatabase();
-		$page = $db->selectRow('page',
-			['page_id', 'page_latest', 'page_touched', 'page_is_redirect'],
+		// Read identity and latest revision visibility in one PRIMARY snapshot.
+		$page = $db->selectRow(
+			['page', 'revision'],
+			['page_id', 'page_latest', 'page_touched', 'page_is_redirect', 'rev_deleted'],
 			['page_namespace' => $title->getNamespace(),
-				'page_title' => $title->getDBkey()], __METHOD__);
+				'page_title' => $title->getDBkey()],
+			__METHOD__,
+			[],
+			['revision' => ['JOIN', 'rev_id = page_latest AND rev_page = page_id']]
+		);
 		if (!$page || (int)$page->page_id < 1 ||
 			(int)$page->page_latest !== $revisionId ||
 			(string)$page->page_touched !== $touched ||
-			(int)$page->page_is_redirect !== 0) {
-			return false;
-		}
-		$visible = $db->selectRow('revision', ['rev_deleted'],
-			['rev_id' => $revisionId, 'rev_page' => (int)$page->page_id],
-			__METHOD__);
-		if (!$visible || (int)$visible->rev_deleted !== 0) {
+			(int)$page->page_is_redirect !== 0 ||
+			(int)$page->rev_deleted !== 0) {
 			return false;
 		}
 		return $services->getPermissionManager()->userCan('read',

@@ -29,16 +29,19 @@ namespace {
 	$db = new class {
 		public $page;
 		public $revision;
-		public function selectRow(string $table, array $fields, array $where, string $caller) {
-			if ($table === 'page') {
-				return $where['page_namespace'] === 0 &&
-					$where['page_title'] === 'Cache_study_argument' ? $this->page : false;
+		public int $reads = 0;
+		public function selectRow($tables, array $fields, array $where, string $caller,
+			array $options = [], array $joins = []) {
+			$this->reads++;
+			if ($tables !== ['page', 'revision'] ||
+				($joins['revision'] ?? null) !== ['JOIN', 'rev_id = page_latest AND rev_page = page_id']) {
+				throw new \RuntimeException('Expected a single joined PRIMARY read');
 			}
-			if ($table === 'revision') {
-				return $this->revision && $where['rev_id'] === $this->page->page_latest &&
-					$where['rev_page'] === $this->page->page_id ? $this->revision : false;
+			if (!$this->page || !$this->revision ||
+				$where['page_namespace'] !== 0 || $where['page_title'] !== 'Cache_study_argument') {
+				return false;
 			}
-			throw new \RuntimeException('Unexpected query');
+			return (object)array_merge((array)$this->page, (array)$this->revision);
 		}
 	};
 	$db->page = (object)[
@@ -79,6 +82,7 @@ namespace {
 	};
 	$allowed = static fn(): bool => PublicPageGuard::matches($title, 25, '20261122120000');
 	$check($allowed(), 'Current public revision can reuse anonymous mobile file');
+	$check($db->reads === 1, 'A public cache HIT performs exactly one PRIMARY select');
 	$check(!PublicPageGuard::matches($title, 26, '20261122120000'),
 		'Stale revision ID is rejected');
 	$check(!PublicPageGuard::matches($title, 25, '20261122120001'),
