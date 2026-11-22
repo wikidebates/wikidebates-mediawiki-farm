@@ -34,6 +34,7 @@ Tests sans demarrer MediaWiki (sans reseau ni ecriture SQL) :
 	php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguageApiSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguageDatabaseSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguageForeignRedirectSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguageCentralSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php
@@ -87,3 +88,11 @@ Nettoyage du depot (22 novembre 2026)
 - La sauvegarde historique `InterlanguageExtension (Copie).php` a ete retiree du repertoire actif : elle definissait la meme classe que `InterlanguageExtension.php` mais utilisait des API et une deserialisation obsoletes. Le fichier demeure recuperable dans l'historique Git.
 - La verification de syntaxe CI parcourt desormais tous les fichiers PHP presents, sans exception pour la copie supprimee.
 - Aucun changement a la pagination de `ApiQueryLangLinks`, aux ecritures pendant le rendu ou aux purges distantes ; ces comportements demandent des essais fonctionnels FR/EN avant modification.
+
+Audit 22 novembre 2026 : FR est utilise comme wiki central ; EN configure
+une connexion SQL vers cette base, une URL API et un prefixe interwiki.
+InterlanguageExtension::getLinks() donne la priorite au SQL sans repli
+HTTP en cas d'erreur SQL. prop=langlinks est traite par la classe native
+MediaWiki\\Api\\ApiQueryLangLinks sur les deux wikis (PR #97 non fusionnee).
+Le test de redirection central couvre les cibles manquantes, espaces de noms
+et la priorite SQL. Les purges distantes ne sont pas modifiees.

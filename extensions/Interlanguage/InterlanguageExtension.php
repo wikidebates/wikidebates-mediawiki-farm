@@ -287,11 +287,17 @@ class InterlanguageExtension {
 					'page_id',
 					[
 						'rd_title = page_title',
+						'rd_namespace = page_namespace',
 						'rd_from' => $res->page_id,
 					],
 					__FUNCTION__
 				);
 				$res = $res->fetchObject();
+				if ( $res === false ) {
+					// The central redirect has no valid target page.
+					$a['query']['pages'][-1] = [ 'missing' => '' ];
+					return $a;
+				}
 			}
 
 			$a['query']['pages'][0] = [ 'langlinks' => $this->readLinksFromDB( $this->foreignDbr, $res->page_id ) ];
