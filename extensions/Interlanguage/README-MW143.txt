@@ -87,3 +87,15 @@ Nettoyage du depot (22 novembre 2026)
 - La sauvegarde historique `InterlanguageExtension (Copie).php` a ete retiree du repertoire actif : elle definissait la meme classe que `InterlanguageExtension.php` mais utilisait des API et une deserialisation obsoletes. Le fichier demeure recuperable dans l'historique Git.
 - La verification de syntaxe CI parcourt desormais tous les fichiers PHP presents, sans exception pour la copie supprimee.
 - Aucun changement a la pagination de `ApiQueryLangLinks`, aux ecritures pendant le rendu ou aux purges distantes ; ces comportements demandent des essais fonctionnels FR/EN avant modification.
+
+Correction MW 1.43 (23 novembre 2026) : LinksUpdate
+- getLanguageLinks() retourne une liste de chaines "lang:page", sans cle
+  de langue ; le hook central historique construisait un tableau numerique
+  et risquait d'envoyer des jobs aux prefixes 0, 1, etc.
+- Le hook normalise maintenant en langue => titre => true, comme le
+  traitement natif LangLinksTable (premier titre prioritaire), conserve les
+  deux cibles d'un renommage et ne purge pas une page sans ParserOutput.
+- Test sans reseau, SQL reel ou ecriture :
+	php extensions/Interlanguage/tests/InterlanguageCentralJobHookSmokeTest.php
+- Sur une production ou le manifeste vient d'etre active : revenir au
+  chargement historique jusqu'a validation et deploiement de ce correctif.

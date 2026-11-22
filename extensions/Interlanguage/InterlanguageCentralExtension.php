@@ -41,23 +41,25 @@ class InterlanguageCentralExtension {
 
 		$oldILL = self::getILL( DB_REPLICA, $title );
 
-		if ( method_exists( $linksUpdate, 'getInterlanguageLinks' ) ) {
-			$newILL = $linksUpdate->getInterlanguageLinks();
-		} else {
-			$parserOutput = $linksUpdate->getParserOutput();
-			$newILL = $parserOutput instanceof ParserOutput
-				? $parserOutput->getLanguageLinks()
-				: [];
+		$parserOutput = $linksUpdate->getParserOutput();
+		if ( !$parserOutput instanceof ParserOutput ) {
+			return true;
 		}
 
-		if ( !is_array( $newILL ) ) {
-			$newILL = [];
-		}
-
-		foreach ( $newILL as $k => $v ) {
-			if ( !is_array( $v ) ) {
-				$newILL[$k] = [ $v => true ];
+		// MW 1.43 ParserOutput::getLanguageLinks() returns a numeric list of
+		// "lang:title" strings, not a map keyed by language. Match core's
+		// LangLinksTable conversion so jobs target actual interwiki prefixes.
+		$newILL = [];
+		foreach ( $parserOutput->getLanguageLinks() as $link ) {
+			if ( !is_string( $link ) || !str_contains( $link, ':' ) ) {
+				continue;
 			}
+			[ $lang, $target ] = explode( ':', $link, 2 );
+			if ( $lang === '' || $target === '' ) {
+				continue;
+			}
+			// Preserve the first target per language, like LangLinksTable.
+			$newILL[$lang] ??= [ $target => true ];
 		}
 
 		if (
