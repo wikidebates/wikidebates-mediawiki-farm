@@ -1,0 +1,38 @@
+name: Public anonymous HTML CDN headers (read-only)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tests/ci/publicCdnHeaderAudit.py'
+      - 'tests/ci/testPublicCdnHeaderAudit.py'
+      - '.github/workflows/public-cdn-header-audit.yml'
+      - 'docs/wikidebates-cdn-cache-audit.md'
+
+permissions:
+  contents: read
+
+jobs:
+  public-headers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tests/ci/publicCdnHeaderAudit.py
+            tests/ci/testPublicCdnHeaderAudit.py
+      - name: Offline tests (no requests)
+        run: |
+          python3 -m py_compile tests/ci/publicCdnHeaderAudit.py tests/ci/testPublicCdnHeaderAudit.py
+          python3 -m unittest discover -s tests/ci -p 'testPublicCdnHeaderAudit.py'
+      - name: Check public CDN response headers (at most six anonymous GETs)
+        run: python3 tests/ci/publicCdnHeaderAudit.py
+      - name: Preserve sanitized results only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wikidebates-public-cdn-headers
+          path: wikidebates-public-cdn-headers.json
+          if-no-files-found: warn
