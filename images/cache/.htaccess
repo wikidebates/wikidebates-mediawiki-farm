@@ -1,0 +1,4 @@
+# Private HTML files: never allow a web request to bypass MediaWiki permissions.
+# Apache 2.4 only. nginx, proxies, aliases and disabled AllowOverride need
+# separate configuration; this file is defense in depth, not proof of safety.
+Require all denied
