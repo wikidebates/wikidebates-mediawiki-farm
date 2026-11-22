@@ -23,7 +23,7 @@
 
 - Les *gitlinks* (SHAs versionnes par la ferme) sont la source de verite pour une version reproductible. Utiliser `git submodule update --init --recursive` sans `--remote` lors d'un deploiement controle.
 - `extensions/VEForAll` est epingle sur `35090688defd17b7650a30dc3d5b37da09d170dc` ; `.gitmodules` suit desormais `main` dans `wikidebates/wikidebates-veforall`. Le fork VEForAll utilise encore `wikidebates-REL1_44` comme branche **par defaut GitHub** ; la bascule manuelle et la protection de son `main` sont suivies dans [VEForAll #14](https://github.com/wikidebates/wikidebates-veforall/issues/14).
-- `extensions/Wikidebates` est epingle sur `40b723cf5ca8b1b001e9246b60e5338c8159bdd1` depuis la synchronisation du marquage des purges semantiques (Wikidebates Core PR #69). Le coordinateur de preparation et les commandes ciblees ont ete integres auparavant par la PR #91. Le journal de preparation est desactive par defaut (`WikidebatesCachePreparationDirectory=false`). Les options `WikidebatesSemanticCacheTracking` et `WikidebatesSemanticCacheEagerPurge` restent a `false` ; la fraicheur SMW reste geree separement.
+- `extensions/Wikidebates` est epingle sur `461cfe4cd32e0417ac4c4b7f9042a80509f5666b` (Core PR #70 et #71 : generations de file anti-course et re-preparation ciblee des pages invalidees par SMW). Les commandes Vector, Minerva et Lecture sont disponibles ; le journal reste desactive par defaut (`WikidebatesCachePreparationDirectory=false`), de meme que `WikidebatesSemanticCacheTracking=false` et `WikidebatesSemanticCacheEagerPurge=false`. Aucun cron n'est ajoute : les jobs SMW doivent avoir termine, y compris leurs mises a jour differees de `page_touched`, avant tout lancement manuel du coordinateur.
 
 ## Validation et deploiement
 
