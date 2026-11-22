@@ -41,4 +41,5 @@ jobs:
           php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
           php extensions/Interlanguage/tests/InterlanguageCentralSmokeTest.php
           php extensions/Interlanguage/tests/InterlanguageCentralJobHookSmokeTest.php
+          php extensions/Interlanguage/tests/InterlanguageCentralPurgePipelineSmokeTest.php
           php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php

@@ -99,3 +99,18 @@ Correction MW 1.43 (23 novembre 2026) : LinksUpdate
 	php extensions/Interlanguage/tests/InterlanguageCentralJobHookSmokeTest.php
 - Sur une production ou le manifeste vient d'etre active : revenir au
   chargement historique jusqu'a validation et deploiement de ce correctif.
+
+Validation de la chaine de purge (simulation hors production)
+- Le test InterlanguageCentralPurgePipelineSmokeTest.php utilise les classes
+  reelles du hook central et du job mais simule la base, la file et l'HTTP.
+  Il verifie : pas de job pour un lien inchange ; un job pour une nouvelle
+  cible ; purge des titres EN anciens et nouveaux ; aucune requete sur une
+  autre destination ; aucune erreur API lorsque la purge est acceptee.
+	php extensions/Interlanguage/tests/InterlanguageCentralPurgePipelineSmokeTest.php
+- Ce test ne valide pas les jobs, la base et les caches de production.
+  Activer le manifeste uniquement apres integration des correctifs, puis
+  faire une recette FR/EN sur une modification d'une page de test.
+- LocalSettings sur le wiki central FR, une fois le code deploye :
+	wfLoadExtension( 'Interlanguage' );
+  Sur EN : conserver require_once( $IP . '/extensions/Interlanguage/Interlanguage.php' );
+  Ne pas charger les deux points d'entree sur FR simultanement.
