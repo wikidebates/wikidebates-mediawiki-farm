@@ -87,3 +87,12 @@ Nettoyage du depot (22 novembre 2026)
 - La sauvegarde historique `InterlanguageExtension (Copie).php` a ete retiree du repertoire actif : elle definissait la meme classe que `InterlanguageExtension.php` mais utilisait des API et une deserialisation obsoletes. Le fichier demeure recuperable dans l'historique Git.
 - La verification de syntaxe CI parcourt desormais tous les fichiers PHP presents, sans exception pour la copie supprimee.
 - Aucun changement a la pagination de `ApiQueryLangLinks`, aux ecritures pendant le rendu ou aux purges distantes ; ces comportements demandent des essais fonctionnels FR/EN avant modification.
+
+Audit de la purge distante (22 novembre 2026)
+- Le module natif MediaWiki 1.43 action=purge peut renvoyer une liste purge
+  sans purged:true lorsqu'une autorisation est refusee.
+- Verifier chaque indicateur purged:true et le nombre de pages de la reponse :
+  sinon le job journalise un avertissement sans ajouter de tentative ni modifier
+  les permissions ou les parametres d'authentification.
+- La journalisation ne garantit pas une purge effective ; recette interwikis
+  et permissions API requises avant toute politique de reessais.

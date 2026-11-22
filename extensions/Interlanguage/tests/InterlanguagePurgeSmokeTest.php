@@ -123,5 +123,44 @@ namespace {
 	assertInterlanguagePurge( $job->run() === true, 'Network failure must preserve the current job semantics' );
 	assertInterlanguagePurge( count( $logger->warnings ) === 2, 'Missing HTTP responses must be logged' );
 
+	// ApiPurge returns an array even when the anonymous request lacks
+	// the purge right: no "purged":true flag is set, only warnings.
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic"}],"warnings":{"main":{"*":"Permission denied"}}}';
+	assertInterlanguagePurge( $job->run() === true, 'Permission denial must not trigger retries' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 3, 'Missing purged:true must be logged' );
+
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":false}]}';
+	assertInterlanguagePurge( $job->run() === true, 'Purge status false must not retry' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 4, 'Explicit false purge status must be logged' );
+
+	$services->http->response = '{"purge":[]}';
+	assertInterlanguagePurge( $job->run() === true, 'Empty response must not retry' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 5, 'Empty purge list must be logged' );
+
+	// A partial batch is not a successful purge, even if its single
+	// returned page is marked purged:true.
+	$multiJob = new \InterlanguageCentralExtensionPurgeJob(
+		new Title(),
+		[ 'ill' => [ 'en' => [
+			'Topic:Subtopic' => true,
+			'Another title' => true,
+		] ] ]
+	);
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true}]}';
+	assertInterlanguagePurge( $multiJob->run() === true, 'Partial batch must keep current job semantics' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 6, 'Partial purge batch must be logged' );
+
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true},{"title":"Another title","purged":true}]}';
+	assertInterlanguagePurge( $multiJob->run() === true, 'Successful multiple purges must complete' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 6, 'Complete batch should not log warnings' );
+
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true},{"title":"Another title"}]}';
+	assertInterlanguagePurge( $multiJob->run() === true, 'Mixed batch must not retry' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 7, 'One missing success flag must be logged' );
+
+	$services->http->response = '{"purge":[{"title":"Topic:Subtopic","purged":true}],"error":{"code":"badrequest"}}';
+	assertInterlanguagePurge( $job->run() === true, 'Global API error must not retry' );
+	assertInterlanguagePurge( count( $logger->warnings ) === 8, 'Global API error must still be logged' );
+
 	echo "Interlanguage purge smoke tests: OK\n";
 }

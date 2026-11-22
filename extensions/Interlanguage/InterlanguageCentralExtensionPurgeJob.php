@@ -59,7 +59,20 @@ class InterlanguageCentralExtensionPurgeJob extends Job {
 //			Http::post( $apiUrl );
 			$response = $mwServices->getHttpRequestFactory()->post( $apiUrl, [], __METHOD__ );
 			$result = is_string( $response ) ? json_decode( $response, true ) : null;
-			if ( !is_array( $result ) || !isset( $result['purge'] ) || isset( $result['error'] ) ) {
+			// MediaWiki ApiPurge returns a "purge" array even when a user is
+			// denied the "purge" right. Only "purged":true confirms success.
+			// Also reject partial batches; do not automatically retry.
+			$items = is_array( $result ) ? ( $result['purge'] ?? null ) : null;
+			$purged = is_array( $items ) && count( $items ) === count( $pages ) && $items !== [];
+			if ( $purged ) {
+				foreach ( $items as $item ) {
+					if ( !is_array( $item ) || ( $item['purged'] ?? null ) !== true ) {
+						$purged = false;
+						break;
+					}
+				}
+			}
+			if ( !$purged || isset( $result['error'] ) ) {
 				LoggerFactory::getInstance( 'Interlanguage' )->warning(
 					'Remote purge failed or returned an invalid response for interwiki {language}',
 					[ 'language' => $lang ]
