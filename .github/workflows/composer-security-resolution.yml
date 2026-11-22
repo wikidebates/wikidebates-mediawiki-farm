@@ -32,7 +32,8 @@ jobs:
       - name: Resolve patched developer tools without install scripts
         run: |
           cp composer.lock /tmp/composer.lock.before
-          composer update phpcsstandards/phpcsutils squizlabs/php_codesniffer --with-all-dependencies --no-scripts --no-interaction --no-progress --no-install
+          composer install --no-scripts --no-interaction --no-progress --prefer-dist
+          composer update mediawiki/mediawiki-codesniffer phpcsstandards/phpcsextra phpcsstandards/phpcsutils squizlabs/php_codesniffer --with-all-dependencies --no-scripts --no-interaction --no-progress --no-install
       - name: Emit exact lock changes for reviewed PR patch
         run: |
           php -r '
