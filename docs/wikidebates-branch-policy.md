@@ -23,7 +23,7 @@
 
 - Les *gitlinks* (SHAs versionnes par la ferme) sont la source de verite pour une version reproductible. Utiliser `git submodule update --init --recursive` sans `--remote` lors d'un deploiement controle.
 - `extensions/VEForAll` est epingle sur `35090688defd17b7650a30dc3d5b37da09d170dc` ; `.gitmodules` suit desormais `main` dans `wikidebates/wikidebates-veforall`. Le fork VEForAll utilise encore `wikidebates-REL1_44` comme branche **par defaut GitHub** ; la bascule manuelle et la protection de son `main` sont suivies dans [VEForAll #14](https://github.com/wikidebates/wikidebates-veforall/issues/14).
-- `extensions/Wikidebates` est epingle sur `7f99d269fdfcf335f8ba12c12ad78bee19954046` depuis la PR #91 (coordinateur de preparation et lecture ciblee). Le journal de preparation est desactive par defaut (`WikidebatesCachePreparationDirectory=false`). Les options `WikidebatesSemanticCacheTracking` et `WikidebatesSemanticCacheEagerPurge` restent a `false` ; la fraicheur SMW reste differée.
+- `extensions/Wikidebates` est epingle sur `40b723cf5ca8b1b001e9246b60e5338c8159bdd1` depuis la synchronisation du marquage des purges semantiques (Wikidebates Core PR #69). Le coordinateur de preparation et les commandes ciblees ont ete integres auparavant par la PR #91. Le journal de preparation est desactive par defaut (`WikidebatesCachePreparationDirectory=false`). Les options `WikidebatesSemanticCacheTracking` et `WikidebatesSemanticCacheEagerPurge` restent a `false` ; la fraicheur SMW reste geree separement.
 
 ## Validation et deploiement
 
