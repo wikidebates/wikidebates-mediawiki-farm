@@ -20,7 +20,7 @@ Les workflows GitHub Actions continuent de s'executer selon leurs propres declen
 
 ## Sous-modules et reproductibilite
 
-- Le depot de la ferme contient 52 gitlinks enregistres au 23 novembre 2026, dont un sous-module d'outillage Docker facultatif sous `extensions/CrawlerProtection/build`.
+- Le depot de la ferme contient 53 gitlinks enregistres au 23 novembre 2026, dont un sous-module d'outillage Docker facultatif sous `extensions/CrawlerProtection/build`.
 - Les gitlinks epinglent les commits deployables ; la valeur `branch` de `.gitmodules` n'actualise pas ces commits.
 - `extensions/VEForAll` est epingle sur `35090688defd17b7650a30dc3d5b37da09d170dc`, avec `branch = main`.
 - `extensions/Wikidebates` est epingle sur `daf094a0a7ba7612d3fb782b9c1d762d5032cffe`, avec `branch = main`.
