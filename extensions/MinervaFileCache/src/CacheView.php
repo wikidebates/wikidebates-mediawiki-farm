@@ -141,7 +141,9 @@ trait CacheView {
 		$expiryScope = MediaWikiServices::getInstance()->getHookContainer()->scopedRegister('ParserOutputPostCacheTransform',
 			static function ($output) use (&$expires, $identity) {
 				if ($output->getCacheRevisionId() === $identity['revision'] && $output->isCacheable()) {
-					$expires = (int)wfTimestamp(TS_UNIX, $output->getCacheTime()) + $output->getCacheExpiry();
+					// Public-share eligibility must be positive, but parser expiry is not
+					// the lifetime of our private, revision-bound anonymous HTML file.
+					$expires = $output->getCacheExpiry() > 0 ? PHP_INT_MAX : 0;
 				}
 			});
 		ob_start(function ($html, $phase) use ($store, $page, $variant, $identity, $snapshot, $fill, $context, &$expires, $expiryScope) {

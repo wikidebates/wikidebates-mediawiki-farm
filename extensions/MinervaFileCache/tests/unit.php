@@ -14,6 +14,8 @@ function check($value, string $message): void {
 $manifest = json_decode(file_get_contents(dirname(__DIR__) . '/extension.json'), true, 512, JSON_THROW_ON_ERROR);
 check(($manifest['config']['MinervaFileCacheEnabled']['value'] ?? null) === true,
 	'Loading the extension enables mobile file cache by default');
+check(($manifest['config']['MinervaFileCacheTTL']['value'] ?? null) === 0,
+	'Eligible Minerva HTML files have no default age limit');
 $dir = sys_get_temp_dir() . '/minerva-store-unit-' . bin2hex(random_bytes(6));
 mkdir($dir, 0700);
 try {
@@ -328,6 +330,38 @@ try {
 	$snapshot = $alias->read('A', 'canonical-path', $identity);
 	check($alias->publish('A', 'canonical-path', $identity, $snapshot['generation'], 'CANONICAL', []),
 		'Equivalent noncanonical directory paths still publish atomically');
+	$long = new Store($dir, 'long-wiki', 99999999, 4096);
+	$longSnapshot = $long->read('A', 'common', $identity);
+	check($long->publish('A', 'common', $identity, $longSnapshot['generation'], 'LONG', []),
+		'Long configured retention is accepted');
+	$longEntry = $long->read('A', 'common', $identity)['entry'];
+	check($longEntry['expires'] > $longEntry['created'] + 2592000,
+		'Configured retention exceeds thirty days');
+	$unlimited = new Store($dir, 'unlimited-wiki', 0, 4096);
+	$unlimitedSnapshot = $unlimited->readIfPresent('A', 'common', $identity);
+	check($unlimited->publish('A', 'common', $identity, $unlimitedSnapshot['generation'],
+		'UNLIMITED', [], PHP_INT_MAX, true), 'Zero TTL accepts long-lived content');
+	check($unlimited->read('A', 'common', $identity)['entry']['expires'] === PHP_INT_MAX,
+		'Zero TTL retains caller expiry without truncation');
+	check($unlimited->prune() === 0, 'Unlimited retention survives prune');
+
+	// Migration regression: existing valid entries older than 30 days must survive.
+	$old = $unlimited->read('Old', 'common', $identity);
+	check($unlimited->publish('Old', 'common', $identity, $old['generation'],
+		'FORTY_DAYS_OLD', [], PHP_INT_MAX), 'Long-lived old entry can be published');
+	$oldHash = hash('sha256', 'Old');
+	$oldPath = $dir . '/' . hash('sha256', 'unlimited-wiki') . '/' . substr($oldHash, 0, 2) .
+		'/' . $oldHash . '/' . hash('sha256', 'common') . '.cache';
+	$oldData = json_decode(gzdecode(file_get_contents($oldPath)), true, 512, JSON_THROW_ON_ERROR);
+	$oldData['created'] = time() - 40 * 86400;
+	file_put_contents($oldPath, gzencode(json_encode($oldData)));
+	touch($oldPath, time() - 40 * 86400);
+	check($unlimited->read('Old', 'common', $identity)['entry']['body'] === 'FORTY_DAYS_OLD',
+		'TTL zero accepts a valid entry created more than thirty days ago');
+	check($unlimited->prune() === 0 && is_file($oldPath),
+		'Pruning preserves existing valid content older than thirty days');
+	check(!$unlimited->publish('A', 'expired', $identity, $unlimitedSnapshot['generation'],
+		'NOT_STORED', [], time() - 1), 'Caller expiry still prevents publication');
 	echo json_encode(['assertions' => $assertions, 'result' => 'PASS']) . "\n";
 } finally {
 	$iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS), RecursiveIteratorIterator::CHILD_FIRST);

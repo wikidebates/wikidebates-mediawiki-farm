@@ -1,0 +1,41 @@
+name: Minerva disposable MediaWiki 1.43 integration
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/MinervaFileCache/**'
+      - '.github/workflows/minerva-disposable-integration.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: mbstring,intl,xml,dom,pdo_sqlite,sqlite3,curl
+      - name: Prepare disposable pinned MediaWiki 1.43, MobileFrontend and MinervaNeue
+        run: |
+          LAB="$RUNNER_TEMP/minerva-file-cache-$GITHUB_RUN_ID"
+          python3 extensions/MinervaFileCache/tests/prepare.py "$LAB"
+          echo "MINERVA_TEST_ROOT=$LAB" >> "$GITHUB_ENV"
+      - name: Initialize only the disposable SQLite wiki
+        run: php extensions/MinervaFileCache/tests/manage.php initialize
+      - name: Real anonymous HTTP, authenticated, invalidation and lifetime checks
+        run: php extensions/MinervaFileCache/tests/integration.php
+      - name: Preserve disposable regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minerva-disposable-php84
+          path: ${{ env.MINERVA_TEST_ROOT }}/state/extension-tests.json
+          if-no-files-found: ignore

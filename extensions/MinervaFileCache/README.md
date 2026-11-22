@@ -112,15 +112,17 @@ mettant `$wgMinervaFileCacheDebugHeaders = false` si souhaité.
 - Les fichiers sont compressés sur disque. La compression HTTP reste gérée par
   MediaWiki, PHP ou le serveur web, avec les réglages existants.
 
-La durée maximale est de **2 592 000 secondes (30 jours)** par défaut. Les modifications de page,
-purges et invalidations de dépendances retirent les variantes mobiles via le
-pipeline HTML de MediaWiki. Les jobs de mise à jour des dépendances doivent
-fonctionner, comme pour les autres caches MediaWiki.
+Par défaut, **aucune expiration temporelle** n'est appliquée aux fichiers HTML
+anonymes éligibles (`TTL = 0`). Une modification de la page, une purge explicite,
+une évolution de l'époque de déploiement ou un contrôle de sécurité peut toujours
+les invalider. À ce stade, le hook `TitleSquidURLs` invalide également les pages
+dépendantes ; l'assouplissement des purges sémantiques indirectes nécessite une
+validation distincte.
 
 Les paramètres facultatifs sont :
 
 ```php
-$wgMinervaFileCacheTTL = 2592000; // Maximum 30 jours, limité aussi par le ParserOutput.
+$wgMinervaFileCacheTTL = 0; // Pas d'expiration liée au temps ; entier positif = plafond en secondes.
 $wgMinervaFileCacheMaxBytes = 4194304; // Taille maximale du HTML par fichier.
 $wgMinervaFileCacheDebugHeaders = true;
 $wgMinervaFileCacheEpoch = '1';
@@ -497,10 +499,16 @@ mode lecture continuent de suivre leur chemin actuel et leur parser cache.
 
 ### Durée des sources du lecteur
 
-La durée par défaut est maintenant de 30 jours maximum. Une écriture conserve
-également l’expiration restante du ParserOutput ; les contenus dynamiques gardent
-leurs durées réduites. Pour les pages stables, vérifier aussi
-`$wgParserCacheExpireTime = 2592000` : conserver son plafond plus court empêcherait
-d’atteindre cette durée. Les anciennes entrées ne voient pas leur échéance prolongée.
-Quand Wikidebates est chargé, le lecteur peut réutiliser ces fichiers après le
-cache natif Vector ; l’extension reste installable et utilisable seule.
+La durée positive de `ParserOutput` confirme l'éligibilité du rendu, mais ne
+limite plus automatiquement la conservation du fichier Minerva. Une expiration
+nulle (`__NOCACHE__` ou refus du cache public) reste bloquante : l'extension ne
+transforme jamais un rendu non partageable en fichier anonyme. Les en-têtes,
+les cookies, les nonces, les droits de lecture et les identités de page restent
+contrôlés. Une durée positive configurée via `MinervaFileCacheTTL` plafonne
+indépendamment l'âge du fichier, sans dépasser le TTL demandé.
+
+Les anciens fichiers encore valides selon leur échéance stockée restent lisibles,
+mais leurs anciennes échéances ne sont **pas** étendues rétroactivement ; les
+fichiers déjà expirés seront régénérés à la demande. Quand Wikidebates est
+chargé, le lecteur peut réutiliser ces fichiers après le cache natif Vector ;
+l'extension reste utilisable seule.
