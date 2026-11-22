@@ -131,6 +131,40 @@ l'habillage ou des réglages de rendu. Cela invalide les anciennes entrées
 immédiatement. Une purge de la page ou une édition ordinaire ne nécessite pas
 de changer ce réglage.
 
+## Invalidations et visibilité des fichiers existants
+
+MediaWiki déclenche une purge HTML lors des suppressions et des
+modifications de visibilité des révisions. L'extension continue d'invalider
+ses variantes via `TitleSquidURLs` et écoute aussi
+`ArticleRevisionVisibilitySet` pour supprimer explicitement
+la génération mobile après un masquage de révision.
+
+Une purge peut cependant être différée ou échouer. **Avant un HIT**,
+MinervaFileCache vérifie donc sur la **base primaire** que le titre demandé
+désigne encore la même révision et le même `page_touched`, que
+`rev_deleted` est nul (contenu *et* métadonnées visibles),
+et que la lecture anonyme reste autorisée. La même vérification est
+répétée avant et après publication d'un nouveau fichier. Une
+révision masquée ne peut pas réutiliser un ancien HTML simplement
+parce que son numéro de révision n'a pas changé. Une protection de
+type « édition réservée aux administrateurs » ne retire pas à elle
+seule le droit de lecture publique.
+
+Ce contrôle impose une consultation de la base primaire sur les
+vues mobiles éligibles : c'est un choix explicite de confidentialité
+contre une partie du gain de latence des HIT. Une panne de la base
+empêche la validation du fichier et fait revenir au rendu MediaWiki
+normal ; elle ne doit pas autoriser l'utilisation du HTML stocké.
+
+Les tests couvrent les refus de lecture avec un fichier encore
+présent, la suppression, le déplacement et la purge postcommit
+simulée de RevisionDelete, ainsi que les différents bits de
+`rev_deleted` en tests unitaires. Les changements
+d'autorisation pendant une réponse déjà en cours restent soumis
+aux garanties ordinaires de MediaWiki ; les vérifications ne
+remplacent pas la protection des accès au niveau du serveur web
+ou du CDN.
+
 ## Préchauffage des pages
 
 La commande de maintenance `prewarm` visite les pages avec de **vraies requêtes
