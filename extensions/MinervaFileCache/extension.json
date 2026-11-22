@@ -14,7 +14,8 @@
 	"MessagesDirs": {"MinervaFileCache": ["i18n"]},
 	"Hooks": {
 		"ArticleFromTitle": "MediaWiki\\Extension\\MinervaFileCache\\Hooks::onArticleFromTitle",
-		"TitleSquidURLs": "MediaWiki\\Extension\\MinervaFileCache\\Hooks::onTitleSquidURLs"
+		"TitleSquidURLs": "MediaWiki\\Extension\\MinervaFileCache\\Hooks::onTitleSquidURLs",
+		"ArticleRevisionVisibilitySet": "MediaWiki\\Extension\\MinervaFileCache\\Hooks::onArticleRevisionVisibilitySet"
 	},
 	"config": {
 		"MinervaFileCacheEnabled": {"value": true},
