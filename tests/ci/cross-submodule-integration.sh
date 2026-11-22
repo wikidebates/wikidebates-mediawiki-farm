@@ -67,6 +67,13 @@ wfLoadExtension( 'Flow' );
 wfLoadExtension( 'Wikidebates' );
 PHP
 export MW_CONFIG_FILE="$config/LocalSettings.php"
+# Flow ships abstract schema JSON but no pre-generated SQLite SQL file.
+# Generate the schema only in this disposable CI checkout before running update.php.
+php maintenance/run.php generateSchemaSql \
+    --json extensions/Flow/sql/tables.json \
+    --sql extensions/Flow/sql \
+    --type sqlite
+test -s extensions/Flow/sql/sqlite/tables-generated.sql
 php maintenance/run.php update --quick
 vendor/bin/phpunit tests/phpunit/integration/WikidebatesFarmCombinedExtensionTest.php
 vendor/bin/phpunit \

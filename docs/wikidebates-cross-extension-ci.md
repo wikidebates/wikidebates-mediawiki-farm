@@ -11,3 +11,5 @@ Les tests existants de navigateur sont dans le workflow PageForms ; ils ne se su
 **VEForAll** : la branche de suivi du sous-module est désormais `main` dans le fork `wikidebates-veforall`, créé au même commit que la branche stable auparavant référencée. Aucun gitlink n'a été déplacé. GitHub affiche encore la branche datée comme branche par défaut du fork tant que l'administrateur n'a pas changé ce paramètre.
 
 **Limite connue** : ce test ne couvre **pas les modifications propres au fork privé MinervaNeue**. Un accès GitHub Actions en lecture seule à ce dépôt, accordé explicitement par un administrateur, permettra ultérieurement de tester ce code exact. En attendant, des tests sur l'interface Minerva du site ou une préproduction restent nécessaires.
+
+Flow est fourni avec `sql/tables.json` sans SQL SQLite pré-généré. Le job compile ce schéma **dans sa copie jetable** via la commande native `generateSchemaSql` avant la mise à jour de la base de test. Aucun SQL ni table de production ne sont modifiés.
