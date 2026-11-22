@@ -9,6 +9,7 @@ on:
       - 'extensions/VEForAll'
       - 'extensions/VisualEditor'
       - 'extensions/Echo'
+      - 'extensions/AbuseFilter'
       - 'skins/MinervaNeue'
       - 'extensions/PageFormsWikidebates/**'
       - 'extensions/Flow/**'
@@ -26,6 +27,7 @@ on:
       - 'extensions/VEForAll'
       - 'extensions/VisualEditor'
       - 'extensions/Echo'
+      - 'extensions/AbuseFilter'
       - 'skins/MinervaNeue'
       - 'extensions/PageFormsWikidebates/**'
       - 'extensions/Flow/**'
@@ -53,7 +55,8 @@ jobs:
             extensions/Wikidebates \
             extensions/VEForAll \
             extensions/VisualEditor \
-            extensions/Echo
+            extensions/Echo \
+            extensions/AbuseFilter
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
