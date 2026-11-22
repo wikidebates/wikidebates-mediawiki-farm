@@ -116,12 +116,12 @@ class ApiQueryLangLinks extends ApiQueryBase {
 					continue;
 				}
 				$this->inferredPageLinks[$localId] = true;
-				$this->addResult( (object)$obj, $params, $prop );
+				$this->addResult( (object)$obj, $params, $prop, [ $localId ] );
 			}
 		}
 	}
 
-	private function addResult( $row, $params, $prop ) {
+	private function addResult( $row, $params, $prop, ?array $pageIds = null ) {
 		$entry = [ 'lang' => $row->ll_lang ];
 		if ( isset( $prop['url'] ) ) {
 			$title = Title::newFromText( "{$row->ll_lang}:{$row->ll_title}" );
@@ -136,9 +136,9 @@ class ApiQueryLangLinks extends ApiQueryBase {
 			$entry['autonym'] = Language::fetchLanguageName( $row->ll_lang );
 		}
 		ApiResult::setContentValue( $entry, 'title', $row->ll_title );
-		$localIds = self::getInterlanguageExtensionDB()
+		$localIds = $pageIds ?? ( self::getInterlanguageExtensionDB()
 			? array_keys( $this->localPageIdsByCentralId[(int)$row->ll_from] ?? [] )
-			: [ (int)$row->ll_from ];
+			: [ (int)$row->ll_from ] );
 		foreach ( $localIds as $localId ) {
 			if ( !$this->addPageSubItem( $localId, $entry ) ) {
 				return false;
