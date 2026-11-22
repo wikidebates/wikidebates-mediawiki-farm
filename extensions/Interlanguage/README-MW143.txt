@@ -37,6 +37,8 @@ Tests sans demarrer MediaWiki (sans reseau ni ecriture SQL) :
 	php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguageCentralSmokeTest.php
 	php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguagePaginationSmokeTest.php
+	php extensions/Interlanguage/tests/InterlanguagePaginationSqlSmokeTest.php
 
 Verifier la syntaxe :
 	php -l extensions/Interlanguage/Interlanguage.php

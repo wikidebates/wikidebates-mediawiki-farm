@@ -29,6 +29,7 @@ jobs:
         with:
           php-version: '8.4'
           coverage: none
+          extensions: sqlite3, pdo_sqlite
       - name: Lint active Interlanguage files
         run: |
           find extensions/Interlanguage -type f -name '*.php' -print0 |
@@ -47,3 +48,5 @@ jobs:
         run: php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php
       - name: Pagination isolated regression test
         run: php extensions/Interlanguage/tests/InterlanguagePaginationSmokeTest.php
+      - name: Pagination real SQLite regression test
+        run: php extensions/Interlanguage/tests/InterlanguagePaginationSqlSmokeTest.php
