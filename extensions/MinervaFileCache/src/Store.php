@@ -175,7 +175,7 @@ class Store {
 			}
 			// mtime is the expiry of new cache files. Older files are migrated by prune().
 			// This is only a cleaning hint: read() always validates the stored expiry.
-			@touch($temp, $expires);
+			@touch($temp, min($expires, 2147483647));
 			$lock = $this->lock($dir, 'page.lock', LOCK_EX);
 			if (!$lock) { return false; }
 			try {
@@ -267,7 +267,7 @@ class Store {
 						$count += (int)@unlink($path);
 					} else {
 						// Upgrade an existing valid legacy entry for the next pass.
-						@touch($path, $expires);
+						@touch($path, min($expires, 2147483647));
 					}
 				}
 			} finally { fclose($lock); }
