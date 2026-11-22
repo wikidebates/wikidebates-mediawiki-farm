@@ -9,3 +9,9 @@ Le workflow `pinned-dependencies-audit.yml` produit un rapport **en lecture seul
 Le déclencheur hebdomadaire `schedule` n'exécutera ce workflow de `main` qu'une fois `main` définie comme branche par défaut dans les paramètres GitHub. Suivi administratif : [#71](https://github.com/wikidebates/wikidebates-mediawiki-farm/issues/71).
 
 **Hors champ :** aucune modification des caches SMW ou de leurs options. La fraîcheur sémantique reste différée : [Wikidebates Core #61](https://github.com/wikidebates/wikidebates-core/issues/61).
+
+## Déclencheurs lors des mises à jour de sous-modules
+
+Depuis la PR #93, l'audit se déclenche lors de **toute modification de gitlink**, notamment `extensions/Wikidebates`, `extensions/VEForAll`, les forks `skins/*` et le gitlink imbriqué `extensions/CrawlerProtection/build`. Le filtre GitHub `extensions/*` vise un chemin de premier niveau (un gitlink), **pas** tous les fichiers PHP sous `extensions/Flow/**`, ce qui évite de lancer cet audit à chaque modification d'une extension incluse dans la ferme.
+
+Le rapport hebdomadaire continue de fonctionner sur `main`. Les changements ne mettent jamais automatiquement à jour de sous-modules, et n'activent aucun mécanisme de fraîcheur SMW.

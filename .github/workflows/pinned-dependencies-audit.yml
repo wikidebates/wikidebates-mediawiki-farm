@@ -7,6 +7,10 @@ on:
   pull_request:
     paths:
       - '.gitmodules'
+      # A gitlink is a changed path at the first level of extensions/ or skins/.
+      - 'extensions/*'
+      - 'skins/*'
+      - 'extensions/CrawlerProtection/build'
       - 'composer.lock'
       - 'composer.json'
       - 'tests/ci/auditPinnedDependencies.py'
@@ -16,6 +20,10 @@ on:
       - main
     paths:
       - '.gitmodules'
+      # A gitlink is a changed path at the first level of extensions/ or skins/.
+      - 'extensions/*'
+      - 'skins/*'
+      - 'extensions/CrawlerProtection/build'
       - 'composer.lock'
       - 'composer.json'
       - 'tests/ci/auditPinnedDependencies.py'
