@@ -31,7 +31,8 @@ class ApiQueryLangLinks extends ApiQueryBase {
 
 	protected $wikirougeForeignDb;
 
-	protected $selectedLang = [];
+	/** @var array<int,array<string,bool>> Accepted languages, keyed by source page ID. */
+	private array $selectedPageLanguages = [];
 
 	public function __construct( ApiQuery $query, $moduleName ) {
 		parent::__construct( $query, $moduleName, 'll' );
@@ -86,7 +87,11 @@ class ApiQueryLangLinks extends ApiQueryBase {
 			$entry['autonym'] = Language::fetchLanguageName( $row->ll_lang );
 		}
 		ApiResult::setContentValue( $entry, 'title', $row->ll_title );
-		return $this->addPageSubItem( $row->ll_from, $entry );
+		$added = $this->addPageSubItem( $row->ll_from, $entry );
+		if ( $added ) {
+			$this->selectedPageLanguages[$row->ll_from][$row->ll_lang] = true;
+		}
+		return $added;
 	}
 
 	public function execute() {
@@ -206,7 +211,6 @@ class ApiQueryLangLinks extends ApiQueryBase {
 				$this->setContinueEnumParameter( 'continue', "{$row->ll_from}|{$row->ll_lang}" );
 				break;
 			}
-			$this->selectedLang[$row->ll_lang] = true;
 			$fit = $this->addResult( $row, $params, $prop );
 			if ( !$fit ) {
 				$this->setContinueEnumParameter( 'continue', "{$row->ll_from}|{$row->ll_lang}" );
@@ -216,8 +220,6 @@ class ApiQueryLangLinks extends ApiQueryBase {
 
 		if ( $count <= $params['limit'] && $fit ) {
 			$this->execute_wikirouge( $params, $prop );
-		} elseif ( $this->selectedLang ) {
-			$this->selectedLang = [];
 		}
 	}
 
@@ -277,16 +279,19 @@ class ApiQueryLangLinks extends ApiQueryBase {
 			}
 		}
 
-//		$this->addOption( 'LIMIT', $params['limit'] + 1 );
-
-		$this->selectedLang[$wgLanguageCode] = true;
+		// Do not apply LIMIT to the secondary source before implementing a
+		// continuation protocol shared by both sources (see farm issue #75).
 		$db = $this->getDB();
 		$extraQuery = [
-			'where' => 'ill_lang NOT IN (' . $db->makeList( array_keys( $this->selectedLang ) ) . ')',
+			'where' => 'ill_lang != ' . $db->addQuotes( $wgLanguageCode ),
 		];
 		$res = $this->select( __METHOD__, $extraQuery );
 
 		foreach ( $res as $row ) {
+			// A language linked on page A must not hide it on page B.
+			if ( isset( $this->selectedPageLanguages[$row->ill_from][$row->ill_lang] ) ) {
+				continue;
+			}
 			$obj = [
 				'll_lang' => $row->ill_lang,
 				'll_title' => $row->ill_title,

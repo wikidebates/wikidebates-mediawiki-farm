@@ -37,6 +37,7 @@ jobs:
         run: |
           php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
           php extensions/Interlanguage/tests/InterlanguageApiSmokeTest.php
+          php extensions/Interlanguage/tests/InterlanguageMultiTitleSmokeTest.php
           php extensions/Interlanguage/tests/InterlanguageDatabaseSmokeTest.php
           php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
           php extensions/Interlanguage/tests/InterlanguageCentralSmokeTest.php
