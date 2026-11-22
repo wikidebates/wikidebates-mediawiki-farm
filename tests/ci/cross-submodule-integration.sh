@@ -13,8 +13,7 @@ for path in \
     extensions/Wikidebates \
     extensions/VEForAll \
     extensions/VisualEditor \
-    extensions/Echo \
-    skins/MinervaNeue; do
+    extensions/Echo; do
     expected=$(git ls-files --stage -- "$path" | awk '$1 == "160000" { print $2 }')
     actual=$(git -C "$path" rev-parse HEAD 2>/dev/null || true)
     if [[ -z "$expected" || "$actual" != "$expected" ]]; then
@@ -23,6 +22,14 @@ for path in \
     fi
     echo "PINNED $path $actual"
 done
+# MinervaNeue is a private fork. The default Actions token for the farm
+# cannot clone another private repository; verify only the pinned gitlink.
+minerva_pin=$(git ls-files --stage -- skins/MinervaNeue | awk '$1 == "160000" { print $2 }')
+if [[ ! "$minerva_pin" =~ ^[a-f0-9]{40}$ ]]; then
+    echo "Missing or invalid pinned MinervaNeue gitlink." >&2
+    exit 1
+fi
+echo "PINNED PRIVATE skins/MinervaNeue $minerva_pin (source not tested)"
 test ! -d extensions/VEForAllMobileDeps
 
 # No database, user data or cache from FR/EN is read or modified.

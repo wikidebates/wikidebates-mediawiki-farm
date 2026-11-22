@@ -53,8 +53,7 @@ jobs:
             extensions/Wikidebates \
             extensions/VEForAll \
             extensions/VisualEditor \
-            extensions/Echo \
-            skins/MinervaNeue
+            extensions/Echo
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.4'
