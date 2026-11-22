@@ -97,7 +97,7 @@
 [submodule "extensions/VEForAll"]
 	path = extensions/VEForAll
 	url = git@github.com:wikidebates/wikidebates-veforall.git
-	branch = wikidebates-REL1_43-stable-2026-11-22
+	branch = main
 [submodule "extensions/Wikidebates"]
 	path = extensions/Wikidebates
 	url = git@github.com:wikidebates/wikidebates-core.git
