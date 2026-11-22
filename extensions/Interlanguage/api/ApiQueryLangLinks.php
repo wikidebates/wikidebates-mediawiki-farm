@@ -165,11 +165,11 @@ class ApiQueryLangLinks extends ApiQueryBase {
 			$cont = explode( '|', $params['continue'] );
 			$this->dieContinueUsageIf( count( $cont ) != 2 );
 			$op = $params['dir'] == 'descending' ? '<' : '>';
-			$llFrom = (int)$cont[0];
+			$cursorFrom = (int)$cont[0];
 			$lllang = $this->getDB()->addQuotes( $cont[1] );
 			$this->addWhere(
-				"ll_from $op $llFrom OR " .
-				"(ll_from = $llFrom AND " .
+				"ll_from $op $cursorFrom OR " .
+				"(ll_from = $cursorFrom AND " .
 				"ll_lang $op= $lllang)"
 			);
 		}
