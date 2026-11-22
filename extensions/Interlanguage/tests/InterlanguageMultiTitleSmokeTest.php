@@ -70,7 +70,7 @@ class ApiQueryBase {
 	protected function resetQueryParams(): void {
 		$this->table = '';
 	}
-	protected function getDB(): InterlanguageTestQueryDB {
+	protected function getDB() {
 		return $this->db;
 	}
 	protected function select( string $caller, array $extra = [] ): iterable {
