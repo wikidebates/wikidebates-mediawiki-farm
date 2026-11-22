@@ -1,0 +1,31 @@
+name: Private HTML file-cache path checks
+
+on:
+  pull_request:
+    paths:
+      - 'images/cache/.htaccess'
+      - 'maintenance/inspectCacheWebExposure.py'
+      - 'tests/ci/testCacheWebExposure.py'
+      - 'docs/wikidebates-cdn-cache-audit.md'
+      - '.github/workflows/cache-web-exposure-checks.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-geometry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Ensure Apache 2.4 direct-access deny is tracked
+        run: |
+          test "$(git ls-files images/cache/.htaccess)" = "images/cache/.htaccess"
+          grep -qx 'Require all denied' images/cache/.htaccess
+      - name: Offline cache path and symlink regressions
+        run: |
+          python3 -m py_compile maintenance/inspectCacheWebExposure.py tests/ci/testCacheWebExposure.py
+          PYTHONPATH=maintenance python3 -m unittest discover -s tests/ci -p 'testCacheWebExposure.py' -v
