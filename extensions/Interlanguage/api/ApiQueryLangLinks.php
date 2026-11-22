@@ -31,8 +31,6 @@ class ApiQueryLangLinks extends ApiQueryBase {
 
 	protected $wikirougeForeignDb;
 
-	protected $selectedLang = [];
-
 	public function __construct( ApiQuery $query, $moduleName ) {
 		parent::__construct( $query, $moduleName, 'll' );
 	}
@@ -116,6 +114,18 @@ class ApiQueryLangLinks extends ApiQueryBase {
 			$prop = [ 'url' => 1 ];
 		}
 
+		// Keep the legacy two-field continuation for native langlinks, while
+		// marking cursors that have already advanced to interlanguage_links.
+		if ( $params['continue'] !== null && str_starts_with( $params['continue'], 'w|' ) ) {
+			$cont = explode( '|', $params['continue'], 3 );
+			$this->dieContinueUsageIf(
+				count( $cont ) !== 3 || !ctype_digit( $cont[1] ) ||
+				(int)$cont[1] < 1 || $cont[2] === '' || str_contains( $cont[2], '|' )
+			);
+			$this->execute_wikirouge( $params, $prop, $params['limit'], $cont );
+			return;
+		}
+
 		$this->addFields( [
 			'll_from',
 			'll_lang',
@@ -146,7 +156,7 @@ class ApiQueryLangLinks extends ApiQueryBase {
 			$llFrom = array_keys( $goodTitles );
 		}
 		if ( !$llFrom ) {
-			$this->execute_wikirouge( $params, $prop );
+			$this->execute_wikirouge( $params, $prop, $params['limit'] );
 			return;
 		}
 		$this->addWhereFld( 'll_from', $llFrom );
@@ -179,7 +189,7 @@ class ApiQueryLangLinks extends ApiQueryBase {
 			$this->addOption( 'ORDER BY', 'll_from' . $sort );
 		} else {
 			// Don't order by ll_from if it's constant in the WHERE clause
-			if ( count( $this->getPageSet()->getGoodTitles() ) == 1 ) {
+			if ( count( $llFrom ) === 1 ) {
 				$this->addOption( 'ORDER BY', 'll_lang' . $sort );
 			} else {
 				$this->addOption( 'ORDER BY', [
@@ -206,7 +216,6 @@ class ApiQueryLangLinks extends ApiQueryBase {
 				$this->setContinueEnumParameter( 'continue', "{$row->ll_from}|{$row->ll_lang}" );
 				break;
 			}
-			$this->selectedLang[$row->ll_lang] = true;
 			$fit = $this->addResult( $row, $params, $prop );
 			if ( !$fit ) {
 				$this->setContinueEnumParameter( 'continue', "{$row->ll_from}|{$row->ll_lang}" );
@@ -215,18 +224,16 @@ class ApiQueryLangLinks extends ApiQueryBase {
 		}
 
 		if ( $count <= $params['limit'] && $fit ) {
-			$this->execute_wikirouge( $params, $prop );
-		} elseif ( $this->selectedLang ) {
-			$this->selectedLang = [];
+			$this->execute_wikirouge( $params, $prop, $params['limit'] - $count );
 		}
 	}
 
-	public function execute_wikirouge( $params, $prop ) {
+	public function execute_wikirouge( $params, $prop, $remaining = null, $continuation = null ) {
 		global $wgLanguageCode;
 
+		$remaining ??= $params['limit'];
 		$this->resetQueryParams();
 		$this->addFields( [ 'ill_from', 'ill_lang', 'ill_title' ] );
-
 		$this->addTables( 'interlanguage_links' );
 
 		$goodTitles = $this->getPageSet()->getGoodTitles();
@@ -246,7 +253,10 @@ class ApiQueryLangLinks extends ApiQueryBase {
 				],
 				__METHOD__
 			);
-			$this->addResultByPageId( $llFrom, $params, $prop, $goodTitles );
+			// The foreign-wiki link was already emitted on the first page.
+			if ( $continuation === null ) {
+				$this->addResultByPageId( $llFrom, $params, $prop, $goodTitles );
+			}
 		} else {
 			$llFrom = array_keys( $goodTitles );
 		}
@@ -255,44 +265,63 @@ class ApiQueryLangLinks extends ApiQueryBase {
 		}
 		$this->addWhereFld( 'ill_from', $llFrom );
 
-		// FIXME: (follow-up) To allow extensions to add to the language links, we need
-		//       to load them all, add the extra links, then apply paging.
-		//       Should not be terrible, it's not going to be more than a few hundred links.
+		if ( $continuation !== null ) {
+			$op = $params['dir'] === 'descending' ? '<' : '>';
+			$from = (int)$continuation[1];
+			$lang = $this->getDB()->addQuotes( $continuation[2] );
+			$this->addWhere(
+				"(ill_from $op $from OR (ill_from = $from AND ill_lang $op= $lang))"
+			);
+		}
 
-		// Note that, since (ll_from, ll_lang) is a unique key, we don't need
-		// to sort by ll_title to ensure deterministic ordering.
-		$sort = ( $params['dir'] == 'descending' ? ' DESC' : '' );
+		$sort = $params['dir'] === 'descending' ? ' DESC' : '';
 		if ( isset( $params['lang'] ) ) {
 			$this->addWhereFld( 'ill_lang', $params['lang'] );
 			if ( isset( $params['title'] ) ) {
 				$this->addWhereFld( 'ill_title', $params['title'] );
 			}
 			$this->addOption( 'ORDER BY', 'ill_from' . $sort );
+		} elseif ( count( $llFrom ) === 1 ) {
+			$this->addOption( 'ORDER BY', 'ill_lang' . $sort );
 		} else {
-			// Don't order by ll_from if it's constant in the WHERE clause
-			if ( count( $this->getPageSet()->getGoodTitles() ) == 1 ) {
-				$this->addOption( 'ORDER BY', 'ill_lang' . $sort );
-			} else {
-				$this->addOption( 'ORDER BY', [ 'ill_from' . $sort, 'ill_lang' . $sort ] );
-			}
+			$this->addOption( 'ORDER BY', [ 'ill_from' . $sort, 'ill_lang' . $sort ] );
 		}
 
-//		$this->addOption( 'LIMIT', $params['limit'] + 1 );
+		$this->addOption( 'LIMIT', $remaining + 1 );
 
-		$this->selectedLang[$wgLanguageCode] = true;
 		$db = $this->getDB();
+		$nativeTable = $db->tableName( 'langlinks' );
 		$extraQuery = [
-			'where' => 'ill_lang NOT IN (' . $db->makeList( array_keys( $this->selectedLang ) ) . ')',
+			'where' => [
+				'ill_lang != ' . $db->addQuotes( $wgLanguageCode ),
+				// Exclude native languages per page, including on later requests
+				// when the native langlinks phase is no longer queried.
+				'NOT EXISTS (SELECT 1 FROM ' . $nativeTable .
+					' native_ll WHERE native_ll.ll_from = ill_from' .
+					' AND native_ll.ll_lang = ill_lang)'
+			],
 		];
 		$res = $this->select( __METHOD__, $extraQuery );
 
+		$count = 0;
 		foreach ( $res as $row ) {
-			$obj = [
+			if ( ++$count > $remaining ) {
+				$this->setContinueEnumParameter(
+					'continue', "w|{$row->ill_from}|{$row->ill_lang}"
+				);
+				break;
+			}
+			$obj = (object)[
 				'll_lang' => $row->ill_lang,
 				'll_title' => $row->ill_title,
 				'll_from' => $row->ill_from,
 			];
-			$this->addResult( (object)$obj, $params, $prop );
+			if ( !$this->addResult( $obj, $params, $prop ) ) {
+				$this->setContinueEnumParameter(
+					'continue', "w|{$row->ill_from}|{$row->ill_lang}"
+				);
+				break;
+			}
 		}
 	}
 
