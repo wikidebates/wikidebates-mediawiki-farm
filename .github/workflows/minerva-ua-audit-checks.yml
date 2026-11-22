@@ -25,3 +25,34 @@ jobs:
         run: |
           php -l extensions/MinervaFileCache/tests/ua-matrix.php
           php extensions/MinervaFileCache/tests/unit.php
+
+  browser-matrix:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: mbstring,intl,xml,dom,pdo_sqlite,sqlite3,curl
+      - name: Initialize pinned disposable MediaWiki 1.43
+        run: |
+          LAB="$RUNNER_TEMP/minerva-ua-matrix-$GITHUB_RUN_ID"
+          python3 extensions/MinervaFileCache/tests/prepare.py "$LAB"
+          echo "MINERVA_TEST_ROOT=$LAB" >> "$GITHUB_ENV"
+          php extensions/MinervaFileCache/tests/manage.php initialize
+        env:
+          MINERVA_TEST_ROOT: ${{ runner.temp }}/minerva-ua-matrix-${{ github.run_id }}
+      - name: Compare HTTP HTML and replay headers across anonymous browsers
+        run: php extensions/MinervaFileCache/tests/ua-matrix.php
+      - name: Preserve hash-only comparison report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minerva-ua-php84
+          path: ${{ env.MINERVA_TEST_ROOT }}/state/ua-matrix.json
+          if-no-files-found: ignore
