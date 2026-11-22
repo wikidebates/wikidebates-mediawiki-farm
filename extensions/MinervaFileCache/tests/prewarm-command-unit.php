@@ -59,12 +59,15 @@ namespace {
 	class TestPrewarmDb {
 		public array $pages = [];
 		public function select($table, $fields, $conditions, $caller, $options): array {
-			if ($table !== 'page' || !preg_match('/page_id > ([0-9]+)/', $conditions[0], $match)) {
-				throw new RuntimeException('Incorrect SQL pagination');
+			$target = $conditions['page_id'] ?? null;
+			if ($table !== 'page' || ($target === null &&
+				!preg_match('/page_id > ([0-9]+)/', $conditions[0] ?? '', $match))) {
+				throw new RuntimeException('Incorrect SQL page filter or pagination');
 			}
-			$after = (int)$match[1];
-			$pages = array_filter($this->pages, static function ($page) use ($conditions, $after) {
-				return $page->page_id > $after && !$page->page_is_redirect &&
+			$after = $target === null ? (int)$match[1] : 0;
+			$pages = array_filter($this->pages, static function ($page) use ($conditions, $target, $after) {
+				return ($target === null ? $page->page_id > $after : $page->page_id === $target) &&
+					!$page->page_is_redirect &&
 					(!isset($conditions['page_namespace']) || $page->page_namespace === $conditions['page_namespace']);
 			});
 			return array_slice(array_values($pages), 0, (int)$options['LIMIT']);
@@ -209,6 +212,38 @@ namespace {
 		checkPrewarmCli($runner->execute() === true, 'Namespace filter succeeds');
 		checkPrewarmCli(count($GLOBALS['prewarmRequests']) === 1 &&
 			str_contains($GLOBALS['prewarmRequests'][0][0], '/Three'), 'Namespace filter is respected');
+
+		$GLOBALS['prewarmRequests'] = [];
+		$runner = new PrewarmMinervaFileCache();
+		$runner->setOptions(['page-id' => '2', 'delay-ms' => '250']);
+		checkPrewarmCli($runner->execute() === true, 'Targeted page-id prewarming succeeds');
+		checkPrewarmCli(count($GLOBALS['prewarmRequests']) === 1 &&
+			str_contains($GLOBALS['prewarmRequests'][0][0], '/Two'),
+			'Targeted prewarm fetches the exact page only');
+		$GLOBALS['prewarmRequests'] = [];
+		$runner = new PrewarmMinervaFileCache();
+		$runner->setOptions(['page-id' => '4', 'delay-ms' => '250']);
+		checkPrewarmCli($runner->execute() === true && count($GLOBALS['prewarmRequests']) === 0,
+			'Redirect page IDs do not generate a mobile request');
+		$runner = new PrewarmMinervaFileCache();
+		$runner->setOptions(['page-id' => '0']);
+		try {
+			$runner->execute();
+			throw new RuntimeException('Zero page ID was not refused');
+		} catch (RuntimeException $e) {
+			checkPrewarmCli(str_contains($e->getMessage(), '--page-id'),
+				'Invalid page-id is rejected');
+		}
+		$runner = new PrewarmMinervaFileCache();
+		$runner->setOptions(['page-id' => '2', 'resume' => true]);
+		try {
+			$runner->execute();
+			throw new RuntimeException('Targeted mode combined with resume');
+		} catch (RuntimeException $e) {
+			checkPrewarmCli(str_contains($e->getMessage(), '--page-id cannot be combined'),
+				'Per-page mode refuses incompatible global checkpoint');
+		}
+
 		echo json_encode(['assertions'=>$GLOBALS['assertions'],'result'=>'PASS']) . "\n";
 	} finally {
 		foreach (glob($root . '/*') as $path) {

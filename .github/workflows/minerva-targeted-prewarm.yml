@@ -1,0 +1,57 @@
+name: Minerva targeted page-id prewarm
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/MinervaFileCache/maintenance/prewarm.php'
+      - 'extensions/MinervaFileCache/tests/prewarm-command-unit.php'
+      - 'extensions/MinervaFileCache/src/Prewarm.php'
+      - '.github/workflows/minerva-targeted-prewarm.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  targeted:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Syntax check and isolated page-id prewarm regressions
+        run: |
+          php -l extensions/MinervaFileCache/maintenance/prewarm.php
+          php -l extensions/MinervaFileCache/tests/prewarm-command-unit.php
+          php extensions/MinervaFileCache/tests/prewarm-unit.php
+          php extensions/MinervaFileCache/tests/prewarm-category-unit.php
+          php extensions/MinervaFileCache/tests/prewarm-command-unit.php
+
+  http-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+          extensions: mbstring,intl,xml,dom,pdo_sqlite,sqlite3,curl
+      - name: Initialize a pinned disposable MediaWiki 1.43
+        run: |
+          LAB="$RUNNER_TEMP/minerva-single-$GITHUB_RUN_ID"
+          python3 extensions/MinervaFileCache/tests/prepare.py "$LAB"
+          echo "MINERVA_TEST_ROOT=$LAB" >> "$GITHUB_ENV"
+          export MINERVA_TEST_ROOT="$LAB"
+          php extensions/MinervaFileCache/tests/manage.php initialize
+      - name: Assert exactly one HTTP-warmed anonymous page and a reusable HIT
+        run: |
+          php -l extensions/MinervaFileCache/tests/prewarm-targeted-http.php
+          php extensions/MinervaFileCache/tests/prewarm-targeted-http.php

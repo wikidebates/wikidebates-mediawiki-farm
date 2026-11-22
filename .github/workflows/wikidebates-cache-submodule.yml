@@ -1,0 +1,51 @@
+name: Pinned Wikidebates cache primitives
+
+on:
+  pull_request:
+    paths:
+      - 'extensions/Wikidebates'
+      - 'extensions/MinervaFileCache/**'
+      - '.github/workflows/wikidebates-cache-submodule.yml'
+  push:
+    branches:
+      - 'wikidebates-REL1_43-stable-2026-07-11'
+    paths:
+      - 'extensions/Wikidebates'
+      - 'extensions/MinervaFileCache/**'
+      - '.github/workflows/wikidebates-cache-submodule.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  pinned-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          submodules: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Initialize the exact tracked Wikidebates submodule
+        run: |
+          git submodule init extensions/Wikidebates
+          git config submodule.extensions/Wikidebates.url https://github.com/wikidebates/wikidebates-core.git
+          git submodule update --depth=1 extensions/Wikidebates
+          test "$(git -C extensions/Wikidebates rev-parse HEAD)" = \
+            "$(git ls-tree HEAD extensions/Wikidebates | awk '{print $3}')"
+      - name: Check exact pinned core and Minerva cache scripts
+        run: |
+          php -l extensions/Wikidebates/maintenance/inspectCachePreparationQueue.php
+          php -l extensions/Wikidebates/maintenance/prepareVectorViewCache.php
+          php -l extensions/Wikidebates/maintenance/prepareReadingCache.php
+          php -l extensions/Wikidebates/maintenance/preparePendingCaches.php
+          php -l extensions/Wikidebates/src/Reading/CachePreparationCommands.php
+          php -l extensions/MinervaFileCache/maintenance/prewarm.php
+          php extensions/Wikidebates/tests/readingFragments/preparationQueue.php
+          php extensions/Wikidebates/tests/readingFragments/coordinatedPreparation.php
+          php extensions/MinervaFileCache/tests/prewarm-command-unit.php
+          php extensions/MinervaFileCache/tests/unit.php

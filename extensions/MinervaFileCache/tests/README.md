@@ -87,3 +87,30 @@ php maintenance/run.php MinervaFileCache:prewarm --limit=20 --resume
 Sur une ferme, ajouter `--wiki=IDENTIFIANT` selon sa configuration.
 Vérifier les états `MISS`/`HIT` et les fichiers `.cache` créés avant
 un préchauffage de masse.
+
+## Matrice des User-Agent et des en-têtes (audit sans modification du cache)
+
+Après `manage.php initialize` dans **un laboratoire neuf marqué**, lancer :
+
+```sh
+minerva_lab_php /extension/tests/ua-matrix.php
+```
+
+Cette étude envoie des GET anonymes réels à l'instance MediaWiki jetable sur
+`127.0.0.1:8080` (aucun accès HTTP au site public). Elle compare Chrome
+Android sur deux versions, Firefox Android, Safari iPhone, iPad, tablette
+Android et deux en-têtes `Accept-Language`.
+
+Le rapport privé `state/ua-matrix.json` contient pour chaque variante les
+codes HTTP, `MISS/HIT/BYPASS`, les temps indicatifs, les empreintes du HTML
+complet, du HTML corrigé uniquement des champs volatils `wgRequestId` et
+`wgBackendResponseTime`, et les empreintes des en-têtes conservables.
+Les corps HTML ne figurent jamais dans le rapport. Si ces deux champs ne sont
+pas trouvés exactement une fois, la comparaison normalisée est indisponible.
+
+**Deux empreintes égales ne prouvent pas la compatibilité future de tous les
+User-Agent.** Le rapport aide à décider quels navigateurs comparer ensuite
+dans un vrai environnement isolé ; il ne modifie ni la clé de cache ni le
+mécanisme de diffusion des réponses. Vérifier en plus les différences de
+rendu côté CSS/JavaScript, les en-têtes `Vary` et les autorisations de lecture
+avant toute mutualisation.

@@ -156,6 +156,27 @@ enregistrées dans la table `page` sont parcourues par lots de 100.
 Certaines réponses restent exclues par la politique du cache (`BYPASS`).
 Les pages protégées en lecture ne deviennent jamais publiques.
 
+### Préchauffer une page précise
+
+La préparation coordonnée peut maintenant cibler un identifiant `page_id` au lieu
+de parcourir toute la table `page` :
+
+```sh
+php maintenance/run.php MinervaFileCache:prewarm --wiki=fr --page-id=1220 --delay-ms=250
+php maintenance/run.php MinervaFileCache:prewarm --wiki=en --page-id=1220 --dry-run
+```
+
+Ces commandes sont des exemples : le même identifiant peut désigner des
+pages différentes sur les deux wikis. La commande fait au maximum un GET
+anonyme vers la page ciblée ; elle ignore les redirections et les pages absentes,
+et conserve les contrôles HTTP, de confidentialité, de réponse et de débit
+existants. Les options de reprise et de filtrage par catégorie/espace de noms
+ne sont pas cumulables avec `--page-id`.
+
+L'exécution ne supprime ni n'invalide les fichiers existants, et n'a pas à
+préparer tous les autres articles. La planification d'un lot de pages éditées
+relèvera du futur coordinateur.
+
 ### Préchauffer une catégorie
 
 La commande peut également traiter **uniquement les pages membres d'une
