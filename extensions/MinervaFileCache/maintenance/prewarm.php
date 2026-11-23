@@ -28,6 +28,7 @@ class PrewarmMinervaFileCache extends Maintenance {
 		$this->addOption('resume', 'Keep a private checkpoint for automatic resumption.');
 		$this->addOption('reset', 'Discard a previous checkpoint (only with --resume).');
 		$this->addOption('dry-run', 'List URLs without making HTTP requests.');
+		$this->addOption('skip-valid', 'For --page-id, reuse the exact valid local mobile variant without HTTP.');
 	}
 
 	public function execute() {
@@ -65,6 +66,11 @@ class PrewarmMinervaFileCache extends Maintenance {
 		$resume = $this->hasOption('resume');
 		$reset = $this->hasOption('reset');
 		$dryRun = $this->hasOption('dry-run');
+		$skipValid = $this->hasOption('skip-valid');
+		if ($skipValid && $pageId === null) {
+			$this->fatalError('--skip-valid requires --page-id for a PRIMARY revision check.');
+			return false;
+		}
 		if ($pageId !== null && ($resume || $reset || $afterId !== 0 ||
 			$namespace !== null || $category !== null || $recursive || $limit > 1)) {
 			$this->fatalError('--page-id cannot be combined with pagination, namespace/category filters or resume.');
@@ -165,7 +171,9 @@ class PrewarmMinervaFileCache extends Maintenance {
 					$conditions['page_namespace'] = $namespace;
 				}
 				$rows = $categories === null ?
-					$dbr->select('page', ['page_id', 'page_namespace', 'page_title'],
+					$dbr->select('page', $skipValid ?
+							['page_id', 'page_namespace', 'page_title', 'page_latest', 'page_touched'] :
+							['page_id', 'page_namespace', 'page_title'],
 						$conditions, __METHOD__, ['ORDER BY' => 'page_id ASC', 'LIMIT' => self::BATCH_SIZE]) :
 					Prewarm::categoryPageBatch($dbr, $categories, $lastId, $namespace, self::BATCH_SIZE);
 				$inBatch = 0;
@@ -186,52 +194,79 @@ class PrewarmMinervaFileCache extends Maintenance {
 						$state = 'DRY_RUN';
 						$this->output("$id $url\n");
 					} else {
-						$retryNumber = 0;
-						do {
-							$header = null;
-							$retryAfter = null;
+						$localHit = false;
+						if ($skipValid) {
 							try {
-								$request = $http->create($url, [
-									'timeout' => $timeout, 'followRedirects' => false,
-									'userAgent' => $userAgent,
-								], __METHOD__);
-								$request->setHeader('Accept-Language', (string)$config->get('LanguageCode'));
-								$result = $request->execute();
-								$code = (int)$request->getStatus();
-								$header = $request->getResponseHeader('X-Minerva-File-Cache');
-								$retryAfter = $request->getResponseHeader('Retry-After');
-								$state = $code === 0 ? 'TRANSPORT_ERROR' : Prewarm::responseState($code, $header);
+								$identity = [
+									'revision' => (int)$row->page_latest,
+									'touched' => (string)$row->page_touched,
+									'epoch' => (string)$config->get('MinervaFileCacheEpoch'),
+									'coreEpoch' => $config->get('CacheEpoch'),
+									'format' => 'MinervaFileCache-0.1.0'
+								];
+								$variant = Prewarm::targetVariant(
+									$url, $server, (string)$config->get('LanguageCode'), $userAgent
+								);
+								$localHit = \MediaWiki\Extension\MinervaFileCache\PublicPageGuard::matches(
+									$title, $identity['revision'], $identity['touched']
+								) && Hooks::store()->readIfPresent(
+									$title->getPrefixedDBkey(), $variant, $identity
+								)['entry'] !== null;
 							} catch (\Throwable $e) {
-								$state = 'TRANSPORT_ERROR';
-								$this->error("Request failed at page_id=$id url=$url: " . $e->getMessage());
+								$this->fatalError('Cannot verify local Minerva variant: ' . get_class($e));
+								return false;
 							}
-							if ($retryNumber >= $retries) { break; }
-							$wait = Prewarm::retryDelaySeconds($state, $retryAfter, $retryNumber + 1);
-							if ($wait === null) { break; }
-							$retryNumber++;
-							$this->output("Retrying page_id=$id state=$state attempt=$retryNumber/$retries after {$wait}s\n");
-							if ($wait > 0) { sleep($wait); }
-						} while (true);
-						if ($state === 'NO_HEADER' || $state === 'UNKNOWN_HEADER') {
-							$missingHeaders++;
-						} else {
-							$missingHeaders = 0;
 						}
-						if ($state === 'TRANSPORT_ERROR' ||
-							(str_starts_with($state, 'HTTP_') && !in_array($state, ['HTTP_404', 'HTTP_410'], true)) ||
-							($state === 'BYPASS' && str_contains((string)$header, 'reason=storage-error')) ||
-							$missingHeaders >= 5) {
-							$retryHint = '';
-							if ($state === 'HTTP_429' && $retryAfter !== null) {
-								$seconds = filter_var(trim($retryAfter), FILTER_VALIDATE_INT,
-									['options' => ['min_range' => 0]]);
-								if ($seconds !== false) {
-									$retryHint = " retry-after={$seconds}s";
+						if ($localHit) {
+							$state = 'LOCAL_HIT';
+						} else {
+							$retryNumber = 0;
+							do {
+								$header = null;
+								$retryAfter = null;
+								try {
+									$request = $http->create($url, [
+										'timeout' => $timeout, 'followRedirects' => false,
+										'userAgent' => $userAgent,
+									], __METHOD__);
+									$request->setHeader('Accept-Language', (string)$config->get('LanguageCode'));
+									$result = $request->execute();
+									$code = (int)$request->getStatus();
+									$header = $request->getResponseHeader('X-Minerva-File-Cache');
+									$retryAfter = $request->getResponseHeader('Retry-After');
+									$state = $code === 0 ? 'TRANSPORT_ERROR' : Prewarm::responseState($code, $header);
+								} catch (\Throwable $e) {
+									$state = 'TRANSPORT_ERROR';
+									$this->error("Request failed at page_id=$id url=$url: " . $e->getMessage());
 								}
+								if ($retryNumber >= $retries) { break; }
+								$wait = Prewarm::retryDelaySeconds($state, $retryAfter, $retryNumber + 1);
+								if ($wait === null) { break; }
+								$retryNumber++;
+								$this->output("Retrying page_id=$id state=$state attempt=$retryNumber/$retries after {$wait}s\n");
+								if ($wait > 0) { sleep($wait); }
+							} while (true);
+							if ($state === 'NO_HEADER' || $state === 'UNKNOWN_HEADER') {
+								$missingHeaders++;
+							} else {
+								$missingHeaders = 0;
 							}
-							$this->output("Stopping at page_id=$id state=$state$retryHint url=$url; last completed page_id=$lastId\n");
-							$this->output("Retry with --resume, or --after-id=$lastId.\n");
-							return false;
+							if ($state === 'TRANSPORT_ERROR' ||
+								(str_starts_with($state, 'HTTP_') && !in_array($state, ['HTTP_404', 'HTTP_410'], true)) ||
+								($state === 'BYPASS' && str_contains((string)$header, 'reason=storage-error')) ||
+								$missingHeaders >= 5) {
+								$retryHint = '';
+								if ($state === 'HTTP_429' && $retryAfter !== null) {
+									$seconds = filter_var(trim($retryAfter), FILTER_VALIDATE_INT,
+										['options' => ['min_range' => 0]]);
+									if ($seconds !== false) {
+										$retryHint = " retry-after={$seconds}s";
+									}
+								}
+								$this->output("Stopping at page_id=$id state=$state$retryHint url=$url; last completed page_id=$lastId\n");
+								$this->output("Retry with --resume, or --after-id=$lastId.\n");
+								return false;
+							}
 						}
 					}
 					$stats[$state] = ($stats[$state] ?? 0) + 1;
@@ -253,7 +288,7 @@ class PrewarmMinervaFileCache extends Maintenance {
 						$this->output(json_encode($stats + ['bypassReasons' => $bypassReasons]) . "\n");
 						return true;
 					}
-					if (!$dryRun) {
+					if (!$dryRun && $state !== 'LOCAL_HIT') {
 						usleep($delay * 1000);
 					}
 				}

@@ -17,6 +17,9 @@ require dirname(__DIR__) . '/src/Prewarm.php';
 
 use MediaWiki\Extension\MinervaFileCache\Prewarm;
 
+if (!touch($state . '/consistent-cache-epoch')) {
+	throw new RuntimeException('Cannot pin the synthetic cache identity');
+}
 $database = new PDO('sqlite:' . $state . '/minerva_file_cache_test.sqlite');
 $targetId = (int)$database->query("SELECT page_id FROM page WHERE page_title = 'Cache_study_argument'")->fetchColumn();
 if ($targetId < 1) { throw new RuntimeException('Missing prepared test page'); }
@@ -42,7 +45,10 @@ try {
 	putenv('MW_INSTALL_PATH=' . $root . '/mediawiki');
 	// CLI maintenance insists on a readable config file. The lab's marked
 	// bootstrap callback supplies its actual isolated SQLite configuration.
-	$localSettings = $state . '/LocalSettings.php';
+	// Use one LocalSettings.php for both the HTTP process and maintenance.
+	// MediaWiki incorporates its mtime into CacheEpoch, so separate config
+	// paths would intentionally invalidate the otherwise identical HTML.
+	$localSettings = $root . '/mediawiki/LocalSettings.php';
 	file_put_contents($localSettings, "<?php\n");
 	chmod($localSettings, 0600);
 
@@ -84,10 +90,49 @@ try {
 	if (count($files) !== 1) {
 		throw new RuntimeException('Single-page prewarm unexpectedly created ' . count($files) . ' cache files');
 	}
+	$invokeSkip = static function (string $device) use ($localSettings, $targetId): array {
+		$args = [PHP_BINARY, '-d', 'auto_prepend_file=' . __DIR__ . '/bootstrap.php',
+			dirname(__DIR__) . '/maintenance/prewarm.php', '--conf=' . $localSettings,
+			'--page-id=' . $targetId, '--device=' . $device,
+			'--skip-valid', '--delay-ms=250'];
+		$child = proc_open($args, [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $childPipes);
+		if (!is_resource($child)) { throw new RuntimeException('Cannot start selective prewarm'); }
+		fclose($childPipes[0]);
+		$out = stream_get_contents($childPipes[1]);
+		$err = stream_get_contents($childPipes[2]);
+		fclose($childPipes[1]);
+		fclose($childPipes[2]);
+		return ['exit' => proc_close($child), 'output' => $out, 'error' => $err];
+	};
+	$beforeHash = hash_file('sha256', $files[0]);
+	$local = $invokeSkip('android');
+	if ($local['exit'] !== 0 || !str_contains($local['output'], '"LOCAL_HIT":1') ||
+		hash_file('sha256', $files[0]) !== $beforeHash ||
+		count(glob($state . '/mobile-cache/*/*/*/*.cache') ?: []) !== 1) {
+		$storedEntry = json_decode((string)gzdecode((string)file_get_contents($files[0])), true);
+		$variantActual = (string)($storedEntry['variant'] ?? '');
+		$variantExpected = Prewarm::targetVariant(
+			'http://127.0.0.1:8080/index.php?title=Cache_study_argument',
+			'http://127.0.0.1:8080', 'en', Prewarm::userAgent('android')
+		);
+		throw new RuntimeException('Selective Android prewarm did not reuse identical HTML without HTTP: ' .
+			substr($local['output'] . $local['error'], -1100) .
+			' identity=' . json_encode($storedEntry['identity'] ?? null) .
+			' variant_equal=' . ($variantActual === $variantExpected ? 'yes' : 'no') .
+			' hash_actual=' . hash('sha256', $variantActual) .
+			' hash_expected=' . hash('sha256', $variantExpected));
+	}
+	$iphone = $invokeSkip('iphone');
+	if ($iphone['exit'] !== 0 || !str_contains($iphone['output'], '"MISS":1') ||
+		count(glob($state . '/mobile-cache/*/*/*/*.cache') ?: []) !== 2) {
+		throw new RuntimeException('Missing iPhone variant must be generated independently: ' .
+			substr($iphone['output'] . $iphone['error'], -1000));
+	}
 	echo json_encode(['result' => 'PASS', 'pageId' => $targetId,
-		'cachedFiles' => count($files), 'httpCache' => 'HIT'], JSON_THROW_ON_ERROR) . "\n";
+		'cachedFiles' => 2, 'httpCache' => 'HIT', 'localAndroid' => 'LOCAL_HIT', 'iphone' => 'MISS'], JSON_THROW_ON_ERROR) . "\n";
 } finally {
 	if (is_file($state . '/extension-enabled')) { unlink($state . '/extension-enabled'); }
+	if (is_file($state . '/consistent-cache-epoch')) { unlink($state . '/consistent-cache-epoch'); }
 	proc_terminate($server);
 	proc_close($server);
 }

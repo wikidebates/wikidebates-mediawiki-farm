@@ -47,6 +47,11 @@ function minervaExtensionTestSettings($settings): void {
 	if (!is_file($root . '/state/extension-enabled')) {
 		$overrides['MinervaFileCacheEnabled'] = false;
 	}
+	// The targeted HTTP/CLI equivalence lab must not inherit a distinct
+	// CacheEpoch from the separate maintenance --conf file's mtime.
+	if (is_file($root . '/state/consistent-cache-epoch')) {
+		$overrides['CacheEpoch'] = '20990101000000';
+	}
 	$settings->overrideConfigValues($overrides);
 	wfLoadSkin('Vector');
 	wfLoadSkin('MinervaNeue');

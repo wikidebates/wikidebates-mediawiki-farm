@@ -16,6 +16,28 @@ class Prewarm {
 		return self::USER_AGENTS[$device];
 	}
 
+
+	/**
+	 * Reproduce CacheView's exact eight-element variant for a canonical
+	 * cookie-free prewarm HTTP request. MediaWiki getRequestURL() returns the
+	 * relative request URI, and getHeader() returns false for missing headers.
+	 * A mismatch simply results in an ordinary HTTP request, never a false HIT.
+	 */
+	public static function targetVariant(
+		string $url, string $server, string $language, string $userAgent
+	): string {
+		$parts = parse_url($url);
+		if (!is_array($parts) || !isset($parts['scheme'], $parts['host'], $parts['path'])) {
+			throw new \InvalidArgumentException('A canonical full page URL is required');
+		}
+		$uri = $parts['path'] . (isset($parts['query']) ? '?' . $parts['query'] : '');
+		$host = $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+		return json_encode([
+			$uri, $parts['scheme'], $server, $language,
+			$host, $userAgent, $language, false
+		], JSON_THROW_ON_ERROR);
+	}
+
 	public static function number($value, string $option, int $min, int $max): int {
 		if (!is_scalar($value) || !preg_match('/^[0-9]+$/D', (string)$value)) {
 			throw new \InvalidArgumentException("$option must be an integer between $min and $max");
