@@ -5,7 +5,7 @@
 - `main` est la branche canonique et la branche par defaut de `wikidebates-mediawiki-farm`, `wikidebates-core` et `wikidebates-veforall` (verification GitHub du 23 novembre 2026).
 - Toute nouvelle pull request de maintenance vise `main`. Utiliser une branche de travail courte, puis preferer des tags de publication non deplaces aux branches stables datees.
 - Ne pas supprimer automatiquement les branches historiques ou de travail : verifier leur utilisation dans les deploiements, les PR ouvertes et les autres chantiers. Une branche fusionnee par squash peut diverger de `main` sans contenir de changements a rejouer.
-- Le serveur de production `dialectica` a ete verifie sur `main` au commit `bb6834fd9aa09ba28ae9cf5cb6b0ad4779c5483e` le 23 novembre 2026. Les declencheurs `push` historiques ont ete retires de Flow, PageForms et du controle du sous-module Wikidebates ; les controles sur `main`, `pull_request` et `workflow_dispatch` (quand il existe) sont conserves.
+- Le serveur `dialectica` a ete verifie sur `main` le 23 novembre 2026 ; son commit doit etre releve de nouveau avant tout deploiement, car d'autres chantiers publient en parallele sur GitHub. Les declencheurs `push` historiques ont ete retires de Flow, PageForms et du controle du sous-module Wikidebates ; les controles sur `main`, `pull_request` et `workflow_dispatch` (quand il existe) sont conserves.
 - Le workflow Interlanguage garde provisoirement son declencheur historique ; sa rationalisation appartient au chantier Interlanguage independant. Ne supprimer aucune branche historique sans verifier tous les usages restants.
 
 ## Protections GitHub
@@ -15,19 +15,19 @@ Le 23 novembre 2026, un ruleset `protect-main` actif existe dans chacun des troi
 - interdisent la suppression et le force-push ;
 - imposent le passage par une pull request et la resolution des fils de revue ;
 - ne demandent actuellement **aucune approbation** (`required_approving_review_count: 0`) ;
-- ne declarent **aucun controle CI obligatoire** (`required_status_checks` absent).
+- imposent les controles GitHub Actions listes ci-dessous, sans exiger la mise a jour prealable des branches de PR.
 
-Les workflows GitHub Actions continuent de s'executer selon leurs propres declencheurs, mais leurs resultats ne constituent donc pas une condition de fusion imposee par ces rulesets. Toute modification de cette politique doit etre faite dans les parametres GitHub du depot et testee avec des noms de checks stables, notamment lorsque les workflows utilisent des filtres de chemins.
+Les controles CI obligatoires sont verifies directement dans les trois rulesets `protect-main` au 23 novembre 2026. Les autres workflows restent executes selon leurs declencheurs ; leurs resultats doivent etre examines pour les changements concernes, mais ne sont pas tous des conditions administratives de fusion.
 
-### Activation manuelle des controles CI obligatoires
+### Controles CI obligatoires actifs
 
-Les rulesets GitHub doivent etre mis a jour manuellement dans `Settings > Rules > Rulesets > protect-main` (pas par PR). Une fois le nouveau workflow ci-dessous fusionne et vert, les checks recommandes sont :
+Les checks suivants sont actuellement imposes aux PR par les rulesets `protect-main` ; ils proviennent de GitHub Actions :
 
 - Ferme : `farm-baseline` (workflow `main-required-baseline.yml`, sans filtre de chemins sur les PR).
 - Wikidebates Core : `php (8.4)`, `mediawiki-143 (8.4)`, `javascript` et `browser` (workflow `native-html.yml`, execute sur toutes les PR).
 - VEForAll : `jest` (workflow `veforall-lazy-checks.yml`, execute sur toutes les PR).
 
-Ne pas rendre obligatoires les jobs des workflows dont l'evenement `pull_request` utilise `paths` : ils ne se lancent pas sur toutes les PR et resteraient en attente, empechant des fusions sans rapport. Les tests specialises sont conserves et leurs resultats doivent etre examines avant les fusions concernees. Une activation doit etre suivie d'un test sur une PR simple, pour verifier que les checks attendus ne restent pas bloquants. Le statut administratif reste **a configurer** tant que GitHub ne renvoie pas la regle `required_status_checks` pour chaque ruleset.
+Ne pas rendre obligatoires les jobs des workflows dont l'evenement `pull_request` utilise `paths` : ils ne se lancent pas sur toutes les PR et pourraient empecher des fusions sans rapport. Les tests specialises sont conserves et leurs resultats doivent etre examines avant les fusions concernees. Modifier les rulesets dans `Settings > Rules > Rulesets > protect-main` (et non par PR), puis verifier les checks sur une PR representative. Les depots principaux suppriment automatiquement les branches apres fusion ; les branches anciennes encore presentes sont a evaluer individuellement.
 
 
 ## Sous-modules et reproductibilite
@@ -35,9 +35,13 @@ Ne pas rendre obligatoires les jobs des workflows dont l'evenement `pull_request
 - Le depot de la ferme contient 53 gitlinks enregistres au 23 novembre 2026, dont un sous-module d'outillage Docker facultatif sous `extensions/CrawlerProtection/build`.
 - Les gitlinks epinglent les commits deployables ; la valeur `branch` de `.gitmodules` n'actualise pas ces commits.
 - `extensions/VEForAll` est epingle sur `35090688defd17b7650a30dc3d5b37da09d170dc`, avec `branch = main`.
-- `extensions/Wikidebates` est epingle sur `daf094a0a7ba7612d3fb782b9c1d762d5032cffe`, avec `branch = main`.
+- `extensions/Wikidebates` est epingle sur `767f16c18bc08d2f77bb87970d8cf6f6b9cf21c7`, avec `branch = main`.
 - Ne jamais executer `git submodule update --remote` lors d'un deploiement. Les changements de SHA passent par des PR explicites et des tests.
 - Ne pas retirer un sous-module ou modifier son URL sans avoir etabli ses usages en production et dans les scripts.
+
+## Branches par defaut des forks d'extensions
+
+Les forks MinervaNeue, ReplaceText, ContactPage et HitCounters conservent une branche par defaut historique, distincte de la branche `integration-*` utilisee par la ferme. La branche d'integration est en avance respectivement de 71, 39, 46 et 18 commits sur cette branche par defaut lors du controle du 23 novembre 2026. Les sous-modules restent reproductibles grace a leurs SHA epingles, mais une nouvelle PR ouverte sans selection explicite de sa base risque de cibler l'ancienne branche. Il reste a confirmer la politique de suivi amont de chaque fork avant de changer sa branche GitHub par defaut ; ne pas actualiser les gitlinks pour cette seule raison.
 
 ## CI et deploiement
 
