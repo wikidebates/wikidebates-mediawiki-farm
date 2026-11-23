@@ -19,6 +19,17 @@ Le 23 novembre 2026, un ruleset `protect-main` actif existe dans chacun des troi
 
 Les workflows GitHub Actions continuent de s'executer selon leurs propres declencheurs, mais leurs resultats ne constituent donc pas une condition de fusion imposee par ces rulesets. Toute modification de cette politique doit etre faite dans les parametres GitHub du depot et testee avec des noms de checks stables, notamment lorsque les workflows utilisent des filtres de chemins.
 
+### Activation manuelle des controles CI obligatoires
+
+Les rulesets GitHub doivent etre mis a jour manuellement dans `Settings > Rules > Rulesets > protect-main` (pas par PR). Une fois le nouveau workflow ci-dessous fusionne et vert, les checks recommandes sont :
+
+- Ferme : `farm-baseline` (workflow `main-required-baseline.yml`, sans filtre de chemins sur les PR).
+- Wikidebates Core : `php (8.4)`, `mediawiki-143 (8.4)`, `javascript` et `browser` (workflow `native-html.yml`, execute sur toutes les PR).
+- VEForAll : `jest` (workflow `veforall-lazy-checks.yml`, execute sur toutes les PR).
+
+Ne pas rendre obligatoires les jobs des workflows dont l'evenement `pull_request` utilise `paths` : ils ne se lancent pas sur toutes les PR et resteraient en attente, empechant des fusions sans rapport. Les tests specialises sont conserves et leurs resultats doivent etre examines avant les fusions concernees. Une activation doit etre suivie d'un test sur une PR simple, pour verifier que les checks attendus ne restent pas bloquants. Le statut administratif reste **a configurer** tant que GitHub ne renvoie pas la regle `required_status_checks` pour chaque ruleset.
+
+
 ## Sous-modules et reproductibilite
 
 - Le depot de la ferme contient 53 gitlinks enregistres au 23 novembre 2026, dont un sous-module d'outillage Docker facultatif sous `extensions/CrawlerProtection/build`.
