@@ -5,7 +5,8 @@
 - `main` est la branche canonique et la branche par defaut de `wikidebates-mediawiki-farm`, `wikidebates-core` et `wikidebates-veforall` (verification GitHub du 23 novembre 2026).
 - Toute nouvelle pull request de maintenance vise `main`. Utiliser une branche de travail courte, puis preferer des tags de publication non deplaces aux branches stables datees.
 - Ne pas supprimer automatiquement les branches historiques ou de travail : verifier leur utilisation dans les deploiements, les PR ouvertes et les autres chantiers. Une branche fusionnee par squash peut diverger de `main` sans contenir de changements a rejouer.
-- Les workflows Flow, Interlanguage et PageForms gardent temporairement un declencheur `push` sur `wikidebates-REL1_43-stable-2026-07-09` ; `wikidebates-cache-submodule.yml` conserve aussi un declencheur sur `wikidebates-REL1_43-stable-2026-07-11`. Ne retirer ces declencheurs qu'apres verification des usages reels.
+- Le serveur de production `dialectica` a ete verifie sur `main` au commit `bb6834fd9aa09ba28ae9cf5cb6b0ad4779c5483e` le 23 novembre 2026. Les declencheurs `push` historiques ont ete retires de Flow, PageForms et du controle du sous-module Wikidebates ; les controles sur `main`, `pull_request` et `workflow_dispatch` (quand il existe) sont conserves.
+- Le workflow Interlanguage garde provisoirement son declencheur historique ; sa rationalisation appartient au chantier Interlanguage independant. Ne supprimer aucune branche historique sans verifier tous les usages restants.
 
 ## Protections GitHub
 

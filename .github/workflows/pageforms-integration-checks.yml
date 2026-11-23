@@ -3,8 +3,7 @@
 	"on": {
 		"push": {
 			"branches": [
-				"main",
-				"wikidebates-REL1_43-stable-2026-07-09"
+				"main"
 			],
 			"paths": [
 				"extensions/PageFormsWikidebates/**",
