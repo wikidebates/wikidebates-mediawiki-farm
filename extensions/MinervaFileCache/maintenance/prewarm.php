@@ -172,8 +172,8 @@ class PrewarmMinervaFileCache extends Maintenance {
 				}
 				$rows = $categories === null ?
 					$dbr->select('page', $skipValid ?
-							['page_id', 'page_namespace', 'page_title', 'page_latest', 'page_touched'] :
-							['page_id', 'page_namespace', 'page_title'],
+							['page_id', 'page_namespace', 'page_title', 'page_content_model', 'page_latest', 'page_touched'] :
+							['page_id', 'page_namespace', 'page_title', 'page_content_model'],
 						$conditions, __METHOD__, ['ORDER BY' => 'page_id ASC', 'LIMIT' => self::BATCH_SIZE]) :
 					Prewarm::categoryPageBatch($dbr, $categories, $lastId, $namespace, self::BATCH_SIZE);
 				$inBatch = 0;
@@ -193,6 +193,10 @@ class PrewarmMinervaFileCache extends Maintenance {
 					if ($dryRun) {
 						$state = 'DRY_RUN';
 						$this->output("$id $url\n");
+					} elseif (Prewarm::hasFlowBoardContentModel($row->page_content_model ?? null)) {
+						// Flow deliberately disables parser caching for dynamic boards.
+						// Never publish an anonymous mobile snapshot of a Flow discussion.
+						$state = 'SKIPPED_FLOW_BOARD';
 					} elseif (Prewarm::hasSmwCustomArticle($title->getNamespace())) {
 						// SMW installs its own Article for Property and Concept pages.
 						// Its dynamically generated lists cannot use our HTML adapter.
@@ -297,7 +301,7 @@ class PrewarmMinervaFileCache extends Maintenance {
 					// request after it has finished adds no protection; the
 					// coordinating worker throttles between page requests.
 					if (!$dryRun && $pageId === null &&
-						!in_array($state, ['LOCAL_HIT', 'SKIPPED_SMW_ARTICLE'], true)) {
+						!in_array($state, ['LOCAL_HIT', 'SKIPPED_SMW_ARTICLE', 'SKIPPED_FLOW_BOARD'], true)) {
 						usleep($delay * 1000);
 					}
 				}

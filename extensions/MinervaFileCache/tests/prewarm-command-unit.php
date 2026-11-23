@@ -29,6 +29,7 @@ namespace MediaWiki\Extension\MinervaFileCache {
 namespace {
 	define('SMW_NS_PROPERTY', 102);
 	define('SMW_NS_CONCEPT', 108);
+	define('CONTENT_MODEL_FLOW_BOARD', 'flow-board');
 	require dirname(__DIR__) . '/src/Prewarm.php';
 	use MediaWiki\Extension\MinervaFileCache\Prewarm;
 
@@ -140,10 +141,11 @@ namespace {
 				}
 			}
 		}
-		public function appendPrimaryPage(int $id, int $namespace, string $title): void {
+		public function appendPrimaryPage(int $id, int $namespace, string $title, ?string $model = null): void {
 			$this->primaryDb->pages[] = (object)[
 				'page_id' => $id, 'page_namespace' => $namespace,
-				'page_title' => $title, 'page_is_redirect' => 0
+				'page_title' => $title, 'page_is_redirect' => 0,
+				'page_content_model' => $model
 			];
 		}
 		public function getMainConfig(): TestPrewarmConfig { return $this->config; }
@@ -266,6 +268,28 @@ namespace {
 				str_contains(implode('', $GLOBALS['prewarmOutput']), '"SKIPPED_SMW_ARTICLE":1'),
 				'SMW-managed Article is explicitly skipped with zero anonymous HTTP requests');
 		}
+		// Flow board pages have dynamic parser output (expiry zero), even
+		// when their Article object is our CachedArticle. Only the explicit
+		// Flow model, not every talk page, can be skipped before HTTP.
+		$GLOBALS['prewarmServices']->appendPrimaryPage(10, 1, 'Flow_talk', 'flow-board');
+		$GLOBALS['prewarmServices']->appendPrimaryPage(11, 1, 'Ordinary_talk', 'wikitext');
+		$GLOBALS['prewarmRequests'] = [];
+		$GLOBALS['prewarmOutput'] = [];
+		$runner = new PrewarmMinervaFileCache();
+		$runner->setOptions(['page-id' => '10', 'device' => 'android',
+			'skip-valid' => true, 'delay-ms' => '250']);
+		checkPrewarmCli($runner->execute() === true &&
+			count($GLOBALS['prewarmRequests']) === 0 &&
+			str_contains(implode('', $GLOBALS['prewarmOutput']), '"SKIPPED_FLOW_BOARD":1'),
+			'Flow board is explicitly skipped with zero HTTP and no mobile cache file');
+		$GLOBALS['prewarmRequests'] = [];
+		$GLOBALS['prewarmOutput'] = [];
+		$runner = new PrewarmMinervaFileCache();
+		$runner->setOptions(['page-id' => '11', 'device' => 'android', 'delay-ms' => '250']);
+		checkPrewarmCli($runner->execute() === true &&
+			count($GLOBALS['prewarmRequests']) === 1 &&
+			str_contains(implode('', $GLOBALS['prewarmOutput']), '"MISS":1'),
+			'Ordinary wikitext talk pages remain eligible for anonymous mobile prewarm');
 		// The custom SMW restriction must never accidentally suppress other
 		// non-main namespaces such as project or categories.
 		foreach ([8 => 4, 9 => 14] as $regularId => $regularNamespace) {

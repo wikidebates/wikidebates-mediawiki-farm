@@ -28,6 +28,17 @@ class Prewarm {
 		return false;
 	}
 
+	/**
+	 * Flow board pages are dynamic: BoardContentHandler deliberately sets
+	 * ParserOutput cache expiry to zero. They must not be persisted as anonymous
+	 * Minerva HTML files. Only the explicit Flow content model qualifies; the
+	 * namespace alone is not sufficient (ordinary talk pages stay eligible).
+	 */
+	public static function hasFlowBoardContentModel(?string $model): bool {
+		return defined('CONTENT_MODEL_FLOW_BOARD') &&
+			$model === constant('CONTENT_MODEL_FLOW_BOARD');
+	}
+
 	public static function userAgent(string $device): string {
 		if (!isset(self::USER_AGENTS[$device])) {
 			throw new \InvalidArgumentException('Device must be android or iphone');
@@ -235,7 +246,7 @@ class Prewarm {
 			}
 			$rows = $dbr->select(
 				['categorylinks', 'page'],
-				['page_id', 'page_namespace', 'page_title'],
+				['page_id', 'page_namespace', 'page_title', 'page_content_model'],
 				$conditions,
 				__METHOD__,
 				['DISTINCT', 'ORDER BY' => 'page_id ASC', 'LIMIT' => $limit],
