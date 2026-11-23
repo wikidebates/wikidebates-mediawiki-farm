@@ -342,6 +342,13 @@ try {
 		'Legacy 30-day expiry does not invalidate an unlimited file');
 	check($unlimited->prune() === 0 && is_file($oldPath),
 		'Unlimited cleanup does not delete old snapshots');
+	check($unlimited->publish('Old', $fragmentVariant, $identity, $noAge['generation'],
+		'UNCHANGED_FRAGMENT', [], time() + 2),
+		'Unlimited Minerva HTML remains a valid source for reading fragments');
+	$mobileFragment = $unlimited->readForFragment('Old', $identity, $fragmentContext);
+	check($mobileFragment['body'] === 'UNCHANGED_FRAGMENT' &&
+		$mobileFragment['expires'] === PHP_INT_MAX,
+		'Fragment fallback inherits unlimited Minerva file lifetime');
 	check($unlimited->read('Old', 'android', ['revision' => 2])['entry'] === null,
 		'Unlimited lifetime never bypasses page revision identity');
 	$unlimited->invalidate('Old');
