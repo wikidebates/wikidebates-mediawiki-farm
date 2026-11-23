@@ -17,6 +17,9 @@ require dirname(__DIR__) . '/src/Prewarm.php';
 
 use MediaWiki\Extension\MinervaFileCache\Prewarm;
 
+if (!touch($state . '/consistent-cache-epoch')) {
+	throw new RuntimeException('Cannot pin the synthetic cache identity');
+}
 $database = new PDO('sqlite:' . $state . '/minerva_file_cache_test.sqlite');
 $targetId = (int)$database->query("SELECT page_id FROM page WHERE page_title = 'Cache_study_argument'")->fetchColumn();
 if ($targetId < 1) { throw new RuntimeException('Missing prepared test page'); }
@@ -119,6 +122,7 @@ try {
 		'cachedFiles' => 2, 'httpCache' => 'HIT', 'localAndroid' => 'LOCAL_HIT', 'iphone' => 'MISS'], JSON_THROW_ON_ERROR) . "\n";
 } finally {
 	if (is_file($state . '/extension-enabled')) { unlink($state . '/extension-enabled'); }
+	if (is_file($state . '/consistent-cache-epoch')) { unlink($state . '/consistent-cache-epoch'); }
 	proc_terminate($server);
 	proc_close($server);
 }
