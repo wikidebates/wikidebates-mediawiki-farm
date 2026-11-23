@@ -217,7 +217,9 @@ class PrewarmMinervaFileCache extends Maintenance {
 								// Temporary CI-only counters; remove after root cause is proven.
 								if (getenv('MINERVA_TEST_ROOT')) {
 									$this->output('Local precheck guard=' . (int)$guard .
-										' entry=' . (int)($entry !== null) . "\n");
+										' entry=' . (int)($entry !== null) .
+										' variant_sha=' . hash('sha256', $variant) .
+										' identity=' . json_encode($identity) . "\n");
 								}
 							} catch (\Throwable $e) {
 								$this->fatalError('Cannot verify local Minerva variant: ' . get_class($e));
