@@ -201,6 +201,15 @@ fichier cache**. Il ne transforme jamais les `NO_HEADER` inattendus en
 succès. Les pages Projet, Catégorie, Fichier et les autres espaces compatibles
 restent admissibles au préchauffage normal.
 
+Les pages de discussion Flow dont le modèle de contenu est exactement
+`flow-board` sont dynamiques : leur gestionnaire de contenu impose une
+expiration de rendu à zéro. Le préchauffage signale donc
+`SKIPPED_FLOW_BOARD` sans émettre de GET anonyme et sans créer de fichier
+Minerva. Cette exclusion s'applique au modèle de contenu, **pas à tout
+l'espace Discussion** : les pages de discussion classiques en `wikitext`
+restent éligibles. Les réponses inconnues `NO_HEADER` conservent leur
+comportement d'arrêt sécurisé.
+
 ### Préchauffer une page précise
 
 La préparation coordonnée peut maintenant cibler un identifiant `page_id` au lieu
