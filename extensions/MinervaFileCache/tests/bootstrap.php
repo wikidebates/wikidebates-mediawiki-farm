@@ -50,7 +50,7 @@ function minervaExtensionTestSettings($settings): void {
 	// The targeted HTTP/CLI equivalence lab must not inherit a distinct
 	// CacheEpoch from the separate maintenance --conf file's mtime.
 	if (is_file($root . '/state/consistent-cache-epoch')) {
-		$overrides['CacheEpoch'] = '20030516000000';
+		$overrides['CacheEpoch'] = '20990101000000';
 	}
 	$settings->overrideConfigValues($overrides);
 	wfLoadSkin('Vector');
