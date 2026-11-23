@@ -41,7 +41,14 @@ Ne pas rendre obligatoires les jobs des workflows dont l'evenement `pull_request
 
 ## Branches par defaut des forks d'extensions
 
-Les forks MinervaNeue, ReplaceText, ContactPage et HitCounters conservent une branche par defaut historique, distincte de la branche `integration-*` utilisee par la ferme. La branche d'integration est en avance respectivement de 71, 39, 46 et 18 commits sur cette branche par defaut lors du controle du 23 novembre 2026. Les sous-modules restent reproductibles grace a leurs SHA epingles, mais une nouvelle PR ouverte sans selection explicite de sa base risque de cibler l'ancienne branche. Il reste a confirmer la politique de suivi amont de chaque fork avant de changer sa branche GitHub par defaut ; ne pas actualiser les gitlinks pour cette seule raison.
+Quatre forks utilises dans `.gitmodules` conservent une branche par defaut historique distincte de leur branche d'integration (audit du 23 novembre 2026) :
+
+- `MinervaNeue` : `REL1_43` par defaut ; `integration-REL1_43-1.43.11` utilisee par la ferme (71 commits en avance).
+- `wikidebates-replacetext-custom` : `wikidebates-REL1_43` par defaut ; `integration-REL1_43-1.43.11` utilisee par la ferme (39 commits en avance).
+- `wikidebates-contactpage` : `wikidebates-REL1_43` par defaut ; `integration-REL1_43-1.43.11` utilisee par la ferme (46 commits en avance).
+- `wikidebates-hitcounters` : `wikidebates-master` par defaut ; `integration-master-1.43.11` utilisee par la ferme (18 commits en avance).
+
+Les SHA epingles restent la source de verite pour le deploiement. Avant de changer la branche par defaut, verifier les scripts externes et la politique de suivi amont de chaque fork. Une nouvelle PR ouverte sans selection explicite de sa base pourrait sinon cibler l'ancienne branche. Ne pas modifier les gitlinks pour ce seul motif.
 
 ## CI et deploiement
 
