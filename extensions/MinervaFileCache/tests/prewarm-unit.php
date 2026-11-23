@@ -4,6 +4,9 @@ require dirname(__DIR__) . '/src/Prewarm.php';
 
 use MediaWiki\Extension\MinervaFileCache\Prewarm;
 
+define('SMW_NS_PROPERTY', 102);
+define('SMW_NS_CONCEPT', 108);
+
 $assertions = 0;
 function checkPrewarm($ok, string $message): void {
 	global $assertions;
@@ -16,6 +19,12 @@ function checkPrewarm($ok, string $message): void {
 $directory = sys_get_temp_dir() . '/minerva-prewarm-test-' . bin2hex(random_bytes(6));
 mkdir($directory, 0700);
 try {
+	checkPrewarm(Prewarm::hasSmwCustomArticle(102) && Prewarm::hasSmwCustomArticle(108),
+		'SMW Property and Concept page handlers have explicit non-cacheable prewarm classification');
+	foreach ([0, 4, 6, 14, 103, 109] as $namespace) {
+		checkPrewarm(!Prewarm::hasSmwCustomArticle($namespace),
+			'Other namespaces, including Project, File and Category, remain prewarmable');
+	}
 	$android = Prewarm::userAgent('android');
 	$iphone = Prewarm::userAgent('iphone');
 	checkPrewarm(str_contains($android, 'Android') && str_contains($android, 'Mobile'), 'Android UA is mobile');
