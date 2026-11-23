@@ -11,8 +11,11 @@ namespace MediaWiki\WikiMap {
 namespace MediaWiki\Title {
 	class Title {
 		private string $title;
-		public function __construct(string $title) { $this->title = $title; }
-		public static function makeTitle(int $namespace, string $title): self { return new self($title); }
+		public function __construct(string $title, private int $namespace) { $this->title = $title; }
+		public static function makeTitle(int $namespace, string $title): self {
+			return new self($title, $namespace);
+		}
+		public function getNamespace(): int { return $this->namespace; }
 		public function getFullURL(): string { return 'https://fr.example.test/wiki/' . rawurlencode($this->title); }
 	}
 }
