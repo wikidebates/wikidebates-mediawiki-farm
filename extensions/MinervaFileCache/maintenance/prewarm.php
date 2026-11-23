@@ -207,11 +207,18 @@ class PrewarmMinervaFileCache extends Maintenance {
 								$variant = Prewarm::targetVariant(
 									$url, $server, (string)$config->get('LanguageCode'), $userAgent
 								);
-								$localHit = \MediaWiki\Extension\MinervaFileCache\PublicPageGuard::matches(
+								$guard = \MediaWiki\Extension\MinervaFileCache\PublicPageGuard::matches(
 									$title, $identity['revision'], $identity['touched']
-								) && Hooks::store()->readIfPresent(
+								);
+								$entry = Hooks::store()->readIfPresent(
 									$title->getPrefixedDBkey(), $variant, $identity
-								)['entry'] !== null;
+								)['entry'];
+								$localHit = $guard && $entry !== null;
+								// Temporary CI-only counters; remove after root cause is proven.
+								if (getenv('MINERVA_TEST_ROOT')) {
+									$this->output('Local precheck guard=' . (int)$guard .
+										' entry=' . (int)($entry !== null) . "\n");
+								}
 							} catch (\Throwable $e) {
 								$this->fatalError('Cannot verify local Minerva variant: ' . get_class($e));
 								return false;
