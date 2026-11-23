@@ -20,6 +20,19 @@ try {
 	$iphone = Prewarm::userAgent('iphone');
 	checkPrewarm(str_contains($android, 'Android') && str_contains($android, 'Mobile'), 'Android UA is mobile');
 	checkPrewarm(str_contains($iphone, 'iPhone') && str_contains($iphone, 'Mobile'), 'iPhone UA is mobile');
+
+	$variant = json_decode(Prewarm::targetVariant(
+		'https://fr.example.org/wiki/Un_test?redirect=no', 'https://fr.example.org', 'fr', $android
+	), true, 512, JSON_THROW_ON_ERROR);
+	checkPrewarm($variant === [
+		'/wiki/Un_test?redirect=no', 'https', 'https://fr.example.org', 'fr',
+		'fr.example.org', $android, 'fr', false
+	], 'Canonical Minerva variant keeps relative URI and unset header as false');
+	checkPrewarm(json_decode(Prewarm::targetVariant(
+		'http://127.0.0.1:8080/index.php?title=Test', 'http://127.0.0.1:8080', 'en', $iphone
+	), true, 512, JSON_THROW_ON_ERROR)[4] === '127.0.0.1:8080',
+		'Local HTTP variants retain Host port and separate iPhone user agent');
+
 	try {
 		Prewarm::userAgent('desktop');
 		throw new RuntimeException('Unsupported device accepted');
