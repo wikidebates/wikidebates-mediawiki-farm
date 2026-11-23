@@ -246,7 +246,7 @@ class Prewarm {
 			}
 			$rows = $dbr->select(
 				['categorylinks', 'page'],
-				['page_id', 'page_namespace', 'page_title'],
+				['page_id', 'page_namespace', 'page_title', 'page_content_model'],
 				$conditions,
 				__METHOD__,
 				['DISTINCT', 'ORDER BY' => 'page_id ASC', 'LIMIT' => $limit],
