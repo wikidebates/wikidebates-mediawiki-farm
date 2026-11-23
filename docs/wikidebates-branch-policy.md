@@ -6,7 +6,7 @@
 - Toute nouvelle pull request de maintenance vise `main`. Utiliser une branche de travail courte, puis preferer des tags de publication non deplaces aux branches stables datees.
 - Ne pas supprimer automatiquement les branches historiques ou de travail : verifier leur utilisation dans les deploiements, les PR ouvertes et les autres chantiers. Une branche fusionnee par squash peut diverger de `main` sans contenir de changements a rejouer.
 - Le serveur `dialectica` a ete verifie sur `main` le 23 novembre 2026 ; son commit doit etre releve de nouveau avant tout deploiement, car d'autres chantiers publient en parallele sur GitHub. Les declencheurs `push` historiques ont ete retires de Flow, PageForms et du controle du sous-module Wikidebates ; les controles sur `main`, `pull_request` et `workflow_dispatch` (quand il existe) sont conserves.
-- Le workflow Interlanguage garde provisoirement son declencheur historique ; sa rationalisation appartient au chantier Interlanguage independant. Ne supprimer aucune branche historique sans verifier tous les usages restants.
+- Le workflow Interlanguage cible `main`, les pull requests modifiant ses fichiers et `workflow_dispatch` ; le declencheur `push` de la branche historique `wikidebates-REL1_43-stable-2026-07-09` a ete retire le 23 novembre 2026. La branche elle-meme est conservee jusqu'a verification complete de ses usages externes.
 
 ## Protections GitHub
 
@@ -34,8 +34,7 @@ Ne pas rendre obligatoires les jobs des workflows dont l'evenement `pull_request
 
 - Le depot de la ferme contient 53 gitlinks enregistres au 23 novembre 2026, dont un sous-module d'outillage Docker facultatif sous `extensions/CrawlerProtection/build`.
 - Les gitlinks epinglent les commits deployables ; la valeur `branch` de `.gitmodules` n'actualise pas ces commits.
-- `extensions/VEForAll` est epingle sur `35090688defd17b7650a30dc3d5b37da09d170dc`, avec `branch = main`.
-- `extensions/Wikidebates` est epingle sur `767f16c18bc08d2f77bb87970d8cf6f6b9cf21c7`, avec `branch = main`.
+- `extensions/VEForAll` et `extensions/Wikidebates` sont epingles a leurs commits dans le git tree de la ferme, avec `branch = main` dans `.gitmodules`. Lire les SHA reels avec `git ls-tree HEAD extensions/VEForAll extensions/Wikidebates` ; ne pas se fier a une valeur recopiee dans cette documentation, qui peut devenir perimee.
 - Ne jamais executer `git submodule update --remote` lors d'un deploiement. Les changements de SHA passent par des PR explicites et des tests.
 - Ne pas retirer un sous-module ou modifier son URL sans avoir etabli ses usages en production et dans les scripts.
 
