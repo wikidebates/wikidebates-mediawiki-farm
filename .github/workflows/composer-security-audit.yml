@@ -1,0 +1,58 @@
+{
+	"name": "Composer lockfile security audit",
+	"on": {
+		"workflow_dispatch": null,
+		"schedule": [
+			{
+				"cron": "17 4 * * 1"
+			}
+		],
+		"pull_request": {
+			"paths": [
+				"composer.json",
+				"composer.lock",
+				".github/workflows/composer-security-audit.yml"
+			]
+		},
+		"push": {
+			"branches": [
+				"main"
+			],
+			"paths": [
+				"composer.json",
+				"composer.lock",
+				".github/workflows/composer-security-audit.yml"
+			]
+		}
+	},
+	"permissions": {
+		"contents": "read"
+	},
+	"jobs": {
+		"composer-security": {
+			"runs-on": "ubuntu-latest",
+			"timeout-minutes": 12,
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"sparse-checkout": "composer.json\ncomposer.local.json\ncomposer.lock"
+					}
+				},
+				{
+					"uses": "shivammathur/setup-php@v2",
+					"with": {
+						"php-version": "8.4",
+						"coverage": "none",
+						"tools": "composer:v2"
+					}
+				},
+				{
+					"name": "Audit locked Composer dependencies for security advisories",
+					"run": "composer audit --locked --no-interaction --abandoned=report"
+				}
+			]
+		}
+	}
+}
