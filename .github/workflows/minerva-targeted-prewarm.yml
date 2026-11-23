@@ -8,9 +8,22 @@ concurrency:
 on:
   pull_request:
     paths:
+      - 'extensions/MinervaFileCache/extension.json'
       - 'extensions/MinervaFileCache/maintenance/prewarm.php'
-      - 'extensions/MinervaFileCache/tests/prewarm-command-unit.php'
+      - 'extensions/MinervaFileCache/src/CacheView.php'
+      - 'extensions/MinervaFileCache/src/Cached*.php'
+      - 'extensions/MinervaFileCache/src/Hooks.php'
       - 'extensions/MinervaFileCache/src/Prewarm.php'
+      - 'extensions/MinervaFileCache/src/PublicPageGuard.php'
+      - 'extensions/MinervaFileCache/src/ResponsePolicy.php'
+      - 'extensions/MinervaFileCache/src/Store.php'
+      - 'extensions/MinervaFileCache/tests/bootstrap.php'
+      - 'extensions/MinervaFileCache/tests/manage.php'
+      - 'extensions/MinervaFileCache/tests/prepare.py'
+      - 'extensions/MinervaFileCache/tests/prewarm-category-unit.php'
+      - 'extensions/MinervaFileCache/tests/prewarm-command-unit.php'
+      - 'extensions/MinervaFileCache/tests/prewarm-targeted-http.php'
+      - 'extensions/MinervaFileCache/tests/prewarm-unit.php'
       - '.github/workflows/minerva-targeted-prewarm.yml'
 
 permissions:
