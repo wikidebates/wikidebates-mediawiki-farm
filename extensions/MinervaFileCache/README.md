@@ -209,6 +209,20 @@ et conserve les contrôles HTTP, de confidentialité, de réponse et de débit
 existants. Les options de reprise et de filtrage par catégorie/espace de noms
 ne sont pas cumulables avec `--page-id`.
 
+Pour une préparation quotidienne sélective, ajouter `--skip-valid` à un
+appel `--page-id`. La commande compare l'identité de la page sur la base
+primaire et la **clé exacte** de la variante mobile (URL relative, protocole,
+hôte, langue, User-Agent et en-têtes). Si un fichier valide est déjà présent,
+elle renvoie `LOCAL_HIT` sans HTTP, sans parsing et sans réécriture. Un fichier
+manquant, invalide ou appartenant à une autre variante est préparé par le GET
+habituel. L'option est réservée au mode ciblé `--page-id` : le parcours global
+reste inchangé. Le mode de préchauffage quotidien ne doit choisir qu'un petit
+nombre de User-Agents explicitement utiles.
+
+```sh
+php maintenance/run.php MinervaFileCache:prewarm --wiki=fr --page-id=1220 --skip-valid --device=android
+```
+
 L'exécution ne supprime ni n'invalide les fichiers existants, et n'a pas à
 préparer tous les autres articles. La planification d'un lot de pages éditées
 relèvera du futur coordinateur.
