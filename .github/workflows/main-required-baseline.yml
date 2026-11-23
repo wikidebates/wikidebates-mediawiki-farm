@@ -1,0 +1,65 @@
+{
+	"name": "Farm baseline (always on)",
+	"on": {
+		"pull_request": null,
+		"push": {
+			"branches": [
+				"main"
+			]
+		}
+	},
+	"permissions": {
+		"contents": "read"
+	},
+	"jobs": {
+		"farm-baseline": {
+			"name": "farm-baseline",
+			"runs-on": "ubuntu-24.04",
+			"timeout-minutes": 10,
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"submodules": false,
+						"fetch-depth": 2
+					}
+				},
+				{
+					"name": "Check changed lines and patch ancestry",
+					"run": "git rev-parse --verify 'HEAD^1'\ngit diff --check 'HEAD^1' HEAD"
+				},
+				{
+					"name": "Validate changed JSON files",
+					"run": "git diff --name-only -z --diff-filter=ACMR 'HEAD^1' HEAD -- '*.json' |\n\twhile IFS= read -r -d '' file; do\n\t\tpython3 -m json.tool \"$file\" > /dev/null\n\tdone"
+				},
+				{
+					"name": "Verify tracked submodule pins without network",
+					"run": "python3 tests/ci/auditPinnedDependencies.py --offline"
+				},
+				{
+					"name": "Detect changed PHP",
+					"id": "changed-php",
+					"run": "if test -n \"$(git diff --name-only --diff-filter=ACMR 'HEAD^1' HEAD -- '*.php')\"; then\n\techo 'php=true' >> \"$GITHUB_OUTPUT\"\nfi"
+				},
+				{
+					"uses": "shivammathur/setup-php@v2",
+					"if": "steps.changed-php.outputs.php == 'true'",
+					"with": {
+						"php-version": "8.4",
+						"coverage": "none"
+					}
+				},
+				{
+					"name": "Lint changed PHP with PHP 8.4",
+					"if": "steps.changed-php.outputs.php == 'true'",
+					"run": "git diff --name-only -z --diff-filter=ACMR 'HEAD^1' HEAD -- '*.php' |\n\twhile IFS= read -r -d '' file; do\n\t\tphp -l \"$file\"\n\tdone"
+				},
+				{
+					"name": "Validate changed shell scripts",
+					"run": "git diff --name-only -z --diff-filter=ACMR 'HEAD^1' HEAD -- '*.sh' |\n\twhile IFS= read -r -d '' file; do\n\t\tbash -n \"$file\"\n\tdone"
+				}
+			]
+		}
+	}
+}
