@@ -9,6 +9,25 @@ class Prewarm {
 		'iphone' => 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 Version/17.6 Mobile/15E148 Safari/604.1',
 	];
 
+	/**
+	 * SMW 7.3 uses its own ArticleFromTitle handler for Property and Concept
+	 * pages. That handler supplies SMW\MediaWiki\Page\Page before our cache
+	 * adapter can be installed, so an anonymous GET legitimately has no
+	 * X-Minerva-File-Cache diagnostic header. These dynamic semantic lists
+	 * must not be mistaken for a reusable mobile HTML file.
+	 *
+	 * Resolve numeric namespace IDs through SMW constants: aliases/localized
+	 * namespace names and relocated IDs are deliberately not hard-coded.
+	 */
+	public static function hasSmwCustomArticle(int $namespace): bool {
+		foreach (['SMW_NS_PROPERTY', 'SMW_NS_CONCEPT'] as $name) {
+			if (defined($name) && constant($name) === $namespace) {
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public static function userAgent(string $device): string {
 		if (!isset(self::USER_AGENTS[$device])) {
 			throw new \InvalidArgumentException('Device must be android or iphone');
