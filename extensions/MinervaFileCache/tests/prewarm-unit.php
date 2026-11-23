@@ -6,6 +6,7 @@ use MediaWiki\Extension\MinervaFileCache\Prewarm;
 
 define('SMW_NS_PROPERTY', 102);
 define('SMW_NS_CONCEPT', 108);
+define('CONTENT_MODEL_FLOW_BOARD', 'flow-board');
 
 $assertions = 0;
 function checkPrewarm($ok, string $message): void {
@@ -24,6 +25,12 @@ try {
 	foreach ([0, 4, 6, 14, 103, 109] as $namespace) {
 		checkPrewarm(!Prewarm::hasSmwCustomArticle($namespace),
 			'Other namespaces, including Project, File and Category, remain prewarmable');
+	}
+	checkPrewarm(Prewarm::hasFlowBoardContentModel('flow-board'),
+		'Only the Flow board content model is explicitly excluded from Minerva caching');
+	foreach (['wikitext', 'text', 'json', '', null] as $model) {
+		checkPrewarm(!Prewarm::hasFlowBoardContentModel($model),
+			'Non-Flow content models remain eligible for normal mobile preparation');
 	}
 	$android = Prewarm::userAgent('android');
 	$iphone = Prewarm::userAgent('iphone');
