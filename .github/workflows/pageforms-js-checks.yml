@@ -6,14 +6,26 @@
 				"main"
 			],
 			"paths": [
-				"extensions/PageFormsWikidebates/**",
+				"extensions/PageFormsWikidebates/libs/**",
+				"extensions/PageFormsWikidebates/tests/jest/**",
+				"extensions/PageFormsWikidebates/extension.json",
+				"extensions/PageFormsWikidebates/i18n/**",
+				"extensions/PageFormsWikidebates/package.json",
+				"extensions/PageFormsWikidebates/package-lock.json",
+				"extensions/PageFormsWikidebates/Gruntfile.js",
 				"resources/lib/jquery/**",
 				".github/workflows/pageforms-js-checks.yml"
 			]
 		},
 		"pull_request": {
 			"paths": [
-				"extensions/PageFormsWikidebates/**",
+				"extensions/PageFormsWikidebates/libs/**",
+				"extensions/PageFormsWikidebates/tests/jest/**",
+				"extensions/PageFormsWikidebates/extension.json",
+				"extensions/PageFormsWikidebates/i18n/**",
+				"extensions/PageFormsWikidebates/package.json",
+				"extensions/PageFormsWikidebates/package-lock.json",
+				"extensions/PageFormsWikidebates/Gruntfile.js",
 				"resources/lib/jquery/**",
 				".github/workflows/pageforms-js-checks.yml"
 			]
