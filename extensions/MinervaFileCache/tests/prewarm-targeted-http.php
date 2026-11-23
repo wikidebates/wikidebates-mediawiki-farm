@@ -84,8 +84,36 @@ try {
 	if (count($files) !== 1) {
 		throw new RuntimeException('Single-page prewarm unexpectedly created ' . count($files) . ' cache files');
 	}
+	$invokeSkip = static function (string $device) use ($localSettings, $targetId): array {
+		$args = [PHP_BINARY, '-d', 'auto_prepend_file=' . __DIR__ . '/bootstrap.php',
+			dirname(__DIR__) . '/maintenance/prewarm.php', '--conf=' . $localSettings,
+			'--page-id=' . $targetId, '--device=' . $device,
+			'--skip-valid', '--delay-ms=250'];
+		$child = proc_open($args, [['pipe', 'r'], ['pipe', 'w'], ['pipe', 'w']], $childPipes);
+		if (!is_resource($child)) { throw new RuntimeException('Cannot start selective prewarm'); }
+		fclose($childPipes[0]);
+		$out = stream_get_contents($childPipes[1]);
+		$err = stream_get_contents($childPipes[2]);
+		fclose($childPipes[1]);
+		fclose($childPipes[2]);
+		return ['exit' => proc_close($child), 'output' => $out, 'error' => $err];
+	};
+	$beforeHash = hash_file('sha256', $files[0]);
+	$local = $invokeSkip('android');
+	if ($local['exit'] !== 0 || !str_contains($local['output'], '"LOCAL_HIT":1') ||
+		hash_file('sha256', $files[0]) !== $beforeHash ||
+		count(glob($state . '/mobile-cache/*/*/*/*.cache') ?: []) !== 1) {
+		throw new RuntimeException('Selective Android prewarm rewrote a valid file or made an HTTP GET: ' .
+			substr($local['output'] . $local['error'], -1000));
+	}
+	$iphone = $invokeSkip('iphone');
+	if ($iphone['exit'] !== 0 || !str_contains($iphone['output'], '"MISS":1') ||
+		count(glob($state . '/mobile-cache/*/*/*/*.cache') ?: []) !== 2) {
+		throw new RuntimeException('Missing iPhone variant must be generated independently: ' .
+			substr($iphone['output'] . $iphone['error'], -1000));
+	}
 	echo json_encode(['result' => 'PASS', 'pageId' => $targetId,
-		'cachedFiles' => count($files), 'httpCache' => 'HIT'], JSON_THROW_ON_ERROR) . "\n";
+		'cachedFiles' => 2, 'httpCache' => 'HIT', 'localAndroid' => 'LOCAL_HIT', 'iphone' => 'MISS'], JSON_THROW_ON_ERROR) . "\n";
 } finally {
 	if (is_file($state . '/extension-enabled')) { unlink($state . '/extension-enabled'); }
 	proc_terminate($server);
