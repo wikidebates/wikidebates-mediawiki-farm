@@ -230,9 +230,13 @@ namespace {
 			str_contains($GLOBALS['prewarmRequests'][0][0], '/Three'), 'Namespace filter is respected');
 
 		$GLOBALS['prewarmRequests'] = [];
+		// A single targeted HTTP request must not pay the bulk-mode tail delay.
 		$runner = new PrewarmMinervaFileCache();
-		$runner->setOptions(['page-id' => '2', 'delay-ms' => '250']);
+		$runner->setOptions(['page-id' => '2', 'delay-ms' => '2000']);
+		$targetStart = microtime(true);
 		checkPrewarmCli($runner->execute() === true, 'Targeted page-id prewarming succeeds');
+		checkPrewarmCli(microtime(true) - $targetStart < 1.5,
+			'A single target avoids the two-second post-request sleep');
 		checkPrewarmCli(count($GLOBALS['prewarmRequests']) === 1 &&
 			str_contains($GLOBALS['prewarmRequests'][0][0], '/Two'),
 			'Targeted prewarm fetches the exact page only');
