@@ -109,8 +109,18 @@ try {
 	if ($local['exit'] !== 0 || !str_contains($local['output'], '"LOCAL_HIT":1') ||
 		hash_file('sha256', $files[0]) !== $beforeHash ||
 		count(glob($state . '/mobile-cache/*/*/*/*.cache') ?: []) !== 1) {
+		$storedEntry = json_decode((string)gzdecode((string)file_get_contents($files[0])), true);
+		$variantActual = (string)($storedEntry['variant'] ?? '');
+		$variantExpected = Prewarm::targetVariant(
+			'http://127.0.0.1:8080/index.php?title=Cache_study_argument',
+			'http://127.0.0.1:8080', 'en', Prewarm::userAgent('android')
+		);
 		throw new RuntimeException('Selective Android prewarm did not reuse identical HTML without HTTP: ' .
-			substr($local['output'] . $local['error'], -1100));
+			substr($local['output'] . $local['error'], -1100) .
+			' identity=' . json_encode($storedEntry['identity'] ?? null) .
+			' variant_equal=' . ($variantActual === $variantExpected ? 'yes' : 'no') .
+			' hash_actual=' . hash('sha256', $variantActual) .
+			' hash_expected=' . hash('sha256', $variantExpected));
 	}
 	$iphone = $invokeSkip('iphone');
 	if ($iphone['exit'] !== 0 || !str_contains($iphone['output'], '"MISS":1') ||
