@@ -193,6 +193,11 @@ class PrewarmMinervaFileCache extends Maintenance {
 					if ($dryRun) {
 						$state = 'DRY_RUN';
 						$this->output("$id $url\n");
+					} elseif (Prewarm::hasSmwCustomArticle($title->getNamespace())) {
+						// SMW installs its own Article for Property and Concept pages.
+						// Its dynamically generated lists cannot use our HTML adapter.
+						// A known, explicit skip is safer than accepting NO_HEADER.
+						$state = 'SKIPPED_SMW_ARTICLE';
 					} else {
 						$localHit = false;
 						if ($skipValid) {
@@ -291,7 +296,8 @@ class PrewarmMinervaFileCache extends Maintenance {
 					// --page-id issues at most one HTTP request. Pacing a lone
 					// request after it has finished adds no protection; the
 					// coordinating worker throttles between page requests.
-					if (!$dryRun && $pageId === null && $state !== 'LOCAL_HIT') {
+					if (!$dryRun && $pageId === null &&
+						!in_array($state, ['LOCAL_HIT', 'SKIPPED_SMW_ARTICLE'], true)) {
 						usleep($delay * 1000);
 					}
 				}
