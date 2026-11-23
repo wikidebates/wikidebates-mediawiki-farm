@@ -47,11 +47,20 @@ Le 23 novembre 2026, les branches par defaut GitHub ont ete alignees sur les bra
 - `wikidebates-contactpage` : `integration-REL1_43-1.43.11`.
 - `wikidebates-hitcounters` : `integration-master-1.43.11`.
 
-Les 53 sous-modules restent epingles a leurs SHA : changer la branche par defaut n'actualise aucun gitlink. Les branches des trois derniers forks sont identiques au pin de la ferme lors de l'audit ; la branche d'integration MinervaNeue compte deux commits de plus que le pin, sans obligation de mise a jour.
+Les 53 sous-modules restent epingles a leurs SHA : changer la branche par defaut n'actualise aucun gitlink. Les branches d'integration peuvent evoluer apres l'audit sans changer les gitlinks de la ferme. Comparer les SHA au moment d'un deploiement plutot que de conserver un nombre de commits d'avance dans ce document.
 
 Six forks publics (`wikidebates-mediawiki-vector`, `wikidebates-thanks`, `wikidebates-replacetext-custom`, `wikidebates-contactpage`, `wikidebates-hitcounters`, `wikidebates-comments`) disposent d'un ruleset actif `protect-default` cible sur la branche par defaut. Ces regles bloquent les suppressions et les force-push, tout en permettant les mises a jour fast-forward. Les rulesets des depots prives `MinervaNeue` et `CrawlerBurstProtection` ne sont pas disponibles dans le plan GitHub actuel.
 
 Le sous-module `extensions/Comments` pointe vers `wikimedia/mediawiki-extensions-Comments`, et non le depot `wikidebates-comments`. Ne pas archiver ce dernier sur ce seul constat : exclure aussi les autres usages (serveurs, scripts, clients externes) avant archivage.
+
+## Rationalisation et suppression des branches
+
+- Ne jamais confondre **PR fermee** et **PR fusionnee** : une PR fermee sans fusion peut conserver un correctif ou un essai qui n'est pas dans la branche canonique. La branche ne devient candidate au retrait qu'apres examen explicite de son contenu et de sa decision de cloture.
+- Une branche de PR **fusionnee** n'est qu'une candidate au retrait : verifier qu'elle n'est referencee ni par un clone de production/preproduction, ni par un script de deploiement, un cron, une sauvegarde, un workflow ou un outil externe. Une comparaison Git divergente peut simplement refleter un merge/squash, sans suffire a elle seule a autoriser la suppression.
+- Conserver les branches par defaut, les branches historiques encore utilisees, les branches d'integration des sous-modules et les branches de PR ouvertes. Ne pas supprimer des fichiers source ou modifier des gitlinks sous pretexte de nettoyer des references Git.
+- Pour les depots ou les branches de PR sont exclusivement ephemeres, privilegier le reglage GitHub **Settings > General > Pull Requests > Automatically delete head branches**. Ce reglage supprime les branches de travail *apres fusion*, pas les commits deja integres dans la branche cible. Ne pas l'activer sans verifier les usages de branches durables comme tetes de PR.
+- Verification GitHub du 23 novembre 2026 : la suppression automatique est active pour la ferme, `wikidebates-core`, `wikidebates-veforall` et `wikidebia-project`; elle est inactive pour les huit autres depots de l'organisation, dont `MinervaNeue` et `CrawlerBurstProtection`. Le connecteur GitHub ne modifie pas ce reglage d'administration : toute activation doit etre faite explicitement dans les parametres du depot.
+- L'audit GitHub n'etablit pas l'absence d'usages **sur le serveur**. En cas d'impossibilite de les verifier, reporter la suppression et documenter l'incertitude dans l'issue de suivi, plutot que de detruire une branche potentiellement utilisee.
 
 ## CI et deploiement
 
