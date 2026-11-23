@@ -39,12 +39,12 @@
 				},
 				{
 					"name": "Detect changed PHP",
-					"id": "changed-php",
+					"id": "changed_php",
 					"run": "if test -n \"$(git diff --name-only --diff-filter=ACMR 'HEAD^1' HEAD -- '*.php')\"; then\n\techo 'php=true' >> \"$GITHUB_OUTPUT\"\nfi"
 				},
 				{
 					"uses": "shivammathur/setup-php@v2",
-					"if": "steps.changed-php.outputs.php == 'true'",
+					"if": "steps.changed_php.outputs.php == 'true'",
 					"with": {
 						"php-version": "8.4",
 						"coverage": "none"
@@ -52,7 +52,7 @@
 				},
 				{
 					"name": "Lint changed PHP with PHP 8.4",
-					"if": "steps.changed-php.outputs.php == 'true'",
+					"if": "steps.changed_php.outputs.php == 'true'",
 					"run": "git diff --name-only -z --diff-filter=ACMR 'HEAD^1' HEAD -- '*.php' |\n\twhile IFS= read -r -d '' file; do\n\t\tphp -l \"$file\"\n\tdone"
 				},
 				{
