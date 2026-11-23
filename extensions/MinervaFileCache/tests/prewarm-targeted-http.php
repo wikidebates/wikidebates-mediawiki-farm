@@ -109,10 +109,13 @@ try {
 			'http://127.0.0.1:8080/index.php?title=Cache_study_argument',
 			'http://127.0.0.1:8080', 'en', Prewarm::userAgent('android')
 		), true);
+		$dbrow = $database->query('SELECT page_latest, page_touched FROM page WHERE page_id=' . $targetId)->fetch(PDO::FETCH_ASSOC);
 		throw new RuntimeException('Selective Android prewarm rewrote a valid file or made an HTTP GET: ' .
 			substr($local['output'] . $local['error'], -1000) .
 			' variant.actual=' . json_encode($actualVariant) .
-			' variant.expected=' . json_encode($expectedVariant));
+			' variant.expected=' . json_encode($expectedVariant) .
+			' identity.actual=' . json_encode($entry['identity'] ?? null) .
+			' page.primary=' . json_encode($dbrow));
 	}
 	$iphone = $invokeSkip('iphone');
 	if ($iphone['exit'] !== 0 || !str_contains($iphone['output'], '"MISS":1') ||
