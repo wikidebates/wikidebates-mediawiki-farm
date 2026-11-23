@@ -288,7 +288,10 @@ class PrewarmMinervaFileCache extends Maintenance {
 						$this->output(json_encode($stats + ['bypassReasons' => $bypassReasons]) . "\n");
 						return true;
 					}
-					if (!$dryRun && $state !== 'LOCAL_HIT') {
+					// --page-id issues at most one HTTP request. Pacing a lone
+					// request after it has finished adds no protection; the
+					// coordinating worker throttles between page requests.
+					if (!$dryRun && $pageId === null && $state !== 'LOCAL_HIT') {
 						usleep($delay * 1000);
 					}
 				}
