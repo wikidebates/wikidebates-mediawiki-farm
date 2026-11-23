@@ -41,14 +41,18 @@ Ne pas rendre obligatoires les jobs des workflows dont l'evenement `pull_request
 
 ## Branches par defaut des forks d'extensions
 
-Quatre forks utilises dans `.gitmodules` conservent une branche par defaut historique distincte de leur branche d'integration (audit du 23 novembre 2026) :
+Le 23 novembre 2026, les branches par defaut GitHub ont ete alignees sur les branches d'integration declarees dans `.gitmodules` :
 
-- `MinervaNeue` : `REL1_43` par defaut ; `integration-REL1_43-1.43.11` utilisee par la ferme (71 commits en avance).
-- `wikidebates-replacetext-custom` : `wikidebates-REL1_43` par defaut ; `integration-REL1_43-1.43.11` utilisee par la ferme (39 commits en avance).
-- `wikidebates-contactpage` : `wikidebates-REL1_43` par defaut ; `integration-REL1_43-1.43.11` utilisee par la ferme (46 commits en avance).
-- `wikidebates-hitcounters` : `wikidebates-master` par defaut ; `integration-master-1.43.11` utilisee par la ferme (18 commits en avance).
+- `MinervaNeue` : `integration-REL1_43-1.43.11` (prive).
+- `wikidebates-replacetext-custom` : `integration-REL1_43-1.43.11`.
+- `wikidebates-contactpage` : `integration-REL1_43-1.43.11`.
+- `wikidebates-hitcounters` : `integration-master-1.43.11`.
 
-Les SHA epingles restent la source de verite pour le deploiement. Avant de changer la branche par defaut, verifier les scripts externes et la politique de suivi amont de chaque fork. Une nouvelle PR ouverte sans selection explicite de sa base pourrait sinon cibler l'ancienne branche. Ne pas modifier les gitlinks pour ce seul motif.
+Les 53 sous-modules restent epingles a leurs SHA : changer la branche par defaut n'actualise aucun gitlink. Les branches des trois derniers forks sont identiques au pin de la ferme lors de l'audit ; la branche d'integration MinervaNeue compte deux commits de plus que le pin, sans obligation de mise a jour.
+
+Six forks publics (`wikidebates-mediawiki-vector`, `wikidebates-thanks`, `wikidebates-replacetext-custom`, `wikidebates-contactpage`, `wikidebates-hitcounters`, `wikidebates-comments`) disposent d'un ruleset actif `protect-default` cible sur la branche par defaut. Ces regles bloquent les suppressions et les force-push, tout en permettant les mises a jour fast-forward. Les rulesets des depots prives `MinervaNeue` et `CrawlerBurstProtection` ne sont pas disponibles dans le plan GitHub actuel.
+
+Le sous-module `extensions/Comments` pointe vers `wikimedia/mediawiki-extensions-Comments`, et non le depot `wikidebates-comments`. Ne pas archiver ce dernier sur ce seul constat : exclure aussi les autres usages (serveurs, scripts, clients externes) avant archivage.
 
 ## CI et deploiement
 
