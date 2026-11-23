@@ -24,6 +24,8 @@ namespace MediaWiki\Extension\MinervaFileCache {
 }
 
 namespace {
+	define('SMW_NS_PROPERTY', 102);
+	define('SMW_NS_CONCEPT', 108);
 	require dirname(__DIR__) . '/src/Prewarm.php';
 	use MediaWiki\Extension\MinervaFileCache\Prewarm;
 
@@ -135,6 +137,12 @@ namespace {
 				}
 			}
 		}
+		public function appendPrimaryPage(int $id, int $namespace, string $title): void {
+			$this->primaryDb->pages[] = (object)[
+				'page_id' => $id, 'page_namespace' => $namespace,
+				'page_title' => $title, 'page_is_redirect' => 0
+			];
+		}
 		public function getMainConfig(): TestPrewarmConfig { return $this->config; }
 		public function getHttpRequestFactory(): TestPrewarmHttp { return new TestPrewarmHttp(); }
 		public function getConnectionProvider() {
@@ -240,6 +248,35 @@ namespace {
 		checkPrewarmCli(count($GLOBALS['prewarmRequests']) === 1 &&
 			str_contains($GLOBALS['prewarmRequests'][0][0], '/Two'),
 			'Targeted prewarm fetches the exact page only');
+		// SMW supplies its own Article subclass for Property and Concept pages.
+		// These would produce NO_HEADER over HTTP; explicitly skip without GET.
+		$GLOBALS['prewarmServices']->appendPrimaryPage(6, SMW_NS_PROPERTY, 'Debate');
+		$GLOBALS['prewarmServices']->appendPrimaryPage(7, SMW_NS_CONCEPT, 'Concept_demo');
+		foreach ([6, 7] as $smwPageId) {
+			$GLOBALS['prewarmRequests'] = [];
+			$GLOBALS['prewarmOutput'] = [];
+			$runner = new PrewarmMinervaFileCache();
+			$runner->setOptions(['page-id' => (string)$smwPageId,
+				'device' => 'iphone', 'skip-valid' => true, 'delay-ms' => '250']);
+			checkPrewarmCli($runner->execute() === true &&
+				count($GLOBALS['prewarmRequests']) === 0 &&
+				str_contains(implode('', $GLOBALS['prewarmOutput']), '"SKIPPED_SMW_ARTICLE":1'),
+				'SMW-managed Article is explicitly skipped with zero anonymous HTTP requests');
+		}
+		// The custom SMW restriction must never accidentally suppress other
+		// non-main namespaces such as project or categories.
+		foreach ([8 => 4, 9 => 14] as $regularId => $regularNamespace) {
+			$GLOBALS['prewarmServices']->appendPrimaryPage($regularId,
+				$regularNamespace, 'Other_namespace_page_' . $regularId);
+			$GLOBALS['prewarmRequests'] = [];
+			$GLOBALS['prewarmOutput'] = [];
+			$runner = new PrewarmMinervaFileCache();
+			$runner->setOptions(['page-id' => (string)$regularId, 'delay-ms' => '250']);
+			checkPrewarmCli($runner->execute() === true &&
+				count($GLOBALS['prewarmRequests']) === 1 &&
+				str_contains(implode('', $GLOBALS['prewarmOutput']), '"MISS":1'),
+				'Project and Category pages are still requested for Minerva prewarming');
+		}
 		// Simulate replica lag after a move: same page ID, stale old title
 		// in replica, current new title on the primary. Only the targeted
 		// command must select the current title, without warming the old URL.
