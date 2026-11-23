@@ -8,11 +8,20 @@ concurrency:
 on:
   pull_request:
     paths:
+      - 'extensions/MinervaFileCache/extension.json'
       - 'extensions/MinervaFileCache/src/CacheView.php'
-      - 'extensions/MinervaFileCache/src/PublicPageGuard.php'
+      - 'extensions/MinervaFileCache/src/Cached*.php'
       - 'extensions/MinervaFileCache/src/Hooks.php'
+      - 'extensions/MinervaFileCache/src/PublicPageGuard.php'
+      - 'extensions/MinervaFileCache/src/ResponsePolicy.php'
+      - 'extensions/MinervaFileCache/src/Store.php'
+      - 'extensions/MinervaFileCache/tests/bootstrap.php'
+      - 'extensions/MinervaFileCache/tests/http.php'
       - 'extensions/MinervaFileCache/tests/integration.php'
+      - 'extensions/MinervaFileCache/tests/manage.php'
+      - 'extensions/MinervaFileCache/tests/prepare.py'
       - 'extensions/MinervaFileCache/tests/public-page-guard-unit.php'
+      - 'extensions/MinervaFileCache/tests/unit.php'
       - '.github/workflows/minerva-cache-visibility.yml'
 
 permissions:
