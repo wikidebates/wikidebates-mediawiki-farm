@@ -42,7 +42,10 @@ try {
 	putenv('MW_INSTALL_PATH=' . $root . '/mediawiki');
 	// CLI maintenance insists on a readable config file. The lab's marked
 	// bootstrap callback supplies its actual isolated SQLite configuration.
-	$localSettings = $state . '/LocalSettings.php';
+	// Use one LocalSettings.php for both the HTTP process and maintenance.
+	// MediaWiki incorporates its mtime into CacheEpoch, so separate config
+	// paths would intentionally invalidate the otherwise identical HTML.
+	$localSettings = $root . '/mediawiki/LocalSettings.php';
 	file_put_contents($localSettings, "<?php\n");
 	chmod($localSettings, 0600);
 
@@ -103,19 +106,8 @@ try {
 	if ($local['exit'] !== 0 || !str_contains($local['output'], '"LOCAL_HIT":1') ||
 		hash_file('sha256', $files[0]) !== $beforeHash ||
 		count(glob($state . '/mobile-cache/*/*/*/*.cache') ?: []) !== 1) {
-		$entry = json_decode((string)gzdecode((string)file_get_contents($files[0])), true);
-		$actualVariant = json_decode((string)($entry['variant'] ?? ''), true);
-		$expectedVariant = json_decode(Prewarm::targetVariant(
-			'http://127.0.0.1:8080/index.php?title=Cache_study_argument',
-			'http://127.0.0.1:8080', 'en', Prewarm::userAgent('android')
-		), true);
-		$dbrow = $database->query('SELECT page_latest, page_touched FROM page WHERE page_id=' . $targetId)->fetch(PDO::FETCH_ASSOC);
-		throw new RuntimeException('Selective Android prewarm rewrote a valid file or made an HTTP GET: ' .
-			substr($local['output'] . $local['error'], -1000) .
-			' variant.actual=' . json_encode($actualVariant) .
-			' variant.expected=' . json_encode($expectedVariant) .
-			' identity.actual=' . json_encode($entry['identity'] ?? null) .
-			' page.primary=' . json_encode($dbrow));
+		throw new RuntimeException('Selective Android prewarm did not reuse identical HTML without HTTP: ' .
+			substr($local['output'] . $local['error'], -1100));
 	}
 	$iphone = $invokeSkip('iphone');
 	if ($iphone['exit'] !== 0 || !str_contains($iphone['output'], '"MISS":1') ||
