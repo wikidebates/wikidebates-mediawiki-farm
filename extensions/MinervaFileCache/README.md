@@ -192,6 +192,15 @@ enregistrées dans la table `page` sont parcourues par lots de 100.
 Certaines réponses restent exclues par la politique du cache (`BYPASS`).
 Les pages protégées en lecture ne deviennent jamais publiques.
 
+Les espaces sémantiques **Attribut/Property** et **Concept** utilisent dans SMW
+7.3 des classes d'article personnalisées via `ArticleFromTitle`. Elles ne
+peuvent donc pas installer l'adaptateur MinervaFileCache. Le préchauffage
+reconnaît exclusivement les identifiants de namespace `SMW_NS_PROPERTY` et
+`SMW_NS_CONCEPT` et signale `SKIPPED_SMW_ARTICLE` **sans GET HTTP et sans
+fichier cache**. Il ne transforme jamais les `NO_HEADER` inattendus en
+succès. Les pages Projet, Catégorie, Fichier et les autres espaces compatibles
+restent admissibles au préchauffage normal.
+
 ### Préchauffer une page précise
 
 La préparation coordonnée peut maintenant cibler un identifiant `page_id` au lieu
