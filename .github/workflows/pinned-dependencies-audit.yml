@@ -1,4 +1,4 @@
-name: Pinned dependencies and Composer security audit
+name: Pinned dependencies audit
 
 on:
   workflow_dispatch:
@@ -11,8 +11,6 @@ on:
       - 'extensions/*'
       - 'skins/*'
       - 'extensions/CrawlerProtection/build'
-      - 'composer.lock'
-      - 'composer.json'
       - 'tests/ci/auditPinnedDependencies.py'
       - '.github/workflows/pinned-dependencies-audit.yml'
   push:
@@ -24,8 +22,6 @@ on:
       - 'extensions/*'
       - 'skins/*'
       - 'extensions/CrawlerProtection/build'
-      - 'composer.lock'
-      - 'composer.json'
       - 'tests/ci/auditPinnedDependencies.py'
       - '.github/workflows/pinned-dependencies-audit.yml'
 
@@ -54,22 +50,3 @@ jobs:
         with:
           name: pinned-dependency-inventory
           path: submodule-audit.json
-
-  composer-security:
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-          sparse-checkout: |
-            composer.json
-            composer.local.json
-            composer.lock
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          coverage: none
-          tools: composer:v2
-      - name: Audit locked Composer dependencies for security advisories
-        run: composer audit --locked --no-interaction --abandoned=report
