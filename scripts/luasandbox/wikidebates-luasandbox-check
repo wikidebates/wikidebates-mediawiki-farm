@@ -1,0 +1,132 @@
+#!/bin/bash
+# Debian 13 / PHP 8.4 only. Installed as root, never run from the web checkout.
+set -Eeuo pipefail
+
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export LC_ALL=C
+export DEBIAN_FRONTEND=noninteractive
+umask 077
+
+PHP=/usr/bin/php8.4
+FPM=/usr/sbin/php-fpm8.4
+SERVICE=php8.4-fpm.service
+PACKAGE=php-luasandbox
+
+log() {
+	logger -t wikidebates-luasandbox -- "$*" || true
+	printf '%s\n' "$*"
+}
+
+fail() {
+	log "ERREUR : $*" >&2
+	exit 1
+}
+
+trap 'log "ECHEC inattendu ligne $LINENO" >&2' ERR
+(( EUID == 0 )) || fail "Executer en root"
+
+exec 9>/run/wikidebates-luasandbox.lock
+case "$#" in
+	0)
+		flock -n 9 || exit 0
+		;;
+	1)
+		[[ "$1" == --wait ]] || fail "Usage: $0 [--wait]"
+		flock -w 180 9 || fail "Verrou de maintenance occupe"
+		;;
+	*)
+		fail "Usage: $0 [--wait]"
+		;;
+esac
+
+cli_ok() {
+	"$PHP" -r '
+		if (!extension_loaded("luasandbox")) {
+			exit(1);
+		}
+		$lua = new LuaSandbox();
+		exit($lua->loadString("return 42")->call() === [42] ? 0 : 1);
+	' >/dev/null 2>&1
+}
+
+fpm_ok() {
+	local modules
+	modules=$("$FPM" -m 2>/dev/null) || return 1
+	grep -Fxq luasandbox <<< "$modules"
+}
+
+package_ok() {
+	[[ "$(dpkg-query -W -f='${Status}' "$PACKAGE" 2>/dev/null)" == "install ok installed" ]]
+}
+
+install_package() {
+	apt-get \
+		-y \
+		--no-remove \
+		--no-install-recommends \
+		-o DPkg::Lock::Timeout=120 \
+		"$@" install "$PACKAGE"
+	apt-mark manual "$PACKAGE"
+}
+
+enable_module() {
+	phpenmod -v 8.4 -s cli luasandbox &&
+		phpenmod -v 8.4 -s fpm luasandbox
+}
+
+fpm_live_ok() {
+	local pid
+	pid=$(systemctl show -p MainPID --value "$SERVICE") || return 1
+	[[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+	grep -Eq '/luasandbox\.so$' "/proc/$pid/maps" 2>/dev/null
+}
+
+[[ -x "$PHP" && -x "$FPM" ]] ||
+	fail "Installation PHP 8.4 introuvable"
+
+"$PHP" -r 'exit(PHP_MAJOR_VERSION === 8 && PHP_MINOR_VERSION === 4 ? 0 : 1);' ||
+	fail "Version PHP CLI inattendue"
+
+if ! package_ok; then
+	log "Installation de LuaSandbox"
+	install_package
+fi
+
+if ! cli_ok || ! fpm_ok; then
+	log "Tentative de reactivation de LuaSandbox"
+	if [[ -f /etc/php/8.4/mods-available/luasandbox.ini ]]; then
+		enable_module || true
+	fi
+fi
+
+if ! cli_ok || ! fpm_ok; then
+	log "Reinstallation de LuaSandbox"
+	install_package --reinstall -o Dpkg::Options::=--force-confmiss
+	enable_module
+fi
+
+cli_ok || fail "LuaSandbox CLI non fonctionnel"
+fpm_ok || fail "LuaSandbox FPM non fonctionnel"
+
+systemctl is-active --quiet "$SERVICE" ||
+	fail "Service PHP-FPM inactif"
+
+if ! fpm_live_ok; then
+	log "Rechargement de PHP-FPM 8.4"
+	"$FPM" -t
+	systemctl reload "$SERVICE"
+
+	for (( i=0; i<30; i++ )); do
+		if fpm_live_ok; then
+			log "LuaSandbox FPM operationnel"
+			break
+		fi
+		sleep 1
+	done
+
+	fpm_live_ok || fail "LuaSandbox absent du processus FPM"
+fi
+
+if [[ -t 1 ]]; then
+	echo "LuaSandbox CLI et FPM : OK"
+fi
