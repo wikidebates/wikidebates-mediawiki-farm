@@ -209,3 +209,7 @@
 [submodule "extensions/CrawlerProtection/build"]
 	path = extensions/CrawlerProtection/build
 	url = https://github.com/gesinn-it-pub/docker-compose-ci.git
+[submodule "extensions/Interlanguage"]
+	path = extensions/Interlanguage
+	url = https://github.com/wikidebates/Interlanguage.git
+	branch = main
