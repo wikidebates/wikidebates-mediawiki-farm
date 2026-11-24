@@ -518,6 +518,42 @@ printf '%s\n' '$extension = new InterlanguageExtension(); $data = $extension->ge
 	MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php eval
 echo 'PASS explicit central lookup follows the real namespace and rejects a missing destination'
 
+# A plain purge only invalidates rendering caches. Verify the actual
+# persisted secondary data, without requesting a page view between checks.
+edit_page fr 'Property refresh cluster' 'Initial mapping [[en:Property old peer]]'
+edit_page en 'Property old peer' 'Old translation'
+edit_page en 'Property new peer' 'New translation'
+run_purges
+property_count() {
+	sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=0 AND page_title='$1' AND pp_propname='wikirouge-langlinks'"
+}
+test "$(property_count Property_old_peer)" = 1
+test "$(property_count Property_new_peer)" = 0
+edit_page fr 'Property refresh cluster' 'Changed mapping [[en:Property new peer]]'
+run_purges
+test "$(property_count Property_old_peer)" = 1
+test "$(property_count Property_new_peer)" = 0
+echo 'PASS ordinary remote purges do not refresh the persisted property'
+
+# The sender opts in for only EN. Use the default MediaWiki 1.43
+# implicit linkpurge right, without changing receiving permissions.
+# Denied/missing API acknowledgements are covered by the PHP smoke test.
+printf '%s\n' '$GLOBALS["wgInterlanguagePurgeLinkUpdateLanguages"] = [ "en" ]; $job = new InterlanguageCentralExtensionPurgeJob( Title::newFromText( "Property refresh cluster" ), [ "ill" => [ "en" => [ "Property old peer" => true, "Property new peer" => true ] ] ] ); if ( !$job->run() ) { exit( 1 ); }' |
+	MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php eval
+test "$(property_count Property_old_peer)" = 0
+test "$(property_count Property_new_peer)" = 1
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Property_new_peer' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Property_refresh_cluster%'")" = 1
+echo 'PASS authorized non-recursive remote link updates remove old and persist new peer properties'
+
+# A request addressed to the stored redirect alias should update the real
+# translated page, not merely the redirect page's cache.
+edit_page fr 'Redirect cluster' 'Expanded translation group [[en:English redirect alias]] [[de:Property redirect peer]]'
+run_purges
+printf '%s\n' '$GLOBALS["wgInterlanguagePurgeLinkUpdateLanguages"] = [ "en" ]; $job = new InterlanguageCentralExtensionPurgeJob( Title::newFromText( "Redirect cluster" ), [ "ill" => [ "en" => [ "English redirect alias" => true ] ] ] ); if ( !$job->run() ) { exit( 1 ); }' |
+	MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php eval
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='English_redirect_target' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Property redirect peer%'")" = 1
+echo 'PASS authorized targeted refresh reaches the final redirect destination'
+
 # Validate the actual cleanup utility on the disposable central database.
 # Preserve all valid supplemental rows and every native langlink.
 sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) VALUES (4294967294,'pt','Orphan cleanup fixture')"
