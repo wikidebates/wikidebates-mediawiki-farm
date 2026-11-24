@@ -16,7 +16,7 @@ permissions:
 jobs:
   public-seo:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with:
@@ -40,6 +40,6 @@ jobs:
       - name: Bounded public language mapping observation
         run: python3 tests/ci/interlanguageMappingAudit.py --public
       - name: Bounded public observations and namespace inventory
-        run: python3 tests/ci/publicSeoAudit.py --namespace-inventory
+        run: python3 tests/ci/publicSeoAudit.py --namespace-inventory --all-homepages --editorial-inventory
       - name: Observe fixed native SEO samples (informational before deployment)
         run: python3 tests/ci/nativeSeoAudit.py

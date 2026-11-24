@@ -6,7 +6,8 @@ import unittest
 from unittest.mock import patch
 from urllib.request import Request
 from publicSeoAudit import (
-	NAMESPACE_QUERY, OneRedirect, allowed_url, audit, audit_namespaces,
+	EDITORIAL_PREVIEW, EDITORIAL_TITLES, NAMESPACE_QUERY, OneRedirect, allowed_url, audit,
+	audit_editorial, audit_namespaces, editorial_inventory, editorial_query,
 	homepage, main, namespace_inventory, same_origin, sitemap_index, sitemap_policy,
 )
 from urllib.parse import urlencode
@@ -154,6 +155,55 @@ class SeoAuditTest(unittest.TestCase):
 				self.assertEqual(main(), 0)
 			mock_audit.assert_called_once_with("de", include_home=expected)
 			self.assertTrue(json.loads(stdout.getvalue())["read_only"])
+
+	def test_editorial_query_is_fixed_and_read_only(self):
+		host = "de.wikidebates.org"
+		url = "https://" + host + "/w/api.php?" + urlencode(editorial_query("de"))
+		self.assertTrue(allowed_url(url, host, "editorial"))
+		self.assertFalse(allowed_url(url + "&action=purge", host, "editorial"))
+		self.assertFalse(allowed_url(url.replace("Hauptseite", "Other"), host, "editorial"))
+		self.assertFalse(allowed_url(url, host, "namespaces"))
+		self.assertFalse(allowed_url(url.replace(host, "it.wikidebates.org"), "it.wikidebates.org", "editorial"))
+
+	def test_editorial_properties_and_bounded_source(self):
+		title = EDITORIAL_TITLES["de"][0]
+		content = "a" * (EDITORIAL_PREVIEW + 1)
+		body = json.dumps({"query": {"pages": [{
+			"title": title, "pageid": 42, "pageprops": {"shortdesc": "Existing", "noindex": "", "unrelated": "ignored"},
+			"revisions": [{"revid": 81, "slots": {"main": {"content": content}}}],
+		}]}}).encode()
+		calls = []
+		def opener(url, host):
+			calls.append((url, host))
+			return 200, url, {}, body
+		result = audit_editorial("de", opener)
+		self.assertEqual(len(calls), 1)
+		self.assertEqual(result["status"], "ok")
+		page = result["pages"][0]
+		self.assertEqual(page["pageprops"], {"shortdesc": "Existing", "noindex": ""})
+		self.assertEqual(page["revid"], 81)
+		self.assertEqual(len(page["wikitext_preview"]), EDITORIAL_PREVIEW)
+		self.assertTrue(page["wikitext_truncated"])
+
+	def test_editorial_missing_and_invalid_responses(self):
+		title = EDITORIAL_TITLES["de"][0]
+		payload = {"query": {"pages": [{"title": title, "missing": True}]}}
+		self.assertEqual(editorial_inventory(json.dumps(payload), "de")["pages"][0]["status"], "missing")
+		self.assertEqual(editorial_inventory(b'{"continue":{}}', "de")["status"], "incomplete")
+		self.assertEqual(editorial_inventory(b'{"error":{"code":"blocked"}}', "de")["status"], "api_error")
+		self.assertEqual(editorial_inventory(b'{"query":{"pages":[]}}', "de")["status"], "incomplete")
+		payload["query"]["pages"][0]["title"] = "Unexpected"
+		with self.assertRaises(ValueError):
+			editorial_inventory(json.dumps(payload), "de")
+
+	def test_editorial_is_opt_in(self):
+		for extra, expected in (([], False), (["--editorial-inventory"], True)):
+			with patch("sys.argv", ["audit", "--lang", "de"] + extra), \
+				patch("publicSeoAudit.audit", return_value={"sitemap": {"http": 403}}), \
+				patch("publicSeoAudit.audit_editorial", return_value={"status": "unverified"}) as observe, \
+				contextlib.redirect_stdout(io.StringIO()):
+				self.assertEqual(main(), 0)
+			self.assertEqual(observe.call_count, int(expected))
 
 	def test_bounded_requests_and_image_head(self):
 		calls = []
