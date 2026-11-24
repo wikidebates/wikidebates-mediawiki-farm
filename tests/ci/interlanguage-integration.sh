@@ -405,4 +405,30 @@ printf '%s\n' '$job = new InterlanguageCentralExtensionPurgeJob( Title::newFromT
 test "$(sql ill_ci_en -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='English_ordinary'")" != '20000101000000'
 grep -F 'POST /api.php?action=purge' "$config/en.log"
 echo 'PASS remote purge job and database invalidation'
+# The direct job test above cannot detect malformed payloads from LinksUpdate.
+# Exercise a real central edit, with an unchanged supplemental DE peer.
+run_purges() {
+	MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php runJobs --type=purgeDependentWikis --maxjobs=100
+}
+run_purges
+edit_page fr 'Purge lifecycle' 'Initial mapping [[en:Purge old target]]'
+edit_page en 'Purge old target' 'Old peer'
+edit_page en 'Purge new target' 'New peer'
+edit_page de 'Purge lifecycle' 'Supplemental peer'
+run_purges
+sql ill_ci_en -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title IN ('Purge_old_target','Purge_new_target')"
+sql ill_ci_de -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='Purge_lifecycle'"
+edit_page fr 'Purge lifecycle' 'Changed mapping [[en:Purge new target]]'
+test "$(sql ill_ci_fr -e "SELECT ll_title FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Purge_lifecycle' AND ll_lang='en'")" = 'Purge new target'
+run_purges
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page WHERE page_namespace=0 AND page_title IN ('Purge_old_target','Purge_new_target') AND page_touched<>'20000101000000'")" = 2
+test "$(sql ill_ci_de -e "SELECT COUNT(*) FROM page WHERE page_namespace=0 AND page_title='Purge_lifecycle' AND page_touched<>'20000101000000'")" = 1
+echo 'PASS actual central edit purges old, new and supplemental peers'
+
+sql ill_ci_en -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='Purge_new_target'"
+edit_page fr 'Purge lifecycle' 'Unchanged mapping, different text [[en:Purge new target]]'
+run_purges
+test "$(sql ill_ci_en -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='Purge_new_target'")" = '20000101000000'
+echo 'PASS unchanged central language links do not trigger a remote purge'
+
 echo 'PASS disposable Interlanguage and WikiSEO six-edition integration (FR central)'
