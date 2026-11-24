@@ -1,0 +1,13 @@
+[Unit]
+Description=MediaWiki Interlanguage purge jobs (%i)
+Wants=network-online.target
+After=network-online.target
+ConditionPathExists=/home/users/webmaster/www/farm.wikidebates.org/w/maintenance/run.php
+
+[Service]
+Type=oneshot
+User=webmaster
+WorkingDirectory=/home/users/webmaster/www/farm.wikidebates.org/w
+UMask=0077
+ExecStart=/usr/bin/php maintenance/run.php runJobs --wiki=%i --type=purgeDependentWikis --maxtime=30 --maxjobs=20
+TimeoutStartSec=5min

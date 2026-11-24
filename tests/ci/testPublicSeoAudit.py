@@ -267,6 +267,10 @@ class SeoAuditTest(unittest.TestCase):
 		self.assertFalse(allowed_url(url, "fr.wikidebates.org", "asset-body"))
 		self.assertTrue(allowed_url(ASSET_ROBOTS[0], host, "asset-robots"))
 		self.assertFalse(allowed_url(ASSET_ROBOTS[0] + "?x=1", host, "asset-robots"))
+		for suffix in ("logo-Wikidebates-Twitter.png", "logo-wikidebates-twitter.png"):
+			url = "https://en.wikidebates.org/w/resources/assets/" + suffix
+			self.assertTrue(allowed_url(url, "en.wikidebates.org", "asset-body"))
+			self.assertFalse(allowed_url(url, host, "asset-body"))
 
 	def test_asset_png_and_robots_observations(self):
 		png = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"

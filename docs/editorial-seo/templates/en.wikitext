@@ -11,12 +11,14 @@ Metadata for ordinary Wikidebates pages. Use a complete page title and a page-sp
 When using a custom image, also supply image_alt (empty if necessary). Do not use this template for debates or arguments handled by Wikidebates.
 </noinclude><includeonly>{{#seo:
 	|title={{{title|}}}
+	|title_mode=replace
 	|description={{{description|}}}
 	|keywords={{{keywords|}}}
 	|type={{{type|website}}}
 	|og_type={{{og_type|}}}
 	|schema_type={{{schema_type|}}}
 	|section={{{section|}}}
+	|schema_author={{{schema_author|}}}
 	|image={{{image|https://farm.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png}}}
 	|image_alt={{{image_alt|Balance of reason weighing arguments for and against}}}
 	|site_name=Wikidebates

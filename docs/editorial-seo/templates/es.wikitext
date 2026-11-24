@@ -9,12 +9,14 @@
 Si utiliza una imagen personalizada, indique también image_alt (vacío si es necesario). No utilice esta plantilla para debates o argumentos gestionados por Wikidebates.
 </noinclude><includeonly>{{#seo:
 	|title={{{título|}}}
+	|title_mode=replace
 	|description={{{descripción|}}}
 	|keywords={{{palabras claves|}}}
 	|type={{{tipo|website}}}
 	|og_type={{{og_type|}}}
 	|schema_type={{{schema_type|}}}
 	|section={{{section|}}}
+	|schema_author={{{schema_author|}}}
 	|image={{{image|https://farm.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png}}}
 	|image_alt={{{image_alt|Balanza de la razón que sopesa los argumentos a favor y en contra}}}
 	|site_name=Wikidebates

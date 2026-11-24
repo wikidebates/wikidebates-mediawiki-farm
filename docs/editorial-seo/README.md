@@ -73,3 +73,45 @@ Ne pas inventer des dimensions pour les images personnalisées.
 
 Aucun PHP, Lua, SQL, sous-module ou contenu de production modifié par
 cette proposition.
+
+## Lot éditorial proposé (61 pages)
+
+Le fichier [pages.json](pages.json) contient pour chaque page le wiki, le titre,
+la révision observée (run 45472288074), le type Schema.org et les opérations
+exactes de remplacement ou d'ajout. Les 52 appels historiques ont été retrouvés
+dans les extraits ; le bloc Évènements est à la jonction des deux extraits
+et doit être vérifié dans la source intégrale. Les 9 autres pages sont les
+quatre accueils sans modèle historique (FR, DE, IT, PT), quatre portails/aides
+FR et Contribute EN. Testez-vous est une redirection, non modifiée. Les
+quatre textes d'accueil DE/ES/IT/PT sont actualisés. Les titres fournis sont
+complets, title_mode=replace. schema_author est facultatif et réservé aux
+articles dont l'auteur est attesté par le texte ou le titre. Pas de date inventée.
+
+Les cinq anciennes présentations traduites sur FR restent des AboutPage
+avec métadonnées dans la langue du texte ; ne pas changer leur canonique,
+langue effective ou indexabilité sans examen éditorial distinct. Les
+comparatifs sont des articles éditoriaux sans auteur déduit ; les essais
+signés sont des Article. Le texte espagnol La falsa alternativa de la
+globalización est un texte à la première personne signé par son titre,
+renvoyant au livre : Article désigne le texte publié, pas le livre.
+
+### Application manuelle sûre
+
+1. Vérifier les prérequis globaux, les révisions actuelles des modèles et
+   pages, et sauvegarder les sources intégrales. Tester les modèles sur
+   MediaWiki 1.43/PHP 8.4 avant installation.
+2. Relire le wikicode intégral : les extraits ne prouvent pas l'absence
+   d'un autre appel au milieu de la source. Refuser tout écart de révision,
+   toute ambiguïté de bloc ou ajout qui doublerait un appel existant.
+3. Installer les modèles puis les appels dans la même fenêtre éditoriale,
+   après validation des hreflang et vérifications globales. Pour replace,
+   remplacer uniquement before par after, exactement une fois. Pour append,
+   ajouter after à la page existante, idéalement avant catégories/liens
+   interlangues finaux. Conserver le contenu, catégories et shortdesc.
+   Prévisualiser et relire avant enregistrement ; ne pas écraser un changement
+   concurrent. Ne pas remplacer une page entière par un bloc SEO.
+4. Contrôler les sorties des pages modifiées. La recette globale et les
+   caches restent sous la responsabilité de l'autre conversation.
+
+Aucune écriture dans les wikis n'est effectuée par ce lot. Les tests de
+l'audit ne sont pas des tests du parseur MediaWiki des nouveaux modèles.

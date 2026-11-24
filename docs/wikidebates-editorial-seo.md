@@ -81,16 +81,17 @@ et ne pas installer des modèles concurrents sans besoin établi.
 python3 tests/ci/publicSeoAudit.py --all-homepages --editorial-inventory --shared-assets
 ```
 
-L'option shared-assets ajoute exactement trois GET de PNG (les URL sociale
-partagée et française observées, ainsi qu'une candidate française suivie
-par Git) et deux GET de robots.txt, sur les deux hôtes explicitement
+L'option shared-assets ajoute exactement cinq GET de PNG (les URL sociales
+partagée et française observées, une candidate française suivie par Git,
+l'URL anglaise du SEO natif et sa variante en minuscules présente dans
+Git) et trois GET de robots.txt, sur les trois hôtes explicitement
 autorisés. Au plus un redirect vers une autre URL de la même liste et du
 même hôte. Les dimensions sont lues dans IHDR, pas par décodage complet.
 La taille, le type MIME, X-Robots-Tag et les groupes pertinents de robots.txt
 sont rapportés sans interpréter complètement les règles d'un moteur.
 Aucun suivi automatique d'une URL externe trouvée dans une page.
-Ces dix requêtes maximales supplémentaires portent le budget du script
-principal à 70 requêtes avec les autres options et redirections. Les
+Ces seize requêtes maximales supplémentaires portent le budget du script
+principal à 76 requêtes avec les autres options et redirections. Les
 observations publiques restent informatives et les tests simulés bloquants.
 
 ## Dépendances des modèles historiques
@@ -110,5 +111,16 @@ incomplet ; le nombre observé n'est pas alors un total. La liste ne prouve
 pas que chaque page appelle directement le modèle ni quels paramètres elle
 lui transmet. Vérifier les appels avant remplacement, y compris les modèles
 intermédiaires et les pages hors du périmètre éditorial. Le budget cumulé
-passe de 70 à 76 requêtes maximum, redirections comprises. Aucun changement
+passe de 76 à 82 requêtes maximum, redirections comprises. Aucun changement
 de configuration, de sous-module ou de contenu wiki.
+
+## Vérification du logo natif anglais
+
+Le relevé public du 24 novembre 2026 (PR #191, job 138721796604) confirme
+HTTP 404 pour `logo-Wikidebates-Twitter.png` sur en.wikidebates.org et
+HTTP 200, image/png, 1000 × 500 pixels, 126043 octets, sans X-Robots-Tag
+restrictif pour `logo-wikidebates-twitter.png`. Les pages natives anglaises
+émettaient la première URL. La sonde native rapporte les URL et attributs
+sociaux effectivement émis sans suivre ces URL. Corriger le catalogue
+natif, puis vérifier les métadonnées après le déploiement et le
+renouvellement coordonné des caches. Aucune modification des protections.

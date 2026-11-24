@@ -55,6 +55,92 @@ mise à jour immédiate de page_props. Ne pas élargir les droits anonymes
 linkpurge pour résoudre cette question. Vérifier les propriétés et les
 caches personnalisés séparément lors de la recette de production.
 
+## Déploiement des URL API et services systemd
+
+Le dernier relevé confirme les services système permanents
+mw-jobqueue-fr.service et mw-jobqueue-en.service, sous webmaster,
+dans la racine MediaWiki. Les conserver. Pour DE/ES/IT/PT, les
+deux modèles ops/systemd/mw-interlanguage-purge@.service et
+ops/systemd/mw-interlanguage-purge@.timer exécutent exclusivement
+purgeDependentWikis, par lots de 20 et avec un budget runJobs de 30 s,
+puis une pause de 5 minutes. Une même instance systemd ne se
+chevauche pas. Aucun service n'est installé automatiquement.
+
+Après le déploiement groupé, en tant que webmaster, prévisualiser
+les cinq préfixes distants sur chacun des six wikis :
+
+```bash
+cd /home/users/webmaster/www/farm.wikidebates.org/w
+
+for wiki in fr en de es it pt; do
+	php maintenance/run.php ./ops/interlanguage/configureApiRoutes.php --wiki="$wiki" || break
+done
+```
+
+Le script refuse les préfixes manquants, les URL de navigation
+différentes, une configuration statique et les URL API non vides
+inattendues. Il n'effectue aucun changement sans --apply.
+Les 25 valeurs vides observées correspondent aux couples source/cible ;
+si des tables sont partagées, le nombre de lignes physiques à mettre
+à jour peut être inférieur.
+
+Après vérification de toutes les prévisualisations :
+
+```bash
+(
+	set -euo pipefail
+	for wiki in fr en de es it pt; do
+		php maintenance/run.php ./ops/interlanguage/configureApiRoutes.php --wiki="$wiki" --apply
+	done
+)
+```
+
+L'application exige la classe du nouveau module API, vérifie InnoDB,
+verrouille les lignes du wiki pendant la transaction, sauvegarde les
+valeurs réellement modifiées dans
+/home/users/webmaster/files/interlanguage-audits/api-routes-*.json,
+et ne remplit que iw_api encore vide. Les caches de recherche des
+cinq préfixes sont invalidés après commit. Chaque wiki est traité
+séparément, pas dans une transaction globale sur les six bases.
+Relancer le mode prévisualisation dans de nouveaux processus :
+il doit indiquer zéro champ SQL manquant et les API effectives attendues.
+En cas d'échec, ne pas poursuivre l'activation des purges.
+
+Vérifier que le module purge est autorisé depuis le serveur et
+que les requêtes ne sont pas bloquées par Cloudflare. Un droit purge
+annoncé par l'API userinfo ne suffit pas à prouver l'exécution ;
+vérifier une purge ciblée consentie lors de la recette. Ne pas ajouter
+linkpurge aux utilisateurs anonymes. Contrôler sur chaque wiki
+l'enregistrement du job purgeDependentWikis et sur FR/EN son inclusion
+dans getDefaultQueueTypes() ; si exclu ou durablement retardé, un timer
+ciblé peut aussi être nécessaire pour cette édition.
+
+Après ces contrôles et inspection des files, installer les deux modèles
+en tant que root, sans toucher aux services existants :
+
+```bash
+cd /home/users/webmaster/www/farm.wikidebates.org/w
+
+install -m 0644 ops/systemd/mw-interlanguage-purge@.service /etc/systemd/system/
+install -m 0644 ops/systemd/mw-interlanguage-purge@.timer /etc/systemd/system/
+
+systemctl daemon-reload
+
+for wiki in de es it pt; do
+	systemctl enable --now "mw-interlanguage-purge@$wiki.timer"
+done
+
+systemctl list-timers --all 'mw-interlanguage-purge@*.timer'
+```
+
+Observer l'exécution dans journalctl -u mw-interlanguage-purge@de.service.
+Le budget de 30 s n'interrompt pas un job individuel en cours ; le
+service possède un timeout systemd de cinq minutes. La cadence et la
+taille des lots sont des choix opérationnels révisables. Ne pas installer
+les timers avant que le job soit enregistré sur les wikis dépendants.
+L'activation de InterlanguageExtensionNotifyFallbackChanges n'est pas
+automatique : elle vient après la recette des API et des workers.
+
 ## Nettoyage historique
 
 Procéder après activation du code qui ignore les auto-correspondances

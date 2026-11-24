@@ -34,6 +34,16 @@ class NativeSeoAuditTest(unittest.TestCase):
 			tags, graph = fixture(kind)
 			self.assertEqual(inspect(html(tags,graph),URL,{},"fr",kind)["status"],"ok")
 
+	def test_reports_actual_social_urls_without_fetching_them(self):
+		tags, graph = fixture()
+		url = "https://example.test/social.png"
+		tags.update({"og:image": url, "twitter:image": url, "og:image:alt": "Balance"})
+		result = inspect(html(tags, graph), URL, {}, "fr", "argument")
+		self.assertEqual(result["status"], "ok")
+		self.assertEqual(result["social_images"]["og:image"], [url])
+		self.assertEqual(result["social_images"]["twitter:image"], [url])
+		self.assertEqual(result["social_images"]["og:image:alt"], ["Balance"])
+
 	def test_mismatches(self):
 		def result(tags, graph, **kw):
 			return inspect(html(tags,graph,**kw),URL,{},"fr","argument")
