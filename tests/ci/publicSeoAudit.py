@@ -18,6 +18,10 @@ LANGS = ("de", "en", "es", "fr", "it", "pt")
 AGENT = "Wikidebates-public-SEO-audit/1.0"
 XML_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 MAX_BYTES = 2 * 1024 * 1024
+NAMESPACE_QUERY = {
+	"action": "query", "meta": "siteinfo", "siprop": "namespaces|general", "format": "json",
+}
+
 
 
 def same_origin(url, host):
@@ -40,6 +44,12 @@ def allowed_url(url, host, scope):
 		return not parts.query and (parts.path == "/" or parts.path.startswith("/wiki/"))
 	if scope == "index":
 		return not parts.query and parts.path.startswith("/w/sitemaps/") and parts.path.endswith(".xml")
+	if scope == "namespaces":
+		return (
+			parts.path == "/w/api.php"
+			and sorted(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
+			== sorted(NAMESPACE_QUERY.items())
+		)
 	if scope == "image":
 		return (
 			bool(re.search(r"\.(?:png|jpe?g|webp|gif|svg|avif|ico)$", parts.path, re.I))
@@ -66,8 +76,11 @@ class OneRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def get(url, host, method="GET"):
+	path = urllib.parse.urlsplit(url).path
 	scope = "image" if method == "HEAD" else (
-		"index" if urllib.parse.urlsplit(url).path.startswith("/w/sitemaps/") else "homepage"
+		"namespaces" if path == "/w/api.php" else (
+			"index" if path.startswith("/w/sitemaps/") else "homepage"
+		)
 	)
 	if not allowed_url(url, host, scope):
 		raise ValueError("Unexpected URL")
@@ -127,6 +140,48 @@ def sitemap_index(body, lang):
 		"duplicate_locations": len(locations) - len(set(locations)),
 		"wrong_origin": wrong_origin, "unclassified": unclassified,
 	}
+
+
+def namespace_inventory(body):
+	"""Keep only namespace identity and the advertised editorial-content flag."""
+	payload = json.loads(body)
+	query = payload["query"]
+	namespaces = query["namespaces"]
+	general = query["general"]
+	if not isinstance(namespaces, dict) or not isinstance(general, dict):
+		raise ValueError("Invalid siteinfo")
+	result = {}
+	for key, item in namespaces.items():
+		if not isinstance(item, dict) or not isinstance(item.get("id"), int):
+			raise ValueError("Invalid namespace")
+		if str(item["id"]) != key:
+			raise ValueError("Namespace ID mismatch")
+		if not isinstance(item.get("*"), str):
+			raise ValueError("Missing namespace name")
+		result[key] = {
+			"name": item["*"],
+			"canonical": item.get("canonical", ""),
+			"content": "content" in item,
+		}
+	if "0" not in result or "4" not in result:
+		raise ValueError("Missing standard namespaces")
+	return {
+		"mainpage": general.get("mainpage", ""),
+		"namespaces": result,
+	}
+
+
+def audit_namespaces(lang, opener=get):
+	host = lang + ".wikidebates.org"
+	url = "https://" + host + "/w/api.php?" + urllib.parse.urlencode(NAMESPACE_QUERY)
+	try:
+		status, _, _, body = opener(url, host)
+		result = {"http": status}
+		if status == 200:
+			result.update(namespace_inventory(body))
+		return result
+	except (ValueError, TypeError, KeyError, OSError, RecursionError) as exc:
+		return {"unverified": type(exc).__name__}
 
 
 class Head(HTMLParser):
@@ -248,11 +303,20 @@ def main():
 	parser = argparse.ArgumentParser(description=__doc__)
 	parser.add_argument("--lang", choices=LANGS, action="append",
 		help="limit the audit to selected languages")
+	parser.add_argument("--namespace-inventory", action="store_true",
+		help="also request the public namespace inventory once per selected wiki")
 	args = parser.parse_args()
 	langs = list(dict.fromkeys(args.lang or LANGS))
+	results = []
+	for lang in langs:
+		entry = audit(lang, include_home=lang in ("fr", "en"))
+		if args.namespace_inventory:
+			entry["namespace_inventory"] = audit_namespaces(lang)
+		results.append(entry)
 	print(json.dumps({
 		"read_only": True, "scope": "indexes only; FR/EN homepage and one same-host OG image HEAD",
-		"results": [audit(lang, include_home=lang in ("fr", "en")) for lang in langs],
+		"namespace_inventory": args.namespace_inventory,
+		"results": results,
 	}, indent=2, ensure_ascii=False))
 
 

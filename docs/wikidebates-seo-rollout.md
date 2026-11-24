@@ -37,6 +37,10 @@ Le générateur ignore les pages portant la propriété noindex et accepte
 --skip-redirects. La politique NamespaceRobotPolicies, les règles WikiSEO
 et les canoniques éditoriales ne sont pas automatiquement toutes reflétées.
 Ne pas changer le cron, les fichiers XML ou robots.txt avant cet inventaire.
+L'option --namespace-inventory de la sonde lit aussi l'identité des espaces
+de noms déclarés par chacun des six wikis. Le marqueur content de siteinfo
+est informatif : les pages de projet et d'aide peuvent être éditoriales sans
+ce marqueur. Les identifiants personnalisés ne sont pas devinés.
 
 Privilégier un lien Sitemap vers l'index propre à chaque hôte. Vérifier que
 les sitemaps et les ressources de rendu accessibles au public sont lisibles
@@ -51,12 +55,15 @@ https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
 ```sh
 python3 tests/ci/publicSeoAudit.py
 python3 tests/ci/publicSeoAudit.py --lang fr --lang en
+python3 tests/ci/publicSeoAudit.py --namespace-inventory
 ```
 
 Six index XML, et pour FR/EN seulement : la racine publique et au plus un HEAD
 de l'image Open Graph du même hôte. Au maximum un redirect HTTPS même hôte
 par requête (20 requêtes HTTP au maximum si chaque requête est redirigée),
-réponse GET limitée à 2 Mio, timeout 12 s. Les images doivent avoir une
+réponse GET limitée à 2 Mio, timeout 12 s. L'option --namespace-inventory
+ajoute au plus six lectures siteinfo, uniquement avec la requête fixe
+namespaces|general (32 requêtes HTTP au maximum avec redirections). Les images doivent avoir une
 extension reconnue ; seules les URL sans paramètres ou avec le hash
 WikiSEO version=... sont sondées. Les HEAD restent des HEAD après redirect.
 Pas de parcours des
