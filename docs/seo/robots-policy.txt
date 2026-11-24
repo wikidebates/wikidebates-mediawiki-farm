@@ -1,0 +1,116 @@
+# Wikidebates - common crawl policy for the six editions.
+# This is a crawler request policy, not access control or a noindex rule.
+# Preserve the existing denied crawler tokens; no AI permission change.
+# Historical anti-abuse and advertising exclusions.
+User-agent: Mediapartners-Google*
+User-agent: UbiCrawler
+User-agent: DOC
+User-agent: Zao
+User-agent: sitecheck.internetseer.com
+User-agent: Zealbot
+User-agent: MSIECrawler
+User-agent: SiteSnagger
+User-agent: WebStripper
+User-agent: WebCopier
+User-agent: Fetch
+User-agent: Offline Explorer
+User-agent: Teleport
+User-agent: TeleportPro
+User-agent: WebZIP
+User-agent: linko
+User-agent: HTTrack
+User-agent: Microsoft.URL.Control
+User-agent: Xenu
+User-agent: larbin
+User-agent: libwww
+User-agent: ZyBORG
+User-agent: Download Ninja
+User-agent: fast
+User-agent: wget
+User-agent: grub-client
+User-agent: k2spider
+User-agent: NPBot
+User-agent: WebReaper
+Disallow: /
+
+# Existing AI and bulk-collection exclusions.
+User-agent: GPTBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: Claude-SearchBot
+User-agent: CCBot
+User-agent: Bytespider
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: YouBot
+User-agent: Meta-ExternalAgent
+User-agent: Meta-ExternalFetcher
+User-agent: Applebot-Extended
+User-agent: Omgilibot
+User-agent: Omgili
+User-agent: Diffbot
+User-agent: ImagesiftBot
+User-agent: Timpibot
+Disallow: /
+
+# All other crawlers, including ordinary search engines.
+User-agent: *
+# Preserve the existing API and ResourceLoader exceptions.
+Allow: /w/api.php?action=mobileview&
+Allow: /w/load.php?
+Allow: /api/rest_v1/?doc
+
+# Allow static skin assets needed for rendering, not the entire skin tree.
+Allow: /w/skins/*.css$
+Allow: /w/skins/*.css?
+Allow: /w/skins/*.js$
+Allow: /w/skins/*.js?
+Allow: /w/skins/*.mjs$
+Allow: /w/skins/*.mjs?
+Allow: /w/skins/*.woff$
+Allow: /w/skins/*.woff?
+Allow: /w/skins/*.woff2$
+Allow: /w/skins/*.woff2?
+Allow: /w/skins/*.ttf$
+Allow: /w/skins/*.ttf?
+Allow: /w/skins/*.otf$
+Allow: /w/skins/*.otf?
+Allow: /w/skins/*.svg$
+Allow: /w/skins/*.svg?
+Allow: /w/skins/*.png$
+Allow: /w/skins/*.png?
+Allow: /w/skins/*.jpg$
+Allow: /w/skins/*.jpg?
+Allow: /w/skins/*.jpeg$
+Allow: /w/skins/*.jpeg?
+Allow: /w/skins/*.gif$
+Allow: /w/skins/*.gif?
+Allow: /w/skins/*.webp$
+Allow: /w/skins/*.webp?
+Allow: /w/skins/*.avif$
+Allow: /w/skins/*.avif?
+Allow: /w/skins/*.ico$
+Allow: /w/skins/*.ico?
+Disallow: /w/skins/
+
+# Avoid expensive or duplicate dynamic routes.
+Disallow: /w/index.php?
+Disallow: /api/
+Disallow: /trap/
+Disallow: /*?action=
+Disallow: /*&action=
+Disallow: /*?oldid=
+Disallow: /*&oldid=
+Disallow: /*?diff=
+Disallow: /*&diff=
+
+# Canonical special-page prefixes (all six editions).
+Disallow: /wiki/Special:
+Disallow: /wiki/Spécial:
+Disallow: /wiki/Spezial:
+Disallow: /wiki/Especial:
+Disallow: /wiki/Speciale:
+
+# Retain the current throttle for crawlers that support this extension.
+Crawl-delay: 10
