@@ -1,9 +1,13 @@
 """Offline public SEO observation tests, no network."""
+import contextlib
+import io
+import json
 import unittest
+from unittest.mock import patch
 from urllib.request import Request
 from publicSeoAudit import (
 	NAMESPACE_QUERY, OneRedirect, allowed_url, audit, audit_namespaces,
-	homepage, namespace_inventory, same_origin, sitemap_index, sitemap_policy,
+	homepage, main, namespace_inventory, same_origin, sitemap_index, sitemap_policy,
 )
 from urllib.parse import urlencode
 
@@ -123,6 +127,33 @@ class SeoAuditTest(unittest.TestCase):
 		self.assertEqual(details["jsonld_types"], ["Organization", "WebSite"])
 		self.assertEqual(details["jsonld_invalid"], 1)
 		self.assertEqual(head.tags["og:image"], ["/logo.png"])
+
+	def test_metadata_identity_and_hreflang_observation(self):
+		_, details = homepage(b'<head><link rel="alternate" hreflang="de" href="https://de.wikidebates.org/wiki/Home">'
+			b'<link rel="alternate" type="application/rss+xml" href="/feed">'
+			b'<meta property="og:image" content="//static.example/logo.png">'
+			b'<meta property="og:image:width" content="1200"><meta name="twitter:image" content="/logo.png">'
+			b'<script type="application/ld+json">{"@graph":[{"@type":"WebSite","@id":"https://fr.wikidebates.org/#website",'
+			b'"publisher":{"@id":"https://fr.wikidebates.org/wiki/Association#organization"}},'
+			b'{"@type":"WebPage","image":{"url":"https://static.example/logo.png","width":1200}},'
+			b'{"@type":"Organization","name":"Association"}]}</script></head><body>'
+			b'<link rel="alternate" hreflang="es" href="/ignored"></body>')
+		self.assertEqual(details["hreflang"], [{"lang": "de", "url": "https://de.wikidebates.org/wiki/Home"}])
+		self.assertEqual(details["metadata"]["og:image"], ["//static.example/logo.png"])
+		self.assertEqual(details["metadata"]["og:image:width"], ["1200"])
+		self.assertEqual(details["metadata"]["twitter:image"], ["/logo.png"])
+		self.assertEqual(details["jsonld_images"], [{"url": "https://static.example/logo.png", "width": 1200}])
+		self.assertEqual(details["jsonld_identities"][0]["publisher_id"],
+			"https://fr.wikidebates.org/wiki/Association#organization")
+
+	def test_all_homepages_is_opt_in(self):
+		for extra, expected in (([], False), (["--all-homepages"], True)):
+			with patch("sys.argv", ["audit", "--lang", "de"] + extra), \
+				patch("publicSeoAudit.audit", return_value={"sitemap": {"http": 403}}) as mock_audit, \
+				contextlib.redirect_stdout(io.StringIO()) as stdout:
+				self.assertEqual(main(), 0)
+			mock_audit.assert_called_once_with("de", include_home=expected)
+			self.assertTrue(json.loads(stdout.getvalue())["read_only"])
 
 	def test_bounded_requests_and_image_head(self):
 		calls = []
