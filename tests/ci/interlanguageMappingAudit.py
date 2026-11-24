@@ -145,7 +145,37 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 			$pages[$row->page_id] = $describeRedirect( $row );
 		}
 	}
-	$data = [ 'links' => $links, 'pages' => (object)$pages ];
+	$dictionary = [
+		'present' => class_exists( 'InterlanguageTitleKeys' ) && $db->tableExists( 'interlanguage_title_keys', __FILE__ ),
+		'writer_enabled' => (bool)( $GLOBALS['wgInterlanguageMaintainTitleKeys'] ?? false ),
+		'missing' => [],
+		'unindexable' => [],
+	];
+	if ( $dictionary['present'] ) {
+		$spellings = [];
+		foreach ( $links as [ $table, $source, $code, $raw ] ) {
+			$spellings[$code][$raw] = true;
+		}
+		foreach ( $spellings as $code => $raws ) {
+			foreach ( array_chunk( array_map( 'strval', array_keys( $raws ) ), 500 ) as $chunk ) {
+				$foundKeys = [];
+				foreach ( $db->select( 'interlanguage_title_keys', [ 'itk_title', 'itk_key' ], [
+					'itk_lang' => (string)$code, 'itk_title' => $chunk,
+				], __FILE__ ) as $row ) {
+					$foundKeys[$row->itk_title][$row->itk_key] = true;
+				}
+				foreach ( $chunk as $raw ) {
+					$expected = InterlanguageTitleKeys::storedKeys( $raw );
+					if ( !$expected ) {
+						$dictionary['unindexable'][] = [ $code, $raw ];
+					} elseif ( array_diff( $expected, array_keys( $foundKeys[$raw] ?? [] ) ) ) {
+						$dictionary['missing'][] = [ $code, $raw ];
+					}
+				}
+			}
+		}
+	}
+	$data = [ 'links' => $links, 'pages' => (object)$pages, 'title_keys' => $dictionary ];
 } else {
 	$targets = json_decode( file_get_contents( getenv( 'WD_ILL_TARGETS' ) ), true, 512, JSON_THROW_ON_ERROR );
 	$parsed = [];
@@ -193,6 +223,12 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 		$key = $entry['dbkey'];
 		if ( isset( $found[$ns][$key] ) ) {
 			$entry = [ 'status' => 'exists' ] + $found[$ns][$key];
+			if ( class_exists( 'InterlanguageTitleKeys' ) ) {
+				$entry['title_key_compatible'] = (bool)array_intersect(
+					InterlanguageTitleKeys::storedKeys( (string)$raw ),
+					InterlanguageTitleKeys::lookupKeys( $entry['lookup'], $services->getMainConfig()->get( 'OverrideUcfirstCharacters' ) )
+				);
+			}
 		} elseif ( $ns === NS_FILE || $ns === NS_MEDIAWIKI ) {
 			$entry['status'] = $missingStatus( Title::makeTitle( $ns, $key ) );
 		}
@@ -230,7 +266,12 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 			}
 		}
 	}
-	$data = [ 'targets' => (object)$parsed, 'stored' => (object)$stored, 'stored_pages' => (object)$storedPages ];
+	$data = [
+		'targets' => (object)$parsed, 'stored' => (object)$stored, 'stored_pages' => (object)$storedPages,
+		'title_key_reader' => (bool)( $GLOBALS['wgInterlanguageUseTitleKeys'] ?? false ),
+		'title_key_writer' => (bool)( ( $GLOBALS['wgInterlanguageMaintainTitleKeys'] ?? false ) ||
+			( $GLOBALS['wgInterlanguageUseTitleKeys'] ?? false ) ),
+	];
 }
 if ( file_put_contents( getenv( 'WD_ILL_OUTPUT' ), json_encode( $data, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE ) ) === false ) {
 	throw new RuntimeException( 'Could not write audit snapshot' );
@@ -321,6 +362,23 @@ def analyze(central, editions):
 			# the same group. Section/interwiki/over-limit chains are not verified.
 			check(kind, **details)
 
+	dictionary = central.get("title_keys", {})
+	missing_keys = {tuple(row) for row in dictionary.get("missing", [])}
+	unindexable = {tuple(row) for row in dictionary.get("unindexable", [])}
+	counts["title_key_missing_spellings"] = len(missing_keys)
+	counts["title_key_unindexable_spellings"] = len(unindexable)
+	readers = {lang for lang in LANGS[1:] if editions.get(lang, {}).get("title_key_reader", False)}
+	counts["title_key_active_readers"] = len(readers)
+	if readers and not dictionary.get("present", False):
+		issue("NORMALIZED_INDEX_UNAVAILABLE", readers=sorted(readers))
+	if readers and not dictionary.get("writer_enabled", False):
+		check("NORMALIZED_INDEX_CENTRAL_WRITER_DISABLED", readers=sorted(readers))
+	if dictionary.get("present", False):
+		for lang, raw in sorted(missing_keys):
+			check("NORMALIZED_INDEX_KEY_MISSING", lang=lang, target=raw, reader_active=lang in readers)
+		for lang, raw in sorted(unindexable):
+			check("NORMALIZED_INDEX_UNINDEXABLE", lang=lang, target=raw, reader_active=lang in readers)
+
 	for table, source, lang, raw in central["links"]:
 		counts[table] += 1
 		counts[f"{table}:{lang}"] += 1
@@ -350,8 +408,18 @@ def analyze(central, editions):
 			classify_redirect("TARGET", target, context)
 		if key(raw) != target["key"] or raw != target["lookup"]:
 			observe("SYNTAX_VARIANT", canonical_title=target["key"], **context)
-		# Keep this diagnostic until the runtime has a normalized reverse index.
-		if table == "langlinks" and raw != target["lookup"]:
+		# An activated reader is not by itself proof of coverage. Check the
+		# actual dictionary spelling and its compatibility with the receiver.
+		if lang in readers:
+			compatible = target.get("title_key_compatible")
+			if compatible is not True:
+				check("NORMALIZED_INDEX_LOCAL_KEY_UNVERIFIED", compatible=compatible, **context)
+			elif (dictionary.get("present", False) and (lang, raw) not in missing_keys
+				and (lang, raw) not in unindexable):
+				counts["normalized_index_compatible_mappings"] += 1
+				if raw != target["lookup"]:
+					observe("NORMALIZED_VARIANT_INDEXED", expected_lookup=target["lookup"], **context)
+		elif table == "langlinks" and raw != target["lookup"]:
 			check("NATIVE_REVERSE_LOOKUP_RISK", expected_lookup=target["lookup"], **context)
 
 	clusters = []
