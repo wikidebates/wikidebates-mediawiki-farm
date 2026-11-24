@@ -45,6 +45,11 @@ function parseSEO( string $wikitext ): array {
 	$out = $context->getOutput();
 	$out->setArticleFlag( true );
 	$out->addParserOutputMetadata( $parsed );
+	// Mirror WikiSEO's existing integration/parser.php fixture: ordinary parser
+	// properties are not automatically copied by OutputPage in this harness.
+	foreach ( $parsed->getPageProperties() as $key => $value ) {
+		$out->setProperty( $key, $value );
+	}
 	$seo = new WikiSEO();
 	$seo->setMetadataFromPageProps( $out );
 	$seo->addMetadataToPage( $out );
