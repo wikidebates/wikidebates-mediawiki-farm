@@ -56,6 +56,8 @@ $wgEnableEmail = false;
 $wgShowExceptionDetails = true;
 $wgGroupPermissions['*']['purge'] = true;
 $wgEnableCanonicalServerLink = true;
+// Permit __NOINDEX__ in main-namespace disposable fixtures.
+$wgExemptFromUserRobotsControl = [];
 $wgWikiSeoDefaultLanguage = null;
 $wgWikiSeoDisableLogoFallbackImage = true;
 $wgHideInterlanguageLinks = isset( $_GET['illcihide'] );
