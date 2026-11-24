@@ -145,6 +145,21 @@ def snapshot(root, directory, lang, mode, targets=()):
 def key(raw):
 	return raw.replace(" ", "_")
 
+
+def title_forms(page):
+	"""Only accept the actual target's localized and canonical namespace names.
+
+	Generic Project:/Help:/File: names are legitimate MediaWiki identities,
+	even if a literal URL built with them would not be canonical.
+	Do not normalize arbitrary colon-containing main-namespace titles.
+	"""
+	forms = {key(page["key"]), key(page["lookup"])}
+	if ":" in page["lookup"] and ":" in page["key"]:
+		for value in tuple(forms):
+			prefix, name = value.split(":", 1)
+			forms.add(prefix + ":_" + name.lstrip("_"))
+	return forms
+
 def analyze(central, editions):
 	issues = defaultdict(list)
 	counts = Counter()
@@ -186,7 +201,7 @@ def analyze(central, editions):
 		page = central["pages"].get(str(source))
 		if not page or page["redirect"]:
 			continue
-		expected = {"fr": page["key"]}
+		expected = {"fr": page}
 		chosen = {}
 		for lang, entries in langs.items():
 			native = [raw for table, raw in entries if table == "langlinks"]
@@ -205,7 +220,7 @@ def analyze(central, editions):
 			if target["status"] == "exists":
 				target_sources[lang, target["id"]].add(source)
 				if not target["redirect"]:
-					expected[lang] = target["key"]
+					expected[lang] = target
 					chosen[lang] = target
 		counts["central_clusters"] += 1
 		counts["effective_existing_nonredirect_targets"] += len(chosen)
@@ -227,10 +242,12 @@ def analyze(central, editions):
 				if code == lang:
 					continue
 				if not actual[code]:
-					issue("STORED_PEER_MISSING", peer=code, expected=wanted, **context)
-				elif actual[code] != {wanted}:
-					issue("STORED_PEER_MISMATCH", peer=code, expected=wanted,
+					issue("STORED_PEER_MISSING", peer=code, expected=wanted["key"], **context)
+				elif not actual[code].issubset(title_forms(wanted)):
+					issue("STORED_PEER_MISMATCH", peer=code, expected=wanted["key"],
 						actual=sorted(actual[code]), **context)
+				elif actual[code] != {wanted["key"]}:
+					counts["stored_peer_equivalent_namespace_forms"] += 1
 			for code in set(actual) - set(expected):
 				if code in LANGS:
 					issue("STORED_EXTRA_PEER", peer=code, actual=sorted(actual[code]), **context)
