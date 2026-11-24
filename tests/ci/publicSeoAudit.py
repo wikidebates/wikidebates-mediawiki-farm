@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small read-only SEO observation: six sitemap indexes, FR/EN home pages.
+"""Small read-only SEO observation: six sitemap indexes, optional six home pages.
 
 No recursive crawl, authentication, database access, purge or cache-busting.
 Public access errors are observations, not proof of indexing problems.
@@ -223,6 +223,7 @@ class Head(HTMLParser):
 		self.done = False
 		self.tags = {}
 		self.canonicals = []
+		self.alternates = []
 		self.scripts = []
 		self.script = None
 
@@ -235,10 +236,16 @@ class Head(HTMLParser):
 		elif tag == "meta":
 			name = (a.get("name") or a.get("property") or "").lower()
 			if name in ("description", "robots", "googlebot", "og:url", "og:site_name",
-				"og:image", "twitter:image", "twitter:card"):
+				"og:title", "og:description", "og:type", "og:image", "og:image:secure_url",
+				"og:image:width", "og:image:height", "og:image:type", "og:image:alt",
+				"twitter:title", "twitter:description", "twitter:image", "twitter:image:alt", "twitter:card"):
 				self.tags.setdefault(name, []).append(a.get("content") or "")
-		elif tag == "link" and "canonical" in (a.get("rel") or "").lower().split():
-			self.canonicals.append(a.get("href") or "")
+		elif tag == "link":
+			rels = (a.get("rel") or "").lower().split()
+			if "canonical" in rels:
+				self.canonicals.append(a.get("href") or "")
+			if "alternate" in rels and a.get("hreflang"):
+				self.alternates.append({"lang": a["hreflang"], "url": a.get("href") or ""})
 		elif tag == "script" and (a.get("type") or "").lower() == "application/ld+json":
 			self.script = []
 
@@ -258,6 +265,8 @@ def homepage(body):
 	head = Head()
 	head.feed(body.decode("utf-8", errors="replace"))
 	types = []
+	identities = []
+	jsonld_images = []
 	invalid_json = 0
 	for script in head.scripts:
 		try:
@@ -277,6 +286,20 @@ def homepage(body):
 						kind = [kind]
 					if isinstance(kind, list):
 						types.extend(x for x in kind if isinstance(x, str))
+						if any(x in ("WebSite", "WebPage", "AboutPage", "CollectionPage", "Organization") for x in kind):
+							identity = {k: item[k] for k in ("@id", "name", "url") if isinstance(item.get(k), str)}
+							identity["@type"] = [x for x in kind if isinstance(x, str)]
+							publisher = item.get("publisher")
+							if isinstance(publisher, dict) and isinstance(publisher.get("@id"), str):
+								identity["publisher_id"] = publisher["@id"]
+							identities.append(identity)
+					images = item.get("image", [])
+					for image in images if isinstance(images, list) else [images]:
+						if isinstance(image, str):
+							jsonld_images.append({"url": image})
+						elif isinstance(image, dict):
+							jsonld_images.append({k: image[k] for k in ("url", "contentUrl", "width", "height", "caption")
+								if isinstance(image.get(k), (str, int, float))})
 	return head, {
 		"canonical_count": len(head.canonicals), "canonicals": head.canonicals,
 		"descriptions": len([v for v in head.tags.get("description", []) if v.strip()]),
@@ -285,6 +308,10 @@ def homepage(body):
 		"site_names": head.tags.get("og:site_name", []),
 		"jsonld_scripts": len(head.scripts), "jsonld_invalid": invalid_json,
 		"jsonld_types": sorted(set(types)),
+		"jsonld_identities": identities, "jsonld_images": jsonld_images,
+		"hreflang": head.alternates,
+		"metadata": {k: v for k, v in head.tags.items()
+			if k == "description" or k.startswith(("og:", "twitter:"))},
 	}
 
 
@@ -336,6 +363,8 @@ def main():
 	parser = argparse.ArgumentParser(description=__doc__)
 	parser.add_argument("--lang", choices=LANGS, action="append",
 		help="limit the audit to selected languages")
+	parser.add_argument("--all-homepages", action="store_true",
+		help="observe the homepage on every selected edition, not just FR/EN")
 	parser.add_argument("--namespace-inventory", action="store_true",
 		help="also request the public namespace inventory once per selected wiki")
 	parser.add_argument("--expect-sitemap-policy", action="store_true",
@@ -344,13 +373,15 @@ def main():
 	langs = list(dict.fromkeys(args.lang or LANGS))
 	results = []
 	for lang in langs:
-		entry = audit(lang, include_home=lang in ("fr", "en"))
+		entry = audit(lang, include_home=args.all_homepages or lang in ("fr", "en"))
 		if args.namespace_inventory:
 			entry["namespace_inventory"] = audit_namespaces(lang)
 		entry["sitemap_policy"] = sitemap_policy(lang, entry["sitemap"], entry.get("namespace_inventory"))
 		results.append(entry)
 	print(json.dumps({
-		"read_only": True, "scope": "indexes only; FR/EN homepage and one same-host OG image HEAD",
+		"read_only": True,
+		"scope": ("indexes; all selected homepages and at most one same-host OG image HEAD per homepage"
+			if args.all_homepages else "indexes; FR/EN homepage and one same-host OG image HEAD per homepage"),
 		"namespace_inventory": args.namespace_inventory,
 		"results": results,
 	}, indent=2, ensure_ascii=False))
