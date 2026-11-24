@@ -5,6 +5,8 @@ on:
     paths:
       - 'tests/ci/publicSeoAudit.py'
       - 'tests/ci/testPublicSeoAudit.py'
+      - 'tests/ci/nativeSeoAudit.py'
+      - 'tests/ci/testNativeSeoAudit.py'
       - 'tests/ci/interlanguageMappingAudit.py'
       - 'tests/ci/testInterlanguageMappingAudit.py'
       - '.github/workflows/public-seo-audit.yml'
@@ -14,7 +16,7 @@ permissions:
 jobs:
   public-seo:
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
         with:
@@ -22,6 +24,8 @@ jobs:
           sparse-checkout: |
             tests/ci/publicSeoAudit.py
             tests/ci/testPublicSeoAudit.py
+            tests/ci/nativeSeoAudit.py
+            tests/ci/testNativeSeoAudit.py
             tests/ci/interlanguageMappingAudit.py
             tests/ci/testInterlanguageMappingAudit.py
       - name: Offline contract tests
@@ -31,7 +35,11 @@ jobs:
           set -o pipefail
           python3 -m unittest discover -s tests/ci -p 'testInterlanguageMappingAudit.py'
           PYTHONPATH=tests/ci python3 -c 'from interlanguageMappingAudit import PHP; print(PHP)' | php -l
+      - name: Offline native SEO audit contracts
+        run: python3 -m unittest discover -s tests/ci -p 'testNativeSeoAudit.py'
       - name: Bounded public language mapping observation
         run: python3 tests/ci/interlanguageMappingAudit.py --public
       - name: Bounded public observations and namespace inventory
         run: python3 tests/ci/publicSeoAudit.py --namespace-inventory
+      - name: Observe fixed native SEO samples (informational before deployment)
+        run: python3 tests/ci/nativeSeoAudit.py
