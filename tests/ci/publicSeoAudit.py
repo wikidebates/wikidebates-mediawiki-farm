@@ -28,6 +28,41 @@ NAMESPACE_QUERY = {
 	"action": "query", "meta": "siteinfo", "siprop": "namespaces|general", "format": "json",
 }
 
+# Fixed editorial samples, not a site crawl. Template candidates may be absent.
+EDITORIAL_TITLES = {
+	"fr": (
+		"Wikidébats:Accueil", "Wikidébats:À propos",
+		"Wikidébats:Laboratoire du débat méthodique", "Wikidébats:Principes fondateurs",
+		"Wikidébats:Contribuer", "Wikidébats:Foire aux questions",
+		"Portail:Débats", "Portail:Contributions",
+		"Aide:Créer un débat", "Aide:Utiliser les pages de discussion", "Modèle:SEO projet",
+	),
+	"en": (
+		"Wikidebates:Main Page", "Wikidebates:About",
+		"Wikidebates:Laboratory of Methodical Debate", "Wikidebates:Founding Principles",
+		"Wikidebates:Contribute", "Wikidebates:Frequently Asked Questions",
+		"Help:Creating a debate", "Template:SEO project",
+	),
+	"de": ("Wikidebatten:Hauptseite",),
+	"es": ("Wikidebates:Página principal",),
+	"it": ("Wikidibattiti:Pagina principale",),
+	"pt": ("Wikidebates:Página principal",),
+}
+EDITORIAL_PROPERTIES = (
+	"shortdesc", "description", "manualDescription", "schema_type", "og_type",
+	"title", "image", "canonical", "noindex", "page_image", "page_image_free",
+)
+EDITORIAL_PREVIEW = 2400
+
+
+def editorial_query(lang):
+	return {
+		"action": "query", "format": "json", "formatversion": "2",
+		"titles": "|".join(EDITORIAL_TITLES[lang]),
+		"prop": "info|pageprops|revisions", "inprop": "url",
+		"ppprop": "|".join(EDITORIAL_PROPERTIES),
+		"rvprop": "ids|content", "rvslots": "main",
+	}
 
 
 def same_origin(url, host):
@@ -56,6 +91,12 @@ def allowed_url(url, host, scope):
 			and sorted(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
 			== sorted(NAMESPACE_QUERY.items())
 		)
+	if scope == "editorial":
+		lang = host.removesuffix(".wikidebates.org")
+		return (lang in EDITORIAL_TITLES and host == lang + ".wikidebates.org"
+			and parts.path == "/w/api.php"
+			and sorted(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
+			== sorted(editorial_query(lang).items()))
 	if scope == "image":
 		return (
 			bool(re.search(r"\.(?:png|jpe?g|webp|gif|svg|avif|ico)$", parts.path, re.I))
@@ -88,6 +129,8 @@ def get(url, host, method="GET"):
 			"index" if path.startswith("/w/sitemaps/") else "homepage"
 		)
 	)
+	if method == "GET" and path == "/w/api.php" and allowed_url(url, host, "editorial"):
+		scope = "editorial"
 	if not allowed_url(url, host, scope):
 		raise ValueError("Unexpected URL")
 	opener = urllib.request.build_opener(OneRedirect(host, scope))
@@ -215,6 +258,62 @@ def audit_namespaces(lang, opener=get):
 		return result
 	except (ValueError, TypeError, KeyError, OSError, RecursionError) as exc:
 		return {"unverified": type(exc).__name__}
+
+def editorial_inventory(body, lang):
+	payload = json.loads(body)
+	if "error" in payload:
+		return {"status": "api_error", "error": payload["error"].get("code")}
+	if "continue" in payload:
+		return {"status": "incomplete", "reason": "API continuation"}
+	query = payload["query"]
+	pages = query["pages"]
+	if not isinstance(pages, list):
+		raise ValueError("Expected formatversion 2 page list")
+	normalized = {
+		item["from"]: item["to"] for item in query.get("normalized", [])
+	}
+	expected = {normalized.get(title, title) for title in EDITORIAL_TITLES[lang]}
+	seen = set()
+	rows = []
+	for page in pages:
+		title = page["title"]
+		if title not in expected or title in seen:
+			raise ValueError("Unexpected or duplicate editorial page")
+		seen.add(title)
+		row = {"title": title}
+		if page.get("missing") or page.get("invalid"):
+			row["status"] = "missing"
+		else:
+			row.update(status="redirect" if page.get("redirect") else "ok",
+				pageid=page.get("pageid"), canonicalurl=page.get("canonicalurl"))
+			props = page.get("pageprops", {})
+			row["pageprops"] = {k: props[k] for k in EDITORIAL_PROPERTIES if k in props}
+			revisions = page.get("revisions", [])
+			if revisions:
+				revision = revisions[0]
+				row["revid"] = revision.get("revid")
+				content = revision.get("slots", {}).get("main", {}).get("content")
+				if isinstance(content, str):
+					row["wikitext_preview"] = content[:EDITORIAL_PREVIEW]
+					row["wikitext_truncated"] = len(content) > EDITORIAL_PREVIEW
+			if "wikitext_preview" not in row:
+				row["source_unverified"] = True
+		rows.append(row)
+	return {"status": "ok" if seen == expected else "incomplete",
+		"missing_results": sorted(expected - seen), "pages": rows}
+
+
+def audit_editorial(lang, opener=get):
+	host = lang + ".wikidebates.org"
+	url = "https://" + host + "/w/api.php?" + urllib.parse.urlencode(editorial_query(lang))
+	try:
+		status, _, _, body = opener(url, host)
+		result = {"http": status, "status": "unverified"}
+		if status == 200:
+			result.update(editorial_inventory(body, lang))
+		return result
+	except (ValueError, TypeError, KeyError, OSError, RecursionError) as exc:
+		return {"status": "unverified", "reason": type(exc).__name__}
 
 
 class Head(HTMLParser):
@@ -365,6 +464,8 @@ def main():
 		help="limit the audit to selected languages")
 	parser.add_argument("--all-homepages", action="store_true",
 		help="observe the homepage on every selected edition, not just FR/EN")
+	parser.add_argument("--editorial-inventory", action="store_true",
+		help="read fixed institutional page properties and bounded latest wikitext excerpts")
 	parser.add_argument("--namespace-inventory", action="store_true",
 		help="also request the public namespace inventory once per selected wiki")
 	parser.add_argument("--expect-sitemap-policy", action="store_true",
@@ -376,6 +477,8 @@ def main():
 		entry = audit(lang, include_home=args.all_homepages or lang in ("fr", "en"))
 		if args.namespace_inventory:
 			entry["namespace_inventory"] = audit_namespaces(lang)
+		if args.editorial_inventory:
+			entry["editorial_inventory"] = audit_editorial(lang)
 		entry["sitemap_policy"] = sitemap_policy(lang, entry["sitemap"], entry.get("namespace_inventory"))
 		results.append(entry)
 	print(json.dumps({
@@ -383,6 +486,7 @@ def main():
 		"scope": ("indexes; all selected homepages and at most one same-host OG image HEAD per homepage"
 			if args.all_homepages else "indexes; FR/EN homepage and one same-host OG image HEAD per homepage"),
 		"namespace_inventory": args.namespace_inventory,
+		"editorial_inventory": args.editorial_inventory,
 		"results": results,
 	}, indent=2, ensure_ascii=False))
 	return int(args.expect_sitemap_policy and any(
