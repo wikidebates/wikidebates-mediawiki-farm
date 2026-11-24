@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8532f8ed43ccca9a0d879bc46b101a68",
+    "content-hash": "c772684efcc958cf099c39d2280de62f",
     "packages": [
         {
             "name": "composer/installers",
@@ -1501,16 +1501,16 @@
         },
         {
             "name": "mediawiki/maps",
-            "version": "12.1.9",
+            "version": "15.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/ProfessionalWiki/Maps.git",
-                "reference": "dfec578680c746a99ccb932162f456ba44d5e754"
+                "reference": "2bd7d7ddeba2e7af6f39f29d2f2bd9782d164db6"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/ProfessionalWiki/Maps/zipball/dfec578680c746a99ccb932162f456ba44d5e754",
-                "reference": "dfec578680c746a99ccb932162f456ba44d5e754",
+                "url": "https://api.github.com/repos/ProfessionalWiki/Maps/zipball/2bd7d7ddeba2e7af6f39f29d2f2bd9782d164db6",
+                "reference": "2bd7d7ddeba2e7af6f39f29d2f2bd9782d164db6",
                 "shasum": ""
             },
             "require": {
@@ -1523,13 +1523,13 @@
                 "jmikola/geojson": "^1.0.2",
                 "mediawiki/parser-hooks": "~1.5|~3.0",
                 "param-processor/param-processor": "^1.10",
-                "php": ">=7.4"
+                "php": ">=8.1"
             },
             "replace": {
                 "mediawiki/semantic-maps": "*"
             },
             "require-dev": {
-                "mediawiki/mediawiki-codesniffer": "39.0.0",
+                "mediawiki/mediawiki-codesniffer": "^52.0",
                 "phpstan/phpstan": "^1.4.8",
                 "vimeo/psalm": "^5.0.0"
             },
@@ -1589,8 +1589,8 @@
                     "type": "github"
                 }
             ],
-            "time": "2026-09-17T23:08:45+00:00",
-            "published-time": "2026-09-17T23:09:00+00:00"
+            "time": "2026-11-04T01:37:03+00:00",
+            "published-time": "2026-11-04T01:37:15+00:00"
         },
         {
             "name": "mediawiki/parser-hooks",
