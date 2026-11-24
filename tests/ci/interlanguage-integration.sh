@@ -128,6 +128,7 @@ require_once "$IP/extensions/Interlanguage/Interlanguage.php";
 $wgInterlanguageExtensionDB = 'ill_ci_fr';
 $wgInterlanguageExtensionInterwiki = 'fr:';
 $wgInterlanguageExtensionSort = 'alphabetic';
+$wgInterlanguageExtensionNotifyFallbackChanges = true;
 PHP
 done
 
@@ -430,5 +431,47 @@ edit_page fr 'Purge lifecycle' 'Unchanged mapping, different text [[en:Purge new
 run_purges
 test "$(sql ill_ci_en -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='Purge_new_target'")" = '20000101000000'
 echo 'PASS unchanged central language links do not trigger a remote purge'
+
+# The dependent queue notifies existing peers after the first fallback write.
+run_de_purges() {
+	MW_CONFIG_FILE="$config/de/LocalSettings.php" php maintenance/run.php runJobs --type=purgeDependentWikis --maxjobs=100
+}
+run_de_purges
+edit_page fr 'Fallback lifecycle' 'Central fixture [[en:Fallback explicit peer]]'
+edit_page en 'Fallback explicit peer' 'Existing translation'
+run_purges
+sql ill_ci_fr -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='Fallback_lifecycle'"
+sql ill_ci_en -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='Fallback_explicit_peer'"
+edit_page de 'Fallback lifecycle' 'First same-title translation'
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Fallback_lifecycle' AND ill_lang='de' AND ill_title='Fallback lifecycle'")" = 1
+test "$(sql ill_ci_fr -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='Fallback_lifecycle'")" = '20000101000000'
+test "$(sql ill_ci_en -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='Fallback_explicit_peer'")" = '20000101000000'
+run_de_purges
+test "$(sql ill_ci_fr -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='Fallback_lifecycle'")" != '20000101000000'
+test "$(sql ill_ci_en -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='Fallback_explicit_peer'")" != '20000101000000'
+echo 'PASS new fallback mapping asynchronously purges central page and existing peer'
+
+sql ill_ci_fr -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='Fallback_lifecycle'"
+sql ill_ci_en -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='Fallback_explicit_peer'"
+edit_page de 'Fallback lifecycle' 'Unchanged mapping on subsequent edit'
+run_de_purges
+test "$(sql ill_ci_fr -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='Fallback_lifecycle'")" = '20000101000000'
+test "$(sql ill_ci_en -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='Fallback_explicit_peer'")" = '20000101000000'
+echo 'PASS unchanged fallback mapping does not repeat purges'
+
+# A page with the same name must not displace an explicitly mapped peer.
+edit_page fr 'Competing title' 'Native priority [[en:Actual translation]]'
+edit_page en 'Actual translation' 'Real English peer'
+edit_page en 'Competing title' 'Unrelated English page with the same name'
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Competing_title' AND ill_lang='en'")" = 0
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Competing_title' AND pp_propname='wikirouge-langlinks'")" = 0
+echo 'PASS same-title fallback cannot override a native translation'
+
+edit_page fr 'Reserved fallback' 'Central fixture'
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Previously stored peer' FROM page WHERE page_namespace=0 AND page_title='Reserved_fallback'"
+edit_page en 'Reserved fallback' 'Unrelated English page'
+test "$(sql ill_ci_fr -e "SELECT ill_title FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Reserved_fallback' AND ill_lang='en'")" = 'Previously stored peer'
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Reserved_fallback' AND pp_propname='wikirouge-langlinks'")" = 0
+echo 'PASS same-title fallback cannot overwrite an existing supplemental mapping'
 
 echo 'PASS disposable Interlanguage and WikiSEO six-edition integration (FR central)'
