@@ -113,8 +113,8 @@ renvoyant au livre : Article désigne le texte publié, pas le livre.
 4. Contrôler les sorties des pages modifiées. La recette globale et les
    caches restent sous la responsabilité de l'autre conversation.
 
-Aucune écriture dans les wikis n'est effectuée par ce lot. Les tests de
-l'audit ne sont pas des tests du parseur MediaWiki des nouveaux modèles.
+Aucune écriture dans les wikis n'est effectuée par GitHub Actions.
+La commande locale décrite ci-dessous est distincte des audits.
 
 Le workflow `editorial-seo-templates.yml` est une recette isolée du parseur
 avec MediaWiki 1.43.12, PHP 8.4, le WikiSEO épinglé et 61 appels. Le harnais
@@ -122,3 +122,58 @@ SQLite jetable provient de wikidebates-core ; il ne charge aucune configuration
 ni base de production. ParserFunctions est chargé seulement en FR pour tester
 le modèle ES sans cette dépendance. Les contrôles ne remplacent pas la relecture
 des sources intégrales avant édition ni la recette des caches réels.
+
+## Migration locale avec sauvegarde et garde de révision
+
+Après fusion et déploiement du code, utiliser le compte Unix qui exécute
+habituellement les maintenances MediaWiki. Le compte MediaWiki choisi doit
+déjà exister et avoir les droits d'édition sur chaque édition ; le script
+n'en crée pas et ne s'attribue pas d'identité. Ne pas exécuter depuis le web.
+Confirmer au préalable les réglages globaux SEO, les vérifications Search
+Console et l'activation des hreflang dynamiques pour les six éditions.
+
+Depuis la racine MediaWiki :
+
+```bash
+set -e
+umask 077
+backup="$(mktemp -d "$HOME/editorial-seo-XXXXXX")"
+read -r -p 'Compte MediaWiki existant : ' editor
+for lang in fr en es de it pt; do
+	php maintenance/run.php ./scripts/editorial-seo/applyEditorialSeo.php --wiki "$lang" --user "$editor" --backup-dir "$backup"
+done
+printf 'Sauvegardes privees : %s\n' "$backup"
+```
+
+Le mode sans --apply lit les sources complètes, vérifie les révisions,
+les appels (y compris l'inventaire des transclusions), les droits et
+l'absence de métadonnées préexistantes pour les ajouts. Il prépare les
+64 éditions (61 pages et 3 modèles), sans écriture de page. Chaque JSON
+contient le wikicode avant/après. Le répertoire doit être hors de toute
+racine web et protégé (0700). Vérifier les différences et les résultats
+de la recette GitHub avant d'écrire.
+
+Dans le même shell, et seulement après contrôle :
+
+```bash
+for lang in fr en es de it pt; do
+	php maintenance/run.php ./scripts/editorial-seo/applyEditorialSeo.php --wiki "$lang" --user "$editor" --backup-dir "$backup" --apply || break
+done
+```
+
+Le mode --apply revalide tout le lot du wiki, exige une sauvegarde
+strictement identique et les six routes dynamiques, puis utilise
+PageUpdater::hasEditConflict avant chaque sauvegarde (CAS MediaWiki).
+Il écrit les modèles avant leurs appels et enregistre les nouveaux
+identifiants de révision dans un journal privé .applied.jsonl. Aucun
+effacement global des caches, aucune modification SQL directe et aucun
+mot de passe. Ce lot n'est pas une transaction atomique entre wikis.
+En cas d'interruption ou de conflit, ne pas relancer aveuglément :
+comparer les révisions et le journal avec la sauvegarde. Pour restaurer
+une page, vérifier qu'elle est encore à la nouvelle révision enregistrée,
+puis annuler cette seule révision via MediaWiki. Les journaux ne sont pas
+écrasés. Ne pas utiliser un autre répertoire pour contourner un échec.
+
+Le job source-preflight vérifie les sources publiques intégrales et les
+transclusions à l'aide du même transformateur PHP, sans authentification
+ni modification du wiki. Toute dérive de révision fait échouer la recette.

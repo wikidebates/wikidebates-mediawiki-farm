@@ -5,6 +5,11 @@ on:
     paths:
       - 'docs/editorial-seo/**'
       - 'tests/ci/editorialSeoTemplates.php'
+      - 'tests/ci/checkEditorialSeoSources.php'
+      - 'tests/ci/editorialSeoPreflight.py'
+      - 'tests/ci/testEditorialSeoMigration.php'
+      - 'scripts/editorial-seo/**'
+      - 'tests/ci/publicSeoAudit.py'
       - '.github/workflows/editorial-seo-templates.yml'
   workflow_dispatch:
 
@@ -22,6 +27,8 @@ jobs:
           sparse-checkout: |
             docs/editorial-seo
             tests/ci/editorialSeoTemplates.php
+            tests/ci/testEditorialSeoMigration.php
+            scripts/editorial-seo
       - uses: actions/checkout@v5
         with:
           repository: wikimedia/mediawiki
@@ -58,6 +65,10 @@ jobs:
           extensions: mbstring, intl, xml, pdo_sqlite, sqlite3
           coverage: none
           tools: composer
+      - name: Test deterministic migration and lint CLI
+        run: |
+          php -l scripts/editorial-seo/applyEditorialSeo.php
+          php tests/ci/testEditorialSeoMigration.php
       - name: Install disposable MediaWiki dependencies
         working-directory: .mw-lab
         run: composer install --no-interaction --prefer-dist --no-progress
@@ -74,3 +85,22 @@ jobs:
             fi
             WD_TEST_LANGUAGE="$lang" WD_TEST_EXTENSIONS="$extensions" php -d display_errors=1 -d error_reporting=E_ALL tests/ci/editorialSeoTemplates.php
           done
+  source-preflight:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            docs/editorial-seo
+            scripts/editorial-seo
+            tests/ci/publicSeoAudit.py
+            tests/ci/editorialSeoPreflight.py
+            tests/ci/checkEditorialSeoSources.php
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Verify full public sources and caller inventory without edits
+        run: python3 tests/ci/editorialSeoPreflight.py
