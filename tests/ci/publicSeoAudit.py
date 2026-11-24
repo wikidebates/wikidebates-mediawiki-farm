@@ -35,13 +35,14 @@ EDITORIAL_TITLES = {
 		"Wikidébats:Laboratoire du débat méthodique", "Wikidébats:Principes fondateurs",
 		"Wikidébats:Contribuer", "Wikidébats:Foire aux questions",
 		"Portail:Débats", "Portail:Contributions",
-		"Aide:Créer un débat", "Aide:Utiliser les pages de discussion", "Modèle:SEO projet",
+		"Aide:Créer un débat", "Aide:Utiliser les pages de discussion",
+		"Modèle:SEO projet", "Modèle:Métabalises",
 	),
 	"en": (
 		"Wikidebates:Main Page", "Wikidebates:About",
 		"Wikidebates:Laboratory of Methodical Debate", "Wikidebates:Founding Principles",
 		"Wikidebates:Contribute", "Wikidebates:Frequently Asked Questions",
-		"Help:Creating a debate", "Template:SEO project",
+		"Help:Creating a debate", "Template:SEO project", "Template:Meta tags",
 	),
 	"de": ("Wikidebatten:Hauptseite",),
 	"es": ("Wikidebates:Página principal",),
@@ -53,6 +54,18 @@ EDITORIAL_PROPERTIES = (
 	"title", "image", "canonical", "noindex", "page_image", "page_image_free",
 )
 EDITORIAL_PREVIEW = 2400
+EDITORIAL_TAIL = 1600
+# Explicit assets actually used in pageprops/heads, plus the FR candidate in Git.
+# Never fetch a host chosen by a page or by a free-form command-line argument.
+SHARED_ASSETS = (
+	"https://farm.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png",
+	"https://fr.wikidebates.org/w/resources/assets/logo-Wikidebats-Twitter.png",
+	"https://fr.wikidebates.org/w/resources/assets/logo-wikidebats-twitter.png",
+)
+ASSET_ROBOTS = (
+	"https://farm.wikidebates.org/robots.txt",
+	"https://fr.wikidebates.org/robots.txt",
+)
 
 
 def editorial_query(lang):
@@ -97,6 +110,10 @@ def allowed_url(url, host, scope):
 			and parts.path == "/w/api.php"
 			and sorted(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
 			== sorted(editorial_query(lang).items()))
+	if scope == "asset-body":
+		return url in SHARED_ASSETS
+	if scope == "asset-robots":
+		return url in ASSET_ROBOTS
 	if scope == "image":
 		return (
 			bool(re.search(r"\.(?:png|jpe?g|webp|gif|svg|avif|ico)$", parts.path, re.I))
@@ -131,6 +148,10 @@ def get(url, host, method="GET"):
 	)
 	if method == "GET" and path == "/w/api.php" and allowed_url(url, host, "editorial"):
 		scope = "editorial"
+	elif method == "GET" and url in SHARED_ASSETS:
+		scope = "asset-body"
+	elif method == "GET" and url in ASSET_ROBOTS:
+		scope = "asset-robots"
 	if not allowed_url(url, host, scope):
 		raise ValueError("Unexpected URL")
 	opener = urllib.request.build_opener(OneRedirect(host, scope))
@@ -296,6 +317,8 @@ def editorial_inventory(body, lang):
 				if isinstance(content, str):
 					row["wikitext_preview"] = content[:EDITORIAL_PREVIEW]
 					row["wikitext_truncated"] = len(content) > EDITORIAL_PREVIEW
+					if row["wikitext_truncated"]:
+						row["wikitext_tail"] = content[max(EDITORIAL_PREVIEW, len(content) - EDITORIAL_TAIL):]
 			if "wikitext_preview" not in row:
 				row["source_unverified"] = True
 		rows.append(row)
@@ -314,6 +337,56 @@ def audit_editorial(lang, opener=get):
 		return result
 	except (ValueError, TypeError, KeyError, OSError, RecursionError) as exc:
 		return {"status": "unverified", "reason": type(exc).__name__}
+
+
+def png_dimensions(body):
+	"""Check the PNG signature and IHDR, not full image decoding."""
+	if (len(body) < 33 or body[:8] != b"\x89PNG\r\n\x1a\n"
+		or body[8:16] != b"\x00\x00\x00\rIHDR"):
+		raise ValueError("Invalid PNG header")
+	width = int.from_bytes(body[16:20], "big")
+	height = int.from_bytes(body[20:24], "big")
+	if not width or not height or max(width, height) > 0x7fffffff:
+		raise ValueError("Invalid PNG dimensions")
+	return width, height
+
+
+def audit_shared_assets(opener=get):
+	# Reuse the existing robots policy parser for observations, not a
+	# full simulation of a search engine's robots matching algorithm.
+	from robotsPolicy import parse as parse_robots
+	images = []
+	robots = []
+	for url in SHARED_ASSETS:
+		row = {"url": url, "status": "unverified"}
+		try:
+			code, final, headers, body = opener(url, urllib.parse.urlsplit(url).hostname)
+			row.update(http=code, final_url=final, content_type=headers.get("content-type", ""),
+				x_robots_tag=headers.get("x-robots-tag", ""))
+			if code == 200 and row["content_type"].split(";", 1)[0].strip().lower() == "image/png":
+				width, height = png_dimensions(body)
+				row.update(status="observed", width=width, height=height, bytes=len(body))
+		except (ValueError, OSError) as exc:
+			row["reason"] = type(exc).__name__
+		images.append(row)
+	for url in ASSET_ROBOTS:
+		row = {"url": url, "status": "unverified"}
+		try:
+			code, final, headers, body = opener(url, urllib.parse.urlsplit(url).hostname)
+			row.update(http=code, final_url=final, content_type=headers.get("content-type", ""))
+			if code == 200 and row["content_type"].split(";", 1)[0].strip().lower() == "text/plain":
+				if len(body) > 500 * 1024:
+					raise ValueError("Robots response exceeds 500 KiB")
+				parsed = parse_robots(body.decode("utf-8-sig"))
+				row["relevant_groups"] = {agent: sorted(rules) for agent, rules in parsed["groups"].items()
+					if agent == "*" or agent.startswith(("google", "bing", "twitter", "facebook", "meta"))}
+				row["other_directives"] = parsed["other"]
+				row["status"] = "observed"
+		except (ValueError, OSError) as exc:
+			row["reason"] = type(exc).__name__
+		robots.append(row)
+	return {"images": images, "robots": robots,
+		"scope": "Three fixed PNG GETs and two robots.txt GETs; at most one permitted redirect each."}
 
 
 class Head(HTMLParser):
@@ -464,6 +537,8 @@ def main():
 		help="limit the audit to selected languages")
 	parser.add_argument("--all-homepages", action="store_true",
 		help="observe the homepage on every selected edition, not just FR/EN")
+	parser.add_argument("--shared-assets", action="store_true",
+		help="check three explicitly reviewed social PNGs and two robots.txt files")
 	parser.add_argument("--editorial-inventory", action="store_true",
 		help="read fixed institutional page properties and bounded latest wikitext excerpts")
 	parser.add_argument("--namespace-inventory", action="store_true",
@@ -487,6 +562,7 @@ def main():
 			if args.all_homepages else "indexes; FR/EN homepage and one same-host OG image HEAD per homepage"),
 		"namespace_inventory": args.namespace_inventory,
 		"editorial_inventory": args.editorial_inventory,
+		**({"shared_assets": audit_shared_assets()} if args.shared_assets else {}),
 		"results": results,
 	}, indent=2, ensure_ascii=False))
 	return int(args.expect_sitemap_policy and any(

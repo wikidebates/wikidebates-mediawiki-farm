@@ -5,6 +5,7 @@ on:
     paths:
       - 'tests/ci/publicSeoAudit.py'
       - 'tests/ci/testPublicSeoAudit.py'
+      - 'tests/ci/robotsPolicy.py'
       - 'tests/ci/nativeSeoAudit.py'
       - 'tests/ci/testNativeSeoAudit.py'
       - 'tests/ci/interlanguageMappingAudit.py'
@@ -24,6 +25,7 @@ jobs:
           sparse-checkout: |
             tests/ci/publicSeoAudit.py
             tests/ci/testPublicSeoAudit.py
+            tests/ci/robotsPolicy.py
             tests/ci/nativeSeoAudit.py
             tests/ci/testNativeSeoAudit.py
             tests/ci/interlanguageMappingAudit.py
@@ -40,6 +42,6 @@ jobs:
       - name: Bounded public language mapping observation
         run: python3 tests/ci/interlanguageMappingAudit.py --public
       - name: Bounded public observations and namespace inventory
-        run: python3 tests/ci/publicSeoAudit.py --namespace-inventory --all-homepages --editorial-inventory
+        run: python3 tests/ci/publicSeoAudit.py --namespace-inventory --all-homepages --editorial-inventory --shared-assets
       - name: Observe fixed native SEO samples (informational before deployment)
         run: python3 tests/ci/nativeSeoAudit.py

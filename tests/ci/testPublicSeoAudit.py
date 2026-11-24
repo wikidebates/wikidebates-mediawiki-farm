@@ -6,8 +6,9 @@ import unittest
 from unittest.mock import patch
 from urllib.request import Request
 from publicSeoAudit import (
-	EDITORIAL_PREVIEW, EDITORIAL_TITLES, NAMESPACE_QUERY, OneRedirect, allowed_url, audit,
-	audit_editorial, audit_namespaces, editorial_inventory, editorial_query,
+	ASSET_ROBOTS, EDITORIAL_PREVIEW, EDITORIAL_TAIL, EDITORIAL_TITLES, NAMESPACE_QUERY,
+	SHARED_ASSETS, OneRedirect, allowed_url, audit, audit_editorial, audit_namespaces,
+	audit_shared_assets, editorial_inventory, editorial_query, png_dimensions,
 	homepage, main, namespace_inventory, same_origin, sitemap_index, sitemap_policy,
 )
 from urllib.parse import urlencode
@@ -184,6 +185,8 @@ class SeoAuditTest(unittest.TestCase):
 		self.assertEqual(page["revid"], 81)
 		self.assertEqual(len(page["wikitext_preview"]), EDITORIAL_PREVIEW)
 		self.assertTrue(page["wikitext_truncated"])
+		self.assertEqual(page["wikitext_tail"], "a")
+		self.assertLessEqual(len(page["wikitext_tail"]), EDITORIAL_TAIL)
 
 	def test_editorial_missing_and_invalid_responses(self):
 		title = EDITORIAL_TITLES["de"][0]
@@ -204,6 +207,42 @@ class SeoAuditTest(unittest.TestCase):
 				contextlib.redirect_stdout(io.StringIO()):
 				self.assertEqual(main(), 0)
 			self.assertEqual(observe.call_count, int(expected))
+
+	def test_only_fixed_asset_urls_permitted(self):
+		url = SHARED_ASSETS[0]
+		host = "farm.wikidebates.org"
+		self.assertTrue(allowed_url(url, host, "asset-body"))
+		self.assertFalse(allowed_url(url + "?action=purge", host, "asset-body"))
+		self.assertFalse(allowed_url(url.replace("twitter", "other"), host, "asset-body"))
+		self.assertFalse(allowed_url(url, "fr.wikidebates.org", "asset-body"))
+		self.assertTrue(allowed_url(ASSET_ROBOTS[0], host, "asset-robots"))
+		self.assertFalse(allowed_url(ASSET_ROBOTS[0] + "?x=1", host, "asset-robots"))
+
+	def test_asset_png_and_robots_observations(self):
+		png = (b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+			+ (1000).to_bytes(4, "big") + (500).to_bytes(4, "big") + b"\x00" * 9)
+		self.assertEqual(png_dimensions(png), (1000, 500))
+		with self.assertRaises(ValueError):
+			png_dimensions(b"<html/>")
+		with self.assertRaises(ValueError):
+			png_dimensions(png[:16] + b"\x00" * 4 + png[20:])
+		calls = []
+		def opener(url, host):
+			calls.append(url)
+			if url in SHARED_ASSETS:
+				return 200, url, {"content-type": "image/png", "x-robots-tag": "noindex"}, png
+			return 200, url, {"content-type": "text/plain"}, b"User-agent: *\nDisallow: /private/\n"
+		report = audit_shared_assets(opener)
+		self.assertEqual(calls, list(SHARED_ASSETS) + list(ASSET_ROBOTS))
+		self.assertEqual(report["images"][0]["width"], 1000)
+		self.assertEqual(report["images"][0]["x_robots_tag"], "noindex")
+		self.assertEqual(report["robots"][0]["relevant_groups"]["*"], [("disallow", "/private/")])
+
+	def test_shared_assets_blocked_or_wrong_mime_is_not_success(self):
+		def opener(url, host):
+			return 403, url, {"content-type": "text/html"}, b"<html/>"
+		report = audit_shared_assets(opener)
+		self.assertTrue(all(row["status"] == "unverified" for row in report["images"] + report["robots"]))
 
 	def test_bounded_requests_and_image_head(self):
 		calls = []
