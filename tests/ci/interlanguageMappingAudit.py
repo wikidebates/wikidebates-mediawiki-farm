@@ -12,6 +12,10 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 LANGS = ("fr", "en", "de", "es", "it", "pt")
 
@@ -235,12 +239,87 @@ def analyze(central, editions):
 			issue("TARGET_SHARED_BY_CENTRAL_PAGES", lang=lang, target_id=target_id, sources=sorted(sources))
 	return dict(counts=counts, issues=dict(issues))
 
+
+# A separate, deliberately small public observation. Single-title API calls
+# avoid the historical custom langlinks module's multi-title ambiguity.
+PUBLIC_HOMES = {
+	"fr": "Wikidébats:Accueil",
+	"en": "Wikidebates:Main Page",
+	"de": "Wikidebatten:Hauptseite",
+	"es": "Wikidebates:Página principal",
+	"it": "Wikidibattiti:Pagina principale",
+	"pt": "Wikidebates:Página principal",
+}
+
+def public_api(lang, title):
+	params = {
+		"action": "query", "prop": "info|langlinks", "inprop": "url",
+		"lllimit": "50", "titles": title, "format": "json",
+	}
+	url = f"https://{lang}.wikidebates.org/w/api.php?" + urllib.parse.urlencode(params)
+	# Do not follow redirects: an API redirect is an access/configuration observation.
+	class NoRedirect(urllib.request.HTTPRedirectHandler):
+		def redirect_request(self, *args, **kwargs):
+			return None
+	request = urllib.request.Request(url, headers={
+		"User-Agent": "Wikidebates-public-SEO-audit/1.0",
+		"Accept-Encoding": "identity",
+	})
+	try:
+		with urllib.request.build_opener(NoRedirect()).open(request, timeout=12) as response:
+			data = response.read(1024 * 1024 + 1)
+			if len(data) > 1024 * 1024:
+				raise ValueError("Oversized API response")
+			payload = json.loads(data)
+			if "error" in payload:
+				return {"status": "api_error", "error": payload["error"].get("code")}
+			if "continue" in payload:
+				return {"status": "incomplete", "reason": "API continuation"}
+			pages = payload["query"]["pages"]
+			if len(pages) != 1:
+				return {"status": "incomplete", "reason": "Unexpected page count"}
+			page = next(iter(pages.values()))
+			if "missing" in page or "invalid" in page:
+				return {"status": "missing", "title": page.get("title", title)}
+			return {
+				"status": "ok", "title": page.get("title", title),
+				"canonicalurl": page.get("canonicalurl", page.get("fullurl")),
+				"redirect": "redirect" in page,
+				"links": [[x["lang"], x.get("*", x.get("title", ""))]
+					for x in page.get("langlinks", [])],
+			}
+	except urllib.error.HTTPError as error:
+		return {"status": "http_error", "http": error.code}
+	except (OSError, ValueError, KeyError, TypeError) as error:
+		return {"status": "unverified", "reason": str(error)}
+
+def public_observation():
+	# Exactly six home-page lookups and one FR debate, plus at most
+	# five one-title lookups of that debate's reported translations.
+	results = {}
+	for lang in LANGS:
+		results[lang] = public_api(lang, PUBLIC_HOMES[lang])
+		time.sleep(0.4)
+	debate = public_api("fr", "Un revenu de base doit-il être instauré ?")
+	cluster = {"fr": debate}
+	if debate["status"] == "ok":
+		for lang, title in debate["links"]:
+			if lang in LANGS[1:] and lang not in cluster and title:
+				time.sleep(0.4)
+				cluster[lang] = public_api(lang, title)
+	print(json.dumps({"homepages": results, "debate": cluster}, ensure_ascii=False, indent="\t"))
+	return 0
+
+
 def main():
 	parser = argparse.ArgumentParser(description=__doc__)
 	parser.add_argument("--root", type=Path, default=Path.cwd())
+	parser.add_argument("--public", action="store_true", help="Only a bounded public API observation, no database access")
 	parser.add_argument("--examples", type=int, default=5)
 	parser.add_argument("--report", type=Path, help="Optional complete JSON report; not printed in full by default")
 	args = parser.parse_args()
+	if args.public:
+		return public_observation()
 	root = args.root.resolve()
 	if not (root / "maintenance/run.php").is_file():
 		parser.error("Run from the farm MediaWiki installation root, or set --root")
