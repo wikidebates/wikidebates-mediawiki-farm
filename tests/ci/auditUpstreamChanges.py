@@ -204,7 +204,7 @@ def scan():
 		"| Component | Category | Base | Head | Details |", "|---|---|---|---|---|"]
 	for row in result:
 		detail = row.get("reason", str(row.get("ahead", "")) + " commits" if "ahead" in row else "")
-		lines.append(f"| {row['name']} | {row['category']} | {row.get('base', '-')[:12]} | "
+		lines.append(f"| {row['name']} | {row['category']} | {(row.get('base') or '-')[:12]} | "
 			f"{(row.get('head') or '-')[:12]} | {detail} |")
 	lines += ["", "Maintenance includes translations and development-only files by heuristic. "
 		"Unmarked runtime changes are not certified safe. Composer releases are same-major candidates, not compatibility decisions."]
@@ -218,6 +218,18 @@ def scan():
 			out.write(f"alerts={len(alerts)}\n")
 	print(f"{len(result)} comparisons; {len(alerts)} actionable candidates; "
 		f"{sum(r['category'] == 'unavailable' for r in result)} unavailable.")
+	for row in result:
+		if actionable(row) or row["category"] == "unavailable":
+			print(f"  {row['category']}: {row['name']} ({row.get('reason', '')})")
+
+
+def unseen_candidates(alerts, pages):
+	seen = set()
+	for page in pages:
+		for comment in page:
+			if comment["user"]["login"] == "github-actions[bot]":
+				seen.update(re.findall(r"<!-- upstream-audit:([0-9a-f]{64}) -->", comment["body"] or ""))
+	return [row for row in alerts if row["fingerprint"] not in seen]
 
 
 def notify():
@@ -229,19 +241,14 @@ def notify():
 		return
 	pages = json.loads(subprocess.check_output(
 		["gh", "api", f"repos/{repo}/issues/78/comments", "--paginate", "--slurp"], text=True))
-	seen = set()
-	for page in pages:
-		for comment in page:
-			if comment["user"]["login"] == "github-actions[bot]":
-				seen.update(re.findall(r"<!-- upstream-audit:([0-9a-f]{64}) -->", comment["body"] or ""))
-	new = [row for row in alerts if row["fingerprint"] not in seen]
+	new = unseen_candidates(alerts, pages)
 	if not new:
 		print("No new actionable candidates; no issue comment.")
 		return
 	lines = ["### Veille amont — nouveaux changements à examiner", "",
 		"Rapport automatique indicatif. Aucune mise à jour ni aucun déploiement exécuté.", ""]
 	for row in new:
-		base = row.get("base", "-")
+		base = row.get("base") or "-"
 		head = row.get("head") or "-"
 		label = {"security": "Sécurité signalée", "runtime": "Code/configuration",
 			"release": "Version candidate", "review": "Vérification manuelle"}[row["category"]]

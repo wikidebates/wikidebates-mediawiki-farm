@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import unittest
 
-from auditUpstreamChanges import classify, fingerprint, module_rows, version
+from auditUpstreamChanges import classify, fingerprint, module_rows, unseen_candidates, version
 
 
 def comparison(paths, messages, **kwargs):
@@ -42,6 +42,17 @@ class TriageTest(unittest.TestCase):
 		m = {"path": "x", "repo": "owner/fork", "branch": "main", "pinned": "new", "status": "match"}
 		f = {"x": {"repo": "owner/upstream", "branch": "REL1_43", "upstream_base": "up", "fork_pin": "old"}}
 		self.assertEqual(module_rows({"submodules": [m]}, f)[1]["category"], "review")
+
+	def test_notification_deduplication(self):
+		seen = "a" * 64
+		unseen = "b" * 64
+		pages = [[
+			{"user": {"login": "github-actions[bot]"}, "body": f"<!-- upstream-audit:{seen} -->"},
+			{"user": {"login": "another-user"}, "body": f"<!-- upstream-audit:{unseen} -->"},
+		]]
+		rows = [{"fingerprint": seen}, {"fingerprint": unseen}]
+		self.assertEqual(unseen_candidates(rows, pages), [rows[1]])
+		self.assertEqual(unseen_candidates([rows[0]], pages), [])
 
 	def test_versions(self):
 		self.assertGreater(version("1.43.12"), version("1.43.9"))

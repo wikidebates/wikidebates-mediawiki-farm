@@ -121,7 +121,11 @@
 					},
 					"run": "python3 tests/ci/auditUpstreamChanges.py --notify"
 				}
-			]
+			],
+			"concurrency": {
+				"group": "upstream-watch-issue-78",
+				"cancel-in-progress": false
+			}
 		}
 	}
 }
