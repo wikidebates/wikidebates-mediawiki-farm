@@ -25,7 +25,7 @@ jobs:
         run: python3 -m py_compile tests/ci/publicSiteVersionAudit.py
       - name: Query public FR/EN MediaWiki siteinfo (no auth, no writes)
         run: python3 tests/ci/publicSiteVersionAudit.py --strict
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         if: always()
         with:
           name: wikidebates-public-siteinfo-audit

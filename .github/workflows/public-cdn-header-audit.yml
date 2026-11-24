@@ -31,7 +31,7 @@ jobs:
         run: python3 tests/ci/publicCdnHeaderAudit.py
       - name: Preserve sanitized results only
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: wikidebates-public-cdn-headers
           path: wikidebates-public-cdn-headers.json

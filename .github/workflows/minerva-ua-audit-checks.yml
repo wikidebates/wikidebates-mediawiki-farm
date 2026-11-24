@@ -67,7 +67,7 @@ jobs:
         run: php extensions/MinervaFileCache/tests/ua-matrix.php
       - name: Preserve hash-only comparison report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: minerva-ua-php84
           path: ${{ env.MINERVA_TEST_ROOT }}/state/ua-matrix.json
