@@ -86,10 +86,11 @@ unset( $illCode, $illPort, $illProject );
 wfLoadExtension( 'WikiSEO' );
 wfLoadExtension( 'MobileFrontend' );
 wfLoadSkin( 'MinervaNeue' );
-// MediaWiki 1.43 uses a namespaced core API module; explicitly register the
-// legacy extension module in these fixtures, rather than testing core by mistake.
-$wgAutoloadLocalClasses['ApiQueryLangLinks'] = "$IP/extensions/Interlanguage/api/ApiQueryLangLinks.php";
-$wgAPIPropModules['langlinks'] = 'ApiQueryLangLinks';
+// Explicit opt-in to the new effective API, without overriding the core class alias.
+$wgAPIPropModules['langlinks'] = [
+	'class' => 'InterlanguageEffectiveLangLinks',
+	'services' => [ 'LanguageNameUtils', 'ContentLanguage', 'UrlUtils' ],
+];
 PHP
 done
 
@@ -177,6 +178,10 @@ edit_page fr 'French ordinary' 'French body, new revision [[en:English ordinary]
 sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'fr','Wrong French title' FROM page WHERE page_namespace=0 AND page_title='Mixed_fallback_fixture' ON DUPLICATE KEY UPDATE ill_title=VALUES(ill_title)"
 sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Obsolete English title' FROM page WHERE page_namespace=0 AND page_title='Mixed_fallback_fixture' ON DUPLICATE KEY UPDATE ill_title=VALUES(ill_title)"
 
+# Persist the new peer list after the German fallback has been established.
+# This is a fixture edit, not a claim about automatic cache invalidation.
+edit_page en 'Explicit translation fixture' 'Explicit dependent fixture refreshed after fallback'
+
 # The extension must persist a real cross-database fallback mapping.
 test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Shared_page' AND ill_lang='en' AND ill_title='Shared page'")" = 1
 echo 'PASS cross-database fallback write'
@@ -231,6 +236,44 @@ for english, french in (
 ):
 	expect_link(18781, english, 'fr', french)
 	expect_link(18782, french, 'en', english)
+
+# Real local page IDs must survive multi-title requests and both directions
+# of continuation. The former customized API assigned central IDs instead.
+def all_links(port, titles, direction):
+	found = {}
+	continuation = {}
+	for _ in range(12):
+		result = api(port, action='query', prop='langlinks', titles=titles,
+			lllimit=1, lldir=direction, **continuation)
+		for page in result['query']['pages'].values():
+			links = found.setdefault(page['title'], [])
+			links.extend((link['lang'], link['*']) for link in page.get('langlinks', []))
+		continuation = result.get('continue', {})
+		if not continuation:
+			return {title: sorted(links) for title, links in found.items()}
+	raise AssertionError('langlinks continuation did not terminate')
+
+for direction in ('ascending', 'descending'):
+	assert all_links(18782, 'French ordinary|Debat:Exemple', direction) == {
+		'French ordinary': [('en', 'English ordinary')],
+		'Debat:Exemple': [('en', 'Debate:Example')],
+	}
+	assert all_links(18781, 'English ordinary|Debate:Example', direction) == {
+		'English ordinary': [('fr', 'French ordinary')],
+		'Debate:Example': [('fr', 'Debat:Exemple')],
+	}
+print('PASS effective API local page IDs and both continuation directions')
+
+expect_link(18782, 'Mixed fallback fixture', 'en', 'Explicit translation fixture')
+expect_link(18782, 'Mixed fallback fixture', 'de', 'Mixed fallback fixture')
+expect_link(18781, 'Explicit translation fixture', 'de', 'Mixed fallback fixture')
+expect_link(18781, 'Explicit translation fixture', 'fr', 'Mixed fallback fixture')
+expect_link(18783, 'Mixed fallback fixture', 'en', 'Explicit translation fixture')
+filtered = api(18782, action='query', prop='langlinks', titles='Mixed fallback fixture',
+	lllang='de', lltitle='Mixed fallback fixture')
+page, = filtered['query']['pages'].values()
+assert [(link['lang'], link['*']) for link in page['langlinks']] == [('de', 'Mixed fallback fixture')]
+print('PASS effective API merged cluster and language/title filtering')
 
 parsed = api(18782, action='parse', text='{{languagelink:en|English ordinary}}', title='Parser fixture', prop='langlinks')
 assert any(link['lang'] == 'en' for link in parsed['parse']['langlinks']), parsed
