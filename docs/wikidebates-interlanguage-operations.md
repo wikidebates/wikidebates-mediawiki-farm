@@ -152,6 +152,38 @@ supplémentaires FR/FR ou dont la source n'existe plus. Ne pas supprimer
 automatiquement les cibles manquantes ou les conflits. Ne pas écrire dans
 langlinks : les liens natifs se corrigent dans le wikicode.
 
+Le script `ops/interlanguage/cleanupMappings.php` vérifie le SHA-256,
+l'identité de la base FR et l'égalité exacte entre les lignes candidates
+actuelles et le JSON sauvegardé (clés et titres, pas seulement les compteurs).
+Il refuse une sauvegarde modifiée, périmée ou issue d'une autre base.
+En mode --apply, il vérifie aussi InnoDB pour les deux tables, verrouille les
+lignes candidates et supprime seulement les clés sauvegardées ; le statut
+orphelin est revérifié au moment du DELETE. Toute différence entraîne
+l'annulation de la transaction. Le mode simulation est celui par défaut.
+
+Conserver le JSON d'origine dans le répertoire privé des audits, vérifier
+son empreinte connue avant utilisation et ne pas l'écraser. Exemple pour
+le relevé existant du 24 novembre 2026 :
+
+```bash
+backup=/home/users/webmaster/files/interlanguage-audits/interlanguage-cleanup.7rpVIS.json
+hash=7ba0c149c4b342232cf3f4bbc7a84ce56ad50630c8c248f58b15a3770dd55be4
+
+printf '%s  %s\n' "$hash" "$backup" | sha256sum -c -
+
+php maintenance/run.php ./ops/interlanguage/cleanupMappings.php \
+	--wiki=fr --backup="$backup" --sha256="$hash"
+```
+
+Après le déploiement des correctifs et une simulation réussie sur les
+données encore présentes, répéter avec --apply. Ne pas lancer cette
+opération pendant un import, une restauration ou une réorganisation
+massive de pages ; éviter les écritures concurrentes sur ces relations.
+Vérifier après succès dans une nouvelle connexion SQL que le nombre
+de FR/FR et d'orphelins est nul. Le script ne déclenche ni réanalyse
+ni purge de contenu : traiter les propriétés persistantes et les caches
+dans la phase de recette finale.
+
 ## Audit local périodique
 
 Depuis la racine MediaWiki de la ferme, avec l'utilisateur qui exécute
