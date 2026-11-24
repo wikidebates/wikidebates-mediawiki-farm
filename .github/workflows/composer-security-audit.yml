@@ -4,7 +4,7 @@
 		"workflow_dispatch": null,
 		"schedule": [
 			{
-				"cron": "17 4 * * 1"
+				"cron": "37 4 * * *"
 			}
 		],
 		"pull_request": {

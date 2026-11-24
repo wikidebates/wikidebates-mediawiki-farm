@@ -1,52 +1,127 @@
-name: Pinned dependencies audit
-
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '17 4 * * 1'
-  pull_request:
-    paths:
-      - '.gitmodules'
-      # A gitlink is a changed path at the first level of extensions/ or skins/.
-      - 'extensions/*'
-      - 'skins/*'
-      - 'extensions/CrawlerProtection/build'
-      - 'tests/ci/auditPinnedDependencies.py'
-      - '.github/workflows/pinned-dependencies-audit.yml'
-  push:
-    branches:
-      - main
-    paths:
-      - '.gitmodules'
-      # A gitlink is a changed path at the first level of extensions/ or skins/.
-      - 'extensions/*'
-      - 'skins/*'
-      - 'extensions/CrawlerProtection/build'
-      - 'tests/ci/auditPinnedDependencies.py'
-      - '.github/workflows/pinned-dependencies-audit.yml'
-
-permissions:
-  contents: read
-
-jobs:
-  gitlinks:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-          submodules: false
-      - name: Verify local inventory offline
-        run: |
-          python3 -m py_compile tests/ci/auditPinnedDependencies.py
-          python3 tests/ci/auditPinnedDependencies.py --offline
-      - name: Compare pinned gitlinks with tracked upstream branch heads
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python3 tests/ci/auditPinnedDependencies.py
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: pinned-dependency-inventory
-          path: submodule-audit.json
+{
+	"name": "Pinned dependencies audit",
+	"on": {
+		"workflow_dispatch": null,
+		"schedule": [
+			{
+				"cron": "17 4 * * *"
+			}
+		],
+		"pull_request": {
+			"paths": [
+				".gitmodules",
+				"tests/ci/auditPinnedDependencies.py",
+				"tests/ci/auditUpstreamChanges.py",
+				"tests/ci/testAuditUpstreamChanges.py",
+				"tests/ci/upstreamForkBaselines.json",
+				".github/workflows/pinned-dependencies-audit.yml",
+				"extensions/*",
+				"skins/*",
+				"extensions/CrawlerProtection/build"
+			]
+		},
+		"push": {
+			"branches": [
+				"main"
+			],
+			"paths": [
+				".gitmodules",
+				"tests/ci/auditPinnedDependencies.py",
+				"tests/ci/auditUpstreamChanges.py",
+				"tests/ci/testAuditUpstreamChanges.py",
+				"tests/ci/upstreamForkBaselines.json",
+				".github/workflows/pinned-dependencies-audit.yml",
+				"extensions/*",
+				"skins/*",
+				"extensions/CrawlerProtection/build"
+			]
+		}
+	},
+	"permissions": {
+		"contents": "read"
+	},
+	"concurrency": {
+		"group": "pinned-audit-${{ github.event_name == 'schedule' && 'scheduled' || github.ref }}",
+		"cancel-in-progress": false
+	},
+	"jobs": {
+		"gitlinks": {
+			"runs-on": "ubuntu-latest",
+			"timeout-minutes": 15,
+			"outputs": {
+				"alerts": "${{ steps.triage.outputs.alerts }}"
+			},
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"submodules": false
+					}
+				},
+				{
+					"name": "Verify local inventory and triage tests",
+					"run": "python3 -m py_compile tests/ci/auditPinnedDependencies.py tests/ci/auditUpstreamChanges.py\npython3 tests/ci/testAuditUpstreamChanges.py\npython3 tests/ci/auditPinnedDependencies.py --offline"
+				},
+				{
+					"name": "Compare pinned gitlinks with tracked upstream branch heads",
+					"env": {
+						"GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+					},
+					"run": "python3 tests/ci/auditPinnedDependencies.py"
+				},
+				{
+					"name": "Classify upstream changes and release candidates",
+					"id": "triage",
+					"if": "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'",
+					"env": {
+						"GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+					},
+					"run": "python3 tests/ci/auditUpstreamChanges.py"
+				},
+				{
+					"uses": "actions/upload-artifact@v4",
+					"if": "always()",
+					"with": {
+						"name": "pinned-dependency-inventory",
+						"path": "submodule-audit.json\nupstream-audit.json"
+					}
+				}
+			]
+		},
+		"notify": {
+			"needs": "gitlinks",
+			"if": "github.repository == 'wikidebates/wikidebates-mediawiki-farm' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.gitlinks.outputs.alerts != '0' && needs.gitlinks.outputs.alerts != ''",
+			"runs-on": "ubuntu-latest",
+			"timeout-minutes": 5,
+			"permissions": {
+				"contents": "read",
+				"issues": "write"
+			},
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"sparse-checkout": "tests/ci/auditUpstreamChanges.py",
+						"sparse-checkout-cone-mode": false
+					}
+				},
+				{
+					"uses": "actions/download-artifact@v5",
+					"with": {
+						"name": "pinned-dependency-inventory",
+						"path": "."
+					}
+				},
+				{
+					"name": "Notify only new actionable candidates on issue 78",
+					"env": {
+						"GH_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+					},
+					"run": "python3 tests/ci/auditUpstreamChanges.py --notify"
+				}
+			]
+		}
+	}
+}
