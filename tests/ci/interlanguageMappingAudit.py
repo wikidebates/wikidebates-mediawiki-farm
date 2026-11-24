@@ -2,8 +2,11 @@
 """Read-only inventory of the six-edition farm's central language mappings.
 
 Run from the MediaWiki installation root. Does not render, purge or edit
-pages. Only reads page, langlinks, interlanguage_links and page_props.
-The persisted dependent parser properties are evidence, not live HTML.
+pages. Reads mapping tables, page identities, redirect rows and page_props.
+Uses the local MediaWiki title parser for every compared title. Missing file
+pages can be checked in DB-backed repositories; API-backed repositories
+are explicitly unverified, with no public HTTP lookup. The persisted
+dependent parser properties are evidence, not live HTML.
 """
 import argparse
 from collections import Counter, defaultdict
@@ -34,12 +37,95 @@ $describe = static function ( $row ) use ( $canonicalNamespaces ) {
 	return [
 		'id' => (int)$row->page_id,
 		'namespace' => $ns,
+		'dbkey' => $title->getDBkey(),
 		'key' => $title->getPrefixedDBkey(),
 		'lookup' => $prefix . $title->getText(),
 		'redirect' => (bool)$row->page_is_redirect,
 	];
 };
 $fields = [ 'page_id', 'page_namespace', 'page_title', 'page_is_redirect' ];
+$redirectCache = [];
+$describeRedirect = static function ( $row ) use ( $db, $fields, $describe, &$redirectCache ) {
+	$id = (int)$row->page_id;
+	if ( isset( $redirectCache[$id] ) ) {
+		return $redirectCache[$id];
+	}
+	$source = $describe( $row );
+	if ( !$source['redirect'] ) {
+		return $source;
+	}
+	$seen = [];
+	$section = false;
+	for ( $depth = 0; $depth <= 16; $depth++ ) {
+		$currentId = (int)$row->page_id;
+		if ( isset( $seen[$currentId] ) ) {
+			return $redirectCache[$id] = $source + [ 'redirect_status' => 'loop' ];
+		}
+		if ( !$row->page_is_redirect ) {
+			return $redirectCache[$id] = $source + [
+				'redirect_status' => $section ? 'section' : 'valid',
+				'destination' => $describe( $row ),
+			];
+		}
+		$seen[$currentId] = true;
+		if ( $depth === 16 ) {
+			return $redirectCache[$id] = $source + [ 'redirect_status' => 'limit' ];
+		}
+		$redirect = $db->selectRow(
+			'redirect', [ 'rd_namespace', 'rd_title', 'rd_interwiki', 'rd_fragment' ],
+			[ 'rd_from' => $currentId ], __FILE__
+		);
+		if ( !$redirect ) {
+			return $redirectCache[$id] = $source + [ 'redirect_status' => 'broken' ];
+		}
+		if ( (string)$redirect->rd_interwiki !== '' ) {
+			return $redirectCache[$id] = $source + [ 'redirect_status' => 'interwiki' ];
+		}
+		$section = $section || (string)$redirect->rd_fragment !== '';
+		$row = $db->selectRow( 'page', $fields, [
+			'page_namespace' => (int)$redirect->rd_namespace, 'page_title' => $redirect->rd_title,
+		], __FILE__ );
+		if ( !$row ) {
+			return $redirectCache[$id] = $source + [ 'redirect_status' => 'broken' ];
+		}
+	}
+	throw new LogicException( 'Redirect resolution exceeded its bounds' );
+};
+$missingStatus = static function ( Title $title ) use ( $services ) {
+	if ( $title->getNamespace() === NS_MEDIAWIKI &&
+		$services->getMessageCache()->get( $title->getDBkey(), false ) !== false
+	) {
+		return 'message';
+	}
+	if ( $title->getNamespace() !== NS_FILE ) {
+		return 'missing';
+	}
+	// Do not turn this read-only inventory into an external API crawl.
+	// A repository requiring HTTP, or a failing repository, is unverified.
+	try {
+		$repos = $services->getRepoGroup();
+		$options = [ 'ignoreRedirect' => true ];
+		if ( $repos->getLocalRepo()->findFile( $title, $options ) ) {
+			return 'file_without_page';
+		}
+		$unverified = false;
+		$shared = $repos->forEachForeignRepo( static function ( $repo ) use ( $title, $options, &$unverified ) {
+			if ( !$repo instanceof ForeignDBRepo ) {
+				$unverified = true;
+				return false;
+			}
+			try {
+				return (bool)$repo->findFile( $title, $options );
+			} catch ( Throwable $e ) {
+				$unverified = true;
+				return false;
+			}
+		} );
+		return $shared ? 'shared_file' : ( $unverified ? 'file_unverified' : 'missing' );
+	} catch ( Throwable $e ) {
+		return 'file_unverified';
+	}
+};
 if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 	$links = [];
 	$ids = [];
@@ -56,7 +142,7 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 	$pages = [];
 	foreach ( array_chunk( array_keys( $ids ), 500 ) as $chunk ) {
 		foreach ( $db->select( 'page', $fields, [ 'page_id' => $chunk ], __FILE__ ) as $row ) {
-			$pages[$row->page_id] = $describe( $row );
+			$pages[$row->page_id] = $describeRedirect( $row );
 		}
 	}
 	$data = [ 'links' => $links, 'pages' => (object)$pages ];
@@ -66,14 +152,27 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 	$groups = [];
 	foreach ( $targets as $raw ) {
 		$title = Title::newFromText( $raw );
-		if ( !$title || !$title->canExist() || $title->isExternal() || $title->getFragment() !== '' ) {
+		if ( !$title ) {
+			$parsed[$raw] = [ 'status' => 'invalid' ];
+			continue;
+		}
+		if ( $title->isExternal() ) {
+			$parsed[$raw] = [ 'status' => 'external' ];
+			continue;
+		}
+		if ( !$title->canExist() ) {
 			$parsed[$raw] = [ 'status' => 'invalid' ];
 			continue;
 		}
 		$ns = $title->getNamespace();
 		$key = $title->getDBkey();
-		$parsed[$raw] = [ 'status' => 'missing', 'ns' => $ns, 'dbkey' => $key ];
-		$groups[$ns][$key] = true;
+		$parsed[$raw] = [
+			'status' => $title->getFragment() !== '' ? 'section' : 'missing',
+			'namespace' => $ns, 'dbkey' => $key, 'key' => $title->getPrefixedDBkey(),
+		];
+		if ( $parsed[$raw]['status'] === 'missing' ) {
+			$groups[$ns][$key] = true;
+		}
 	}
 	$found = [];
 	$ids = [];
@@ -82,19 +181,30 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 			foreach ( $db->select( 'page', $fields, [
 				'page_namespace' => $ns, 'page_title' => $chunk,
 			], __FILE__ ) as $row ) {
-				$found[$ns][$row->page_title] = $describe( $row );
+				$page = $describeRedirect( $row );
+				$found[$ns][$row->page_title] = $page;
 				$ids[(int)$row->page_id] = true;
+				if ( ( $page['redirect_status'] ?? null ) === 'valid' ) {
+					$ids[$page['destination']['id']] = true;
+				}
 			}
 		}
 	}
 	foreach ( $parsed as $raw => &$entry ) {
-		if ( $entry['status'] === 'missing' && isset( $found[$entry['ns']][$entry['dbkey']] ) ) {
-			$entry = [ 'status' => 'exists' ] + $found[$entry['ns']][$entry['dbkey']];
+		if ( $entry['status'] !== 'missing' ) {
+			continue;
+		}
+		$ns = $entry['namespace'];
+		$key = $entry['dbkey'];
+		if ( isset( $found[$ns][$key] ) ) {
+			$entry = [ 'status' => 'exists' ] + $found[$ns][$key];
+		} elseif ( $ns === NS_FILE || $ns === NS_MEDIAWIKI ) {
+			$entry['status'] = $missingStatus( Title::makeTitle( $ns, $key ) );
 		}
 	}
 	unset( $entry );
 	$stored = [];
-	if ( $lang !== 'fr' ) {
+	if ( $lang !== 'fr' && getenv( 'WD_ILL_MODE' ) === 'resolve' ) {
 		foreach ( array_chunk( array_keys( $ids ), 500 ) as $chunk ) {
 			foreach ( $db->select( 'page_props', [ 'pp_page', 'pp_value' ], [
 				'pp_page' => $chunk, 'pp_propname' => 'wikirouge-langlinks',
@@ -147,22 +257,32 @@ def key(raw):
 	return raw.replace(" ", "_")
 
 
-def title_forms(page):
-	"""Only accept the actual target's localized and canonical namespace names.
+def destination(page):
+	"""Return an existing whole-page destination, never assume a redirect is valid."""
+	if page.get("status", "exists") != "exists":
+		return None
+	if not page.get("redirect", False):
+		return page
+	if page.get("redirect_status") == "valid":
+		return page["destination"]
+	return None
 
-	Generic Project:/Help:/File: names are legitimate MediaWiki identities,
-	even if a literal URL built with them would not be canonical.
-	Do not normalize arbitrary colon-containing main-namespace titles.
-	"""
-	forms = {key(page["key"]), key(page["lookup"])}
-	if page.get("namespace", 0) != 0 and ":" in page["lookup"] and ":" in page["key"]:
-		for value in tuple(forms):
-			prefix, name = value.split(":", 1)
-			forms.add(prefix + ":_" + name.lstrip("_"))
-	return forms
+
+def identity(page):
+	"""Use MediaWiki's parsed namespace and DB key, not a guessed title string."""
+	if page.get("status", "exists") in ("invalid", "external", "section", "unverified"):
+		return None
+	if page.get("redirect", False):
+		page = destination(page)
+	if page is None or "namespace" not in page or "dbkey" not in page:
+		return None
+	return page["namespace"], page["dbkey"]
+
 
 def analyze(central, editions):
 	issues = defaultdict(list)
+	review = defaultdict(list)
+	observations = defaultdict(list)
 	counts = Counter()
 	groups = defaultdict(lambda: defaultdict(list))
 	target_sources = defaultdict(set)
@@ -170,8 +290,33 @@ def analyze(central, editions):
 	def issue(kind, **details):
 		issues[kind].append(details)
 
+	def check(kind, **details):
+		review[kind].append(details)
+
+	def observe(kind, **details):
+		observations[kind].append(details)
+
 	def resolve(lang, raw):
-		return editions[lang]["targets"].get(raw, {"status": "invalid"})
+		return editions.get(lang, {}).get("targets", {}).get(raw, {"status": "unverified"})
+
+	def equivalent(a, raw_a, b, raw_b):
+		ai, bi = identity(a), identity(b)
+		return (ai is not None and bi is not None and ai == bi) or raw_a == raw_b
+
+	def classify_redirect(prefix, page, context):
+		status = page.get("redirect_status", "unverified")
+		details = dict(context, redirect_status=status)
+		if "destination" in page:
+			details["destination"] = page["destination"]["key"]
+		kind = prefix + "_REDIRECT_" + status.upper()
+		if status in ("broken", "loop"):
+			issue(kind, **details)
+		elif status == "valid" and prefix == "TARGET":
+			observe(kind, **details)
+		else:
+			# Even a valid source redirect does not prove its destination owns
+			# the same group. Section/interwiki/over-limit chains are not verified.
+			check(kind, **details)
 
 	for table, source, lang, raw in central["links"]:
 		counts[table] += 1
@@ -182,27 +327,36 @@ def analyze(central, editions):
 		if page is None:
 			issue("ORPHAN_SOURCE", **context)
 		elif page["redirect"]:
-			issue("SOURCE_REDIRECT", **context)
+			classify_redirect("SOURCE", page, context)
 		if lang not in LANGS or lang == "fr":
 			issue("OUTSIDE_CLUSTER_OR_SELF_MAPPING", **context)
 			continue
 		groups[source][lang].append((table, raw))
 		target = resolve(lang, raw)
-		if target["status"] != "exists":
-			issue("TARGET_" + target["status"].upper(), **context)
+		status = target["status"]
+		if status != "exists":
+			kind = "TARGET_" + status.upper()
+			if status in ("message", "shared_file", "file_without_page"):
+				observe(kind, **context)
+			elif status in ("invalid", "external"):
+				issue(kind, **context)
+			else:
+				check(kind, **context)
 			continue
 		if target["redirect"]:
-			issue("TARGET_REDIRECT", **context)
-		if key(raw) != target["key"]:
-			issue("NONCANONICAL_TARGET_PATH", canonical_title=target["key"], **context)
+			classify_redirect("TARGET", target, context)
+		if key(raw) != target["key"] or raw != target["lookup"]:
+			observe("SYNTAX_VARIANT", canonical_title=target["key"], **context)
+		# Keep this diagnostic until the runtime has a normalized reverse index.
 		if table == "langlinks" and raw != target["lookup"]:
-			issue("NATIVE_REVERSE_LOOKUP_RISK", expected_lookup=target["lookup"], **context)
+			check("NATIVE_REVERSE_LOOKUP_RISK", expected_lookup=target["lookup"], **context)
 
+	clusters = []
 	for source, langs in groups.items():
 		page = central["pages"].get(str(source))
 		if not page or page["redirect"]:
 			continue
-		expected = {"fr": page}
+		expected = {"fr": (page["lookup"], page)}
 		chosen = {}
 		for lang, entries in langs.items():
 			native = [raw for table, raw in entries if table == "langlinks"]
@@ -211,25 +365,41 @@ def analyze(central, editions):
 				issue("DUPLICATE_SOURCE_LANGUAGE", source=source, lang=lang, entries=entries)
 			if native and fallback:
 				a, b = resolve(lang, native[0]), resolve(lang, fallback[0])
-				if a.get("id") != b.get("id") or (a.get("id") is None and native[0] != fallback[0]):
-					issue("CONFLICT_NATIVE_FALLBACK", source=source, lang=lang,
+				if equivalent(a, native[0], b, fallback[0]):
+					counts["redundant_fallback"] += 1
+					observe("REDUNDANT_FALLBACK", source=source, lang=lang,
 						native=native[0], fallback=fallback[0])
 				else:
-					counts["redundant_fallback"] += 1
+					issue("CONFLICT_NATIVE_FALLBACK", source=source, lang=lang,
+						native=native[0], fallback=fallback[0])
 			raw = (native or fallback)[0]
 			target = resolve(lang, raw)
-			if target["status"] == "exists":
-				target_sources[lang, target["id"]].add(source)
+			# Keep all effective mappings in the expected property, even if
+			# their target is missing or virtual. They are not unexpected peers.
+			expected[lang] = raw, target
+			dest = destination(target)
+			if dest is not None:
+				target_sources[lang, dest["id"]].add(source)
+				chosen[lang] = dest
 				if not target["redirect"]:
-					expected[lang] = target
-					chosen[lang] = target
+					counts["effective_existing_nonredirect_targets"] += 1
 		counts["central_clusters"] += 1
-		counts["effective_existing_nonredirect_targets"] += len(chosen)
+		counts["effective_existing_resolved_targets"] += len(chosen)
+		clusters.append((source, page, expected, chosen))
+
+	for (lang, target_id), sources in target_sources.items():
+		if len(sources) > 1:
+			issue("TARGET_SHARED_BY_CENTRAL_PAGES", lang=lang, target_id=target_id, sources=sorted(sources))
+
+	for source, page, expected, chosen in clusters:
 		for lang, target in chosen.items():
-			stored = editions[lang]["stored"]
 			context = dict(source=source, source_title=page["key"], lang=lang, target=target["key"])
+			if len(target_sources[lang, target["id"]]) > 1:
+				counts["stored_targets_skipped_ambiguous"] += 1
+				continue
+			stored = editions[lang]["stored"]
 			if str(target["id"]) not in stored:
-				issue("STORED_LINKS_ABSENT", **context)
+				check("STORED_LINKS_ABSENT", **context)
 				continue
 			links = stored[str(target["id"])]
 			if links is None:
@@ -237,25 +407,38 @@ def analyze(central, editions):
 				continue
 			actual = defaultdict(set)
 			for code, raw in links:
-				actual[code].add(key(raw))
+				actual[code].add(raw)
 			counts["stored_targets_checked"] += 1
-			for code, wanted in expected.items():
+			if actual.get(lang):
+				issue("STORED_SELF_PEER", actual=sorted(actual[lang]), **context)
+			for code, (wanted_raw, wanted) in expected.items():
 				if code == lang:
 					continue
+				wanted_identity = identity(wanted)
+				if wanted_identity is None:
+					counts["stored_peers_skipped_unverified_expected"] += 1
+					continue
+				display = wanted.get("key", wanted_raw)
 				if not actual[code]:
-					issue("STORED_PEER_MISSING", peer=code, expected=wanted["key"], **context)
-				elif not actual[code].issubset(title_forms(wanted)):
-					issue("STORED_PEER_MISMATCH", peer=code, expected=wanted["key"],
+					issue("STORED_PEER_MISSING", peer=code, expected=display, **context)
+					continue
+				resolved = [(raw, resolve(code, raw)) for raw in actual[code]]
+				if any(p["status"] == "unverified" for _, p in resolved):
+					check("STORED_PEER_UNVERIFIED", peer=code, expected=display,
 						actual=sorted(actual[code]), **context)
-				elif actual[code] != {wanted["key"]}:
+				elif any(not equivalent(p, raw, wanted, wanted_raw) for raw, p in resolved):
+					issue("STORED_PEER_MISMATCH", peer=code, expected=display,
+						actual=sorted(actual[code]), **context)
+				elif actual[code] != {display}:
 					counts["stored_peer_equivalent_namespace_forms"] += 1
+					observe("STORED_PEER_EQUIVALENT", peer=code, expected=display,
+						actual=sorted(actual[code]), **context)
 			for code in set(actual) - set(expected):
 				if code in LANGS:
 					issue("STORED_EXTRA_PEER", peer=code, actual=sorted(actual[code]), **context)
-	for (lang, target_id), sources in target_sources.items():
-		if len(sources) > 1:
-			issue("TARGET_SHARED_BY_CENTRAL_PAGES", lang=lang, target_id=target_id, sources=sorted(sources))
-	return dict(counts=counts, issues=dict(issues))
+				else:
+					check("STORED_OUTSIDE_CLUSTER", peer=code, actual=sorted(actual[code]), **context)
+	return dict(counts=dict(counts), issues=dict(issues), review=dict(review), observations=dict(observations))
 
 
 # A separate, deliberately small public observation. Single-title API calls
@@ -349,17 +532,34 @@ def main():
 			raws = [row[3] for row in central["links"] if row[2] == lang]
 			editions[lang] = snapshot(root, directory, lang, "resolve", raws)
 			print(f"SNAPSHOT {lang}: {len(set(raws))} distinct mapped titles", flush=True)
+		# Resolve the actual persisted peer strings on their own editions as
+		# well. This includes aliases not present in the central link tables.
+		extra = defaultdict(set)
+		for edition in editions.values():
+			for links in edition["stored"].values():
+				if links is not None:
+					for code, raw in links:
+						if code in LANGS:
+							extra[code].add(raw)
+		editions["fr"] = {"targets": {}, "stored": {}}
+		for lang in LANGS:
+			unresolved = extra[lang] - set(editions[lang]["targets"])
+			if unresolved:
+				identities = snapshot(root, directory, lang, "identity", unresolved)
+				editions[lang]["targets"].update(identities["targets"])
+				print(f"IDENTITIES {lang}: {len(unresolved)} additional persisted titles", flush=True)
 		report = analyze(central, editions)
 	print("\n=== COUNTS ===")
 	for name, count in sorted(report["counts"].items()):
 		print(f"{name}: {count}")
-	print("\n=== FINDINGS (stored data, not live HTML) ===")
-	if not report["issues"]:
-		print("No anomaly detected in the inspected data")
-	for name, rows in sorted(report["issues"].items()):
-		print(f"{name}: {len(rows)}")
-		for row in rows[:max(0, args.examples)]:
-			print("\t" + json.dumps(row, ensure_ascii=False, sort_keys=True))
+	for category, label in (("issues", "ERRORS"), ("review", "REVIEW"), ("observations", "INFORMATION")):
+		print(f"\n=== {label} (stored data, not live HTML) ===")
+		if not report[category]:
+			print("No finding in this category")
+		for name, rows in sorted(report[category].items()):
+			print(f"{name}: {len(rows)}")
+			for row in rows[:max(0, args.examples)]:
+				print("\t" + json.dumps(row, ensure_ascii=False, sort_keys=True))
 	if args.report:
 		args.report.write_text(json.dumps(report, ensure_ascii=False, indent="\t") + "\n", encoding="utf-8")
 		print(f"Full report: {args.report}")
