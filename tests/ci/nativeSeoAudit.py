@@ -190,7 +190,10 @@ def inspect(body, final, headers, lang, kind):
 		require(len(doc.alternates.get(lang, [])) == 1 and
 			page_key(doc.alternates[lang][0]) == page_key(canonical), "self hreflang differs from canonical")
 	return {"status": "mismatch" if issues else "ok", "issues": issues,
-		"canonical": canonical, "hreflang": doc.alternates, "jsonld_scripts": len(doc.scripts), **stats}
+		"canonical": canonical, "hreflang": doc.alternates, "jsonld_scripts": len(doc.scripts),
+		"social_images": {key: doc.tags.get(key, []) for key in (
+			"og:image", "og:image:secure_url", "og:image:type", "og:image:width", "og:image:height",
+			"og:image:alt", "twitter:image", "twitter:image:alt")}, **stats}
 
 def observe(sample, opener=get):
 	lang, kind, title, pair = sample
