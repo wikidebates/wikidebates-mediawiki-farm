@@ -7,10 +7,11 @@ if [[ "${CI:-}" != true || "${GITHUB_ACTIONS:-}" != true ]]; then
 fi
 root=$(pwd)
 config=$(mktemp -d)
-en_pid=
-fr_pid=
+langs=(en fr de es it pt)
+declare -A ports=([en]=18781 [fr]=18782 [de]=18783 [es]=18784 [it]=18785 [pt]=18786)
+pids=()
 cleanup() {
-	for pid in "$en_pid" "$fr_pid"; do
+	for pid in "${pids[@]}"; do
 		if [[ -n "$pid" ]]; then
 			kill "$pid" 2>/dev/null || true
 		fi
@@ -22,16 +23,21 @@ trap 'for log in "$config"/*.log; do if [[ -f "$log" ]]; then tail -n 60 "$log";
 test ! -e LocalSettings.php
 test -f extensions/Interlanguage/extension.json
 test -f skins/Vector/skin.json
-mkdir "$config/en" "$config/fr"
+test -f extensions/WikiSEO/includes/InterlanguageHreflang.php
+test -f skins/MinervaNeue/skin.json
+for lang in "${langs[@]}"; do
+	mkdir "$config/$lang"
+done
 export MYSQL_PWD="${INTERLANGUAGE_CI_DB_PASSWORD:?Missing disposable database password}"
 sql() {
 	mysql --protocol=TCP --host=127.0.0.1 --user=root --batch --skip-column-names "$@"
 }
-sql -e 'CREATE DATABASE ill_ci_en; CREATE DATABASE ill_ci_fr;'
+for lang in "${langs[@]}"; do
+	sql -e "CREATE DATABASE ill_ci_$lang;"
+done
 admin_password=$(openssl rand -hex 24)
-for lang in en fr; do
-	port=18781
-	if [[ "$lang" = fr ]]; then port=18782; fi
+for lang in "${langs[@]}"; do
+	port=${ports[$lang]}
 	php maintenance/run.php install \
 		--confpath "$config/$lang" --dbtype mysql \
 		--dbserver 127.0.0.1 --dbname "ill_ci_$lang" \
@@ -49,6 +55,23 @@ $wgJobRunRate = 0;
 $wgEnableEmail = false;
 $wgShowExceptionDetails = true;
 $wgGroupPermissions['*']['purge'] = true;
+$wgEnableCanonicalServerLink = true;
+// Permit __NOINDEX__ in main-namespace disposable fixtures.
+$wgExemptFromUserRobotsControl = [];
+$wgWikiSeoDefaultLanguage = null;
+$wgWikiSeoDisableLogoFallbackImage = true;
+$wgHideInterlanguageLinks = isset( $_GET['illcihide'] );
+$wgWikiSeoInterlanguageArticleUrls = [
+	'en' => 'http://127.0.0.1:18781/index.php?title=$1',
+	'fr' => 'http://127.0.0.1:18782/index.php?title=$1',
+	'de' => 'http://127.0.0.1:18783/index.php?title=$1',
+	'es' => 'http://127.0.0.1:18784/index.php?title=$1',
+	'it' => 'http://127.0.0.1:18785/index.php?title=$1',
+	'pt' => 'http://127.0.0.1:18786/index.php?title=$1',
+];
+wfLoadExtension( 'WikiSEO' );
+wfLoadExtension( 'MobileFrontend' );
+wfLoadSkin( 'MinervaNeue' );
 // MediaWiki 1.43 uses a namespaced core API module; explicitly register the
 // legacy extension module in these fixtures, rather than testing core by mistake.
 $wgAutoloadLocalClasses['ApiQueryLangLinks'] = "$IP/extensions/Interlanguage/api/ApiQueryLangLinks.php";
@@ -67,12 +90,16 @@ CREATE TABLE interlanguage_links (
 	INDEX ill_lang_title (ill_lang, ill_title)
 ) ENGINE=InnoDB;
 SQL
-for lang in en fr; do
+for lang in "${langs[@]}"; do
 	sql "ill_ci_$lang" <<'SQL'
 INSERT INTO interwiki (iw_prefix, iw_url, iw_api, iw_wikiid, iw_local, iw_trans)
 VALUES
 	('en', 'http://127.0.0.1:18781/index.php?title=$1', 'http://127.0.0.1:18781/api.php', '', 1, 0),
-	('fr', 'http://127.0.0.1:18782/index.php?title=$1', 'http://127.0.0.1:18782/api.php', '', 1, 0)
+	('fr', 'http://127.0.0.1:18782/index.php?title=$1', 'http://127.0.0.1:18782/api.php', '', 1, 0),
+	('de', 'http://127.0.0.1:18783/index.php?title=$1', 'http://127.0.0.1:18783/api.php', '', 1, 0),
+	('es', 'http://127.0.0.1:18784/index.php?title=$1', 'http://127.0.0.1:18784/api.php', '', 1, 0),
+	('it', 'http://127.0.0.1:18785/index.php?title=$1', 'http://127.0.0.1:18785/api.php', '', 1, 0),
+	('pt', 'http://127.0.0.1:18786/index.php?title=$1', 'http://127.0.0.1:18786/api.php', '', 1, 0)
 ON DUPLICATE KEY UPDATE iw_url=VALUES(iw_url), iw_api=VALUES(iw_api), iw_local=VALUES(iw_local);
 SQL
 done
@@ -80,11 +107,13 @@ cat >> "$config/en/LocalSettings.php" <<'PHP'
 require_once "$IP/extensions/Interlanguage/InterlanguageCentral.php";
 wfLoadExtension( 'Interlanguage' );
 PHP
-cat >> "$config/fr/LocalSettings.php" <<'PHP'
+for lang in fr de es it pt; do
+	cat >> "$config/$lang/LocalSettings.php" <<'PHP'
 require_once "$IP/extensions/Interlanguage/Interlanguage.php";
 $wgInterlanguageExtensionDB = 'ill_ci_en';
 $wgInterlanguageExtensionInterwiki = 'en:';
 PHP
+done
 
 edit_page() {
 	local lang=$1 title=$2 content=$3
@@ -102,21 +131,37 @@ edit_page fr 'Argument:Exemple' 'Synthetic argument'
 edit_page fr 'Informations institutionnelles' 'Synthetic institutional page'
 edit_page fr 'Shared page' 'Dependent same-title fixture'
 
+# All five dependent editions reuse the same central translations.
+edit_page en 'Multilingual debate' 'Six-language fixture [[fr:Débat multilingue ?]] [[de:Mehrsprachige Debatte]] [[es:Debate multilingüe]] [[it:Dibattito multilingue]] [[pt:Debate multilingue]]'
+edit_page fr 'Débat multilingue ?' 'Synthetic French debate'
+edit_page de 'Mehrsprachige Debatte' 'Synthetic German debate'
+edit_page es 'Debate multilingüe' 'Synthetic Spanish debate'
+edit_page it 'Dibattito multilingue' 'Synthetic Italian debate'
+edit_page pt 'Debate multilingue' 'Synthetic Portuguese debate'
+edit_page en 'Restricted fixture' '__NOINDEX__ [[fr:Page non indexable]]'
+edit_page fr 'Page non indexable' '__NOINDEX__'
+edit_page en 'Untranslated fixture' 'No translation'
+old_revision=$(sql ill_ci_en -e "SELECT page_latest FROM page WHERE page_namespace=0 AND page_title='English_ordinary'")
+export old_revision
+edit_page en 'English ordinary' 'English body, new revision [[fr:French ordinary]]'
+
 # The extension must persist a real cross-database fallback mapping.
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Shared_page' AND ill_lang='fr' AND ill_title='Shared page'")" = 1
 echo 'PASS cross-database fallback write'
 
-MW_CONFIG_FILE="$config/en/LocalSettings.php" php -S 127.0.0.1:18781 -t "$root" >"$config/en.log" 2>&1 &
-en_pid=$!
-MW_CONFIG_FILE="$config/fr/LocalSettings.php" php -S 127.0.0.1:18782 -t "$root" >"$config/fr.log" 2>&1 &
-fr_pid=$!
-for port in 18781 18782; do
+for lang in "${langs[@]}"; do
+	MW_CONFIG_FILE="$config/$lang/LocalSettings.php" php -S "127.0.0.1:${ports[$lang]}" -t "$root" >"$config/$lang.log" 2>&1 &
+	pids+=("$!")
+done
+for lang in "${langs[@]}"; do
+	port=${ports[$lang]}
 	curl --fail --silent --show-error --retry 20 --retry-connrefused --retry-delay 1 \
 		"http://127.0.0.1:$port/api.php?action=query&meta=siteinfo&format=json" > /dev/null
 done
 
 python3 - <<'PY'
 import json
+import os
 from html.parser import HTMLParser
 import urllib.parse
 import urllib.request
@@ -181,6 +226,83 @@ for port, title in ((18781, 'English ordinary'), (18782, 'French ordinary')):
 	other_port, other_title = (18781, 'English ordinary') if port == 18782 else (18782, 'French ordinary')
 	assert any(urllib.parse.urlparse(href).netloc == f'127.0.0.1:{other_port}' and urllib.parse.parse_qs(urllib.parse.urlparse(href).query).get('title', [''])[0].replace('_', ' ') == other_title for href in links.urls), (title, links.urls)
 	print('PASS rendered page and language link', title)
+
+# Collect only the HTML head. Body navigation hreflang is not SEO markup.
+class SeoHead(HTMLParser):
+	def __init__(self):
+		super().__init__()
+		self.in_head = False
+		self.canonical = []
+		self.alternates = {}
+		self.robots = []
+
+	def handle_starttag(self, tag, attrs):
+		attrs = dict(attrs)
+		if tag == 'head':
+			self.in_head = True
+		elif self.in_head and tag == 'link':
+			if attrs.get('rel') == 'canonical':
+				self.canonical.append(attrs['href'])
+			if attrs.get('rel') == 'alternate' and 'hreflang' in attrs:
+				code = attrs['hreflang']
+				assert code not in self.alternates, ('duplicate hreflang', code)
+				self.alternates[code] = attrs['href']
+		elif self.in_head and tag == 'meta' and attrs.get('name') in ('robots', 'googlebot'):
+			self.robots.append(attrs.get('content', ''))
+
+	def handle_endtag(self, tag):
+		if tag == 'head':
+			self.in_head = False
+
+def head(port, title, **params):
+	url = f'http://127.0.0.1:{port}/index.php?' + urllib.parse.urlencode({'title': title, **params})
+	with urllib.request.urlopen(url, timeout=30) as response:
+		html = response.read().decode()
+	assert 'mw-parser-output' in html or params.get('action') == 'history', (title, params, html[:500])
+	result = SeoHead()
+	result.feed(html)
+	assert len(result.canonical) == 1, (title, result.canonical)
+	return result
+
+def verify_cluster(pages):
+	# Derive expected URLs from the actual canonical tags of every edition.
+	expected = {lang: head(port, title).canonical[0] for lang, (port, title) in pages.items()}
+	for skin in ('vector', 'minerva'):
+		for lang, (port, title) in pages.items():
+			result = head(port, title, useskin=skin)
+			assert result.canonical == [expected[lang]], (skin, lang, result.canonical)
+			assert result.alternates == expected, (skin, lang, title, expected, result.alternates)
+			hidden = head(port, title, useskin=skin, illcihide=1)
+			assert hidden.alternates == expected, (skin, lang, 'hidden selector', hidden.alternates)
+		print('PASS reciprocal canonical hreflang', skin, ','.join(sorted(pages)), next(iter(pages.values()))[1])
+
+for en, fr in (
+	('English ordinary', 'French ordinary'),
+	('Debate:Example', 'Debat:Exemple'),
+	('Argument:Example', 'Argument:Exemple'),
+	('Institutional information', 'Informations institutionnelles'),
+	('Shared page', 'Shared page'),
+):
+	verify_cluster({'en': (18781, en), 'fr': (18782, fr)})
+
+verify_cluster({
+	'en': (18781, 'Multilingual debate'),
+	'fr': (18782, 'Débat multilingue ?'),
+	'de': (18783, 'Mehrsprachige Debatte'),
+	'es': (18784, 'Debate multilingüe'),
+	'it': (18785, 'Dibattito multilingue'),
+	'pt': (18786, 'Debate multilingue'),
+})
+
+for skin in ('vector', 'minerva'):
+	for port, title in ((18781, 'Restricted fixture'), (18782, 'Page non indexable')):
+		result = head(port, title, useskin=skin)
+		assert any('noindex' in value for value in result.robots), (skin, title, result.robots)
+		assert result.alternates == {}, (skin, title, result.alternates)
+	assert head(18781, 'Untranslated fixture', useskin=skin).alternates == {}
+	assert head(18781, 'English ordinary', useskin=skin, oldid=os.environ['old_revision']).alternates == {}
+	assert head(18781, 'English ordinary', useskin=skin, action='history').alternates == {}
+	print('PASS noindex, untranslated, old revision and history', skin)
 PY
 
 
@@ -191,4 +313,4 @@ printf '%s\n' '$job = new InterlanguageCentralExtensionPurgeJob( Title::newFromT
 test "$(sql ill_ci_fr -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='French_ordinary'")" != '20000101000000'
 grep -F 'POST /api.php?action=purge' "$config/fr.log"
 echo 'PASS remote purge job and database invalidation'
-echo 'PASS disposable Interlanguage FR/EN integration'
+echo 'PASS disposable Interlanguage and WikiSEO six-edition integration'
