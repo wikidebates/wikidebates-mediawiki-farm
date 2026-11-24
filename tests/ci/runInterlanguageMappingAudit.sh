@@ -4,7 +4,7 @@ set -euo pipefail
 umask 077
 
 root=$(cd -- "$(dirname -- "$0")/../.." && pwd -P)
-state="$HOME/interlanguage-audits"
+state="/home/users/webmaster/files/interlanguage-audits"
 mkdir -p -- "$state"
 chmod 700 -- "$state"
 
