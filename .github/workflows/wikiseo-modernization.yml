@@ -30,4 +30,6 @@ jobs:
 				  php -l tools/wikiseo-modernization/tests/meta_values.php
 				  sh -n tools/wikiseo-modernization/apply.sh
 			- name: Standalone behavior and JSON-LD safety
-			  run: php tools/wikiseo-modernization/tests/meta_values.php
+			  run: |
+				  php tools/wikiseo-modernization/tests/meta_values.php
+				  php tools/wikiseo-modernization/tests/generators.php
