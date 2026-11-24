@@ -7,7 +7,7 @@ if [[ "${CI:-}" != true || "${GITHUB_ACTIONS:-}" != true ]]; then
 fi
 root=$(pwd)
 config=$(mktemp -d)
-langs=(en fr de es it pt)
+langs=(fr en de es it pt)
 declare -A ports=([en]=18781 [fr]=18782 [de]=18783 [es]=18784 [it]=18785 [pt]=18786)
 pids=()
 cleanup() {
@@ -45,6 +45,13 @@ for lang in "${langs[@]}"; do
 		--server "http://127.0.0.1:$port" --scriptpath '' \
 		--lang "$lang" --skins Vector --pass "$admin_password" \
 		"Interlanguage CI $lang" Admin
+	case "$lang" in
+		fr) project='Wikidébats' ;;
+		de) project='Wikidebatten' ;;
+		it) project='Wikidibattiti' ;;
+		*) project='Wikidebates' ;;
+	esac
+	printf '\n$wgMetaNamespace = "%s";\n' "$project" >> "$config/$lang/LocalSettings.php"
 	cat >> "$config/$lang/LocalSettings.php" <<'PHP'
 $wgScriptPath = '';
 $wgArticlePath = '/index.php?title=$1';
@@ -61,27 +68,35 @@ $wgExemptFromUserRobotsControl = [];
 $wgWikiSeoDefaultLanguage = null;
 $wgWikiSeoDisableLogoFallbackImage = true;
 $wgHideInterlanguageLinks = isset( $_GET['illcihide'] );
-$wgWikiSeoInterlanguageArticleUrls = [
-	'en' => 'http://127.0.0.1:18781/index.php?title=$1',
-	'fr' => 'http://127.0.0.1:18782/index.php?title=$1',
-	'de' => 'http://127.0.0.1:18783/index.php?title=$1',
-	'es' => 'http://127.0.0.1:18784/index.php?title=$1',
-	'it' => 'http://127.0.0.1:18785/index.php?title=$1',
-	'pt' => 'http://127.0.0.1:18786/index.php?title=$1',
-];
+$wgWikiSeoInterlanguageArticleUrls = [];
+foreach ( [
+	'en' => [18781, 'Wikidebates'],
+	'fr' => [18782, 'Wikidébats'],
+	'de' => [18783, 'Wikidebatten'],
+	'es' => [18784, 'Wikidebates'],
+	'it' => [18785, 'Wikidibattiti'],
+	'pt' => [18786, 'Wikidebates'],
+] as $illCode => [ $illPort, $illProject ] ) {
+	$wgWikiSeoInterlanguageArticleUrls[$illCode] = [
+		'article' => 'http://127.0.0.1:' . $illPort . '/index.php?title=$1',
+		'namespaceAliases' => [ 'Project' => $illProject, $illProject => $illProject ],
+	];
+}
+unset( $illCode, $illPort, $illProject );
 wfLoadExtension( 'WikiSEO' );
 wfLoadExtension( 'MobileFrontend' );
 wfLoadSkin( 'MinervaNeue' );
-// MediaWiki 1.43 uses a namespaced core API module; explicitly register the
-// legacy extension module in these fixtures, rather than testing core by mistake.
-$wgAutoloadLocalClasses['ApiQueryLangLinks'] = "$IP/extensions/Interlanguage/api/ApiQueryLangLinks.php";
-$wgAPIPropModules['langlinks'] = 'ApiQueryLangLinks';
+// Explicit opt-in to the new effective API, without overriding the core class alias.
+$wgAPIPropModules['langlinks'] = [
+	'class' => 'InterlanguageEffectiveLangLinks',
+	'services' => [ 'LanguageNameUtils', 'ContentLanguage', 'UrlUtils' ],
+];
 PHP
 done
 
 # The production table already exists; no schema updater is provided by this
 # extension. Provision only its required columns and key in the fixture.
-sql ill_ci_en <<'SQL'
+sql ill_ci_fr <<'SQL'
 CREATE TABLE interlanguage_links (
 	ill_from INT UNSIGNED NOT NULL,
 	ill_lang VARBINARY(20) NOT NULL,
@@ -103,15 +118,16 @@ VALUES
 ON DUPLICATE KEY UPDATE iw_url=VALUES(iw_url), iw_api=VALUES(iw_api), iw_local=VALUES(iw_local);
 SQL
 done
-cat >> "$config/en/LocalSettings.php" <<'PHP'
+cat >> "$config/fr/LocalSettings.php" <<'PHP'
 require_once "$IP/extensions/Interlanguage/InterlanguageCentral.php";
 wfLoadExtension( 'Interlanguage' );
 PHP
-for lang in fr de es it pt; do
+for lang in en de es it pt; do
 	cat >> "$config/$lang/LocalSettings.php" <<'PHP'
 require_once "$IP/extensions/Interlanguage/Interlanguage.php";
-$wgInterlanguageExtensionDB = 'ill_ci_en';
-$wgInterlanguageExtensionInterwiki = 'en:';
+$wgInterlanguageExtensionDB = 'ill_ci_fr';
+$wgInterlanguageExtensionInterwiki = 'fr:';
+$wgInterlanguageExtensionSort = 'alphabetic';
 PHP
 done
 
@@ -120,34 +136,56 @@ edit_page() {
 	printf '%s\n' "$content" | MW_CONFIG_FILE="$config/$lang/LocalSettings.php" \
 		php maintenance/run.php edit --user Admin --summary 'Disposable integration fixture' "$title"
 }
-edit_page en 'English ordinary' 'English body [[fr:French ordinary]]'
-edit_page en 'Debate:Example' 'Synthetic debate [[fr:Debat:Exemple]]'
-edit_page en 'Argument:Example' 'Synthetic argument [[fr:Argument:Exemple]]'
-edit_page en 'Institutional information' 'Synthetic institutional page [[fr:Informations institutionnelles]]'
-edit_page en 'Shared page' 'Central same-title fixture'
-edit_page fr 'French ordinary' 'French body'
-edit_page fr 'Debat:Exemple' 'Synthetic debate'
-edit_page fr 'Argument:Exemple' 'Synthetic argument'
-edit_page fr 'Informations institutionnelles' 'Synthetic institutional page'
-edit_page fr 'Shared page' 'Dependent same-title fixture'
+edit_page fr 'French ordinary' 'French body [[en:English ordinary]]'
+edit_page fr 'Debat:Exemple' 'Synthetic debate [[en:Debate:Example]]'
+edit_page fr 'Argument:Exemple' 'Synthetic argument [[en:Argument:Example]]'
+edit_page fr 'Informations institutionnelles' 'Synthetic institutional page [[en:Institutional information]]'
+edit_page fr 'Shared page' 'Central same-title fixture'
+edit_page en 'English ordinary' 'English body'
+edit_page en 'Debate:Example' 'Synthetic debate'
+edit_page en 'Argument:Example' 'Synthetic argument'
+edit_page en 'Institutional information' 'Synthetic institutional page'
+edit_page en 'Shared page' 'Dependent same-title fixture'
+
+# A native translation and a same-title fallback must form one reciprocal cluster.
+edit_page fr 'Mixed fallback fixture' 'Central mixed fixture [[en:Explicit translation fixture]]'
+edit_page en 'Explicit translation fixture' 'Explicit dependent fixture'
+edit_page de 'Mixed fallback fixture' 'Same-title fallback fixture'
 
 # All five dependent editions reuse the same central translations.
-edit_page en 'Multilingual debate' 'Six-language fixture [[fr:Débat multilingue ?]] [[de:Mehrsprachige Debatte]] [[es:Debate multilingüe]] [[it:Dibattito multilingue]] [[pt:Debate multilingue]]'
-edit_page fr 'Débat multilingue ?' 'Synthetic French debate'
+edit_page fr 'Débat multilingue ?' 'Six-language fixture [[en:Multilingual debate]] [[de:Mehrsprachige Debatte]] [[es:Debate multilingüe]] [[it:Dibattito multilingue]] [[pt:Debate multilingue]]'
+edit_page en 'Multilingual debate' 'Synthetic English debate'
 edit_page de 'Mehrsprachige Debatte' 'Synthetic German debate'
 edit_page es 'Debate multilingüe' 'Synthetic Spanish debate'
 edit_page it 'Dibattito multilingue' 'Synthetic Italian debate'
 edit_page pt 'Debate multilingue' 'Synthetic Portuguese debate'
-edit_page en 'Restricted fixture' '__NOINDEX__ [[fr:Page non indexable]]'
-edit_page fr 'Page non indexable' '__NOINDEX__'
-edit_page en 'Untranslated fixture' 'No translation'
-old_revision=$(sql ill_ci_en -e "SELECT page_latest FROM page WHERE page_namespace=0 AND page_title='English_ordinary'")
+
+# Actual localized project namespaces, with Project: stored centrally.
+edit_page fr 'Wikidébats:Accueil de test' 'Project fixture [[en:Project:Test home]] [[de:Project:Teststartseite]] [[es:Project:Inicio de prueba]] [[it:Project:Pagina di prova]] [[pt:Project:Página de teste]]'
+edit_page en 'Wikidebates:Test home' 'English project fixture'
+edit_page de 'Wikidebatten:Teststartseite' 'German project fixture'
+edit_page es 'Wikidebates:Inicio de prueba' 'Spanish project fixture'
+edit_page it 'Wikidibattiti:Pagina di prova' 'Italian project fixture'
+edit_page pt 'Wikidebates:Página de teste' 'Portuguese project fixture'
+edit_page fr 'Page non indexable' '__NOINDEX__ [[en:Restricted fixture]]'
+edit_page en 'Restricted fixture' '__NOINDEX__'
+edit_page fr 'Untranslated fixture' 'No translation'
+old_revision=$(sql ill_ci_fr -e "SELECT page_latest FROM page WHERE page_namespace=0 AND page_title='French_ordinary'")
 export old_revision
-edit_page en 'English ordinary' 'English body, new revision [[fr:French ordinary]]'
+edit_page fr 'French ordinary' 'French body, new revision [[en:English ordinary]]'
+
+# Inject legacy central self-mapping and conflicting supplemental entry.
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'fr','Wrong French title' FROM page WHERE page_namespace=0 AND page_title='Mixed_fallback_fixture' ON DUPLICATE KEY UPDATE ill_title=VALUES(ill_title)"
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Obsolete English title' FROM page WHERE page_namespace=0 AND page_title='Mixed_fallback_fixture' ON DUPLICATE KEY UPDATE ill_title=VALUES(ill_title)"
+
+# Persist the new peer list after the German fallback has been established.
+# This is a fixture edit, not a claim about automatic cache invalidation.
+edit_page en 'Explicit translation fixture' 'Explicit dependent fixture refreshed after fallback'
 
 # The extension must persist a real cross-database fallback mapping.
-test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Shared_page' AND ill_lang='fr' AND ill_title='Shared page'")" = 1
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Shared_page' AND ill_lang='en' AND ill_title='Shared page'")" = 1
 echo 'PASS cross-database fallback write'
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Mixed_fallback_fixture' AND ill_lang='de' AND ill_title='Mixed fallback fixture'")" = 1
 
 for lang in "${langs[@]}"; do
 	MW_CONFIG_FILE="$config/$lang/LocalSettings.php" php -S "127.0.0.1:${ports[$lang]}" -t "$root" >"$config/$lang.log" 2>&1 &
@@ -183,10 +221,11 @@ def expect_link(port, title, language, other_title):
 	assert links[0]['url'].startswith('http://127.0.0.1:'), (title, data)
 	print('PASS API', title, language, other_title)
 
-for port in (18781, 18782):
+for port, lang in ((18782, 'fr'), (18781, 'en'), (18783, 'de'), (18784, 'es'), (18785, 'it'), (18786, 'pt')):
 	site = api(port, action='query', meta='siteinfo')['query']['general']
 	assert site['generator'] == 'MediaWiki 1.43.12', site['generator']
-	print('PASS exact MediaWiki version', site['generator'])
+	assert site['lang'] == lang, site
+	print('PASS exact MediaWiki version and language', site['generator'], lang)
 
 for english, french in (
 	('English ordinary', 'French ordinary'),
@@ -198,12 +237,50 @@ for english, french in (
 	expect_link(18781, english, 'fr', french)
 	expect_link(18782, french, 'en', english)
 
-parsed = api(18781, action='parse', text='{{languagelink:fr|French ordinary}}', title='Parser fixture', prop='langlinks')
-assert any(link['lang'] == 'fr' for link in parsed['parse']['langlinks']), parsed
+# Real local page IDs must survive multi-title requests and both directions
+# of continuation. The former customized API assigned central IDs instead.
+def all_links(port, titles, direction):
+	found = {}
+	continuation = {}
+	for _ in range(12):
+		result = api(port, action='query', prop='langlinks', titles=titles,
+			lllimit=1, lldir=direction, **continuation)
+		for page in result['query']['pages'].values():
+			links = found.setdefault(page['title'], [])
+			links.extend((link['lang'], link['*']) for link in page.get('langlinks', []))
+		continuation = result.get('continue', {})
+		if not continuation:
+			return {title: sorted(links) for title, links in found.items()}
+	raise AssertionError('langlinks continuation did not terminate')
+
+for direction in ('ascending', 'descending'):
+	assert all_links(18782, 'French ordinary|Debat:Exemple', direction) == {
+		'French ordinary': [('en', 'English ordinary')],
+		'Debat:Exemple': [('en', 'Debate:Example')],
+	}
+	assert all_links(18781, 'English ordinary|Debate:Example', direction) == {
+		'English ordinary': [('fr', 'French ordinary')],
+		'Debate:Example': [('fr', 'Debat:Exemple')],
+	}
+print('PASS effective API local page IDs and both continuation directions')
+
+expect_link(18782, 'Mixed fallback fixture', 'en', 'Explicit translation fixture')
+expect_link(18782, 'Mixed fallback fixture', 'de', 'Mixed fallback fixture')
+expect_link(18781, 'Explicit translation fixture', 'de', 'Mixed fallback fixture')
+expect_link(18781, 'Explicit translation fixture', 'fr', 'Mixed fallback fixture')
+expect_link(18783, 'Mixed fallback fixture', 'en', 'Explicit translation fixture')
+filtered = api(18782, action='query', prop='langlinks', titles='Mixed fallback fixture',
+	lllang='de', lltitle='Mixed fallback fixture')
+page, = filtered['query']['pages'].values()
+assert [(link['lang'], link['*']) for link in page['langlinks']] == [('de', 'Mixed fallback fixture')]
+print('PASS effective API merged cluster and language/title filtering')
+
+parsed = api(18782, action='parse', text='{{languagelink:en|English ordinary}}', title='Parser fixture', prop='langlinks')
+assert any(link['lang'] == 'en' for link in parsed['parse']['langlinks']), parsed
 print('PASS central parser function')
 
-parsed = api(18782, action='parse', text='{{interlangue:English ordinary}}', title='French ordinary', prop='properties')
-assert any(p['name'] == 'interlanguage_pages' and 'English ordinary' in p['*'] for p in parsed['parse']['properties']), parsed
+parsed = api(18781, action='parse', text='{{interlanguage:French ordinary}}', title='English ordinary', prop='properties')
+assert any(p['name'] == 'interlanguage_pages' and 'French ordinary' in p['*'] for p in parsed['parse']['properties']), parsed
 print('PASS dependent parser function and persisted parser property')
 
 class Links(HTMLParser):
@@ -286,6 +363,12 @@ for en, fr in (
 	verify_cluster({'en': (18781, en), 'fr': (18782, fr)})
 
 verify_cluster({
+	'fr': (18782, 'Mixed fallback fixture'),
+	'en': (18781, 'Explicit translation fixture'),
+	'de': (18783, 'Mixed fallback fixture'),
+})
+
+verify_cluster({
 	'en': (18781, 'Multilingual debate'),
 	'fr': (18782, 'Débat multilingue ?'),
 	'de': (18783, 'Mehrsprachige Debatte'),
@@ -294,23 +377,58 @@ verify_cluster({
 	'pt': (18786, 'Debate multilingue'),
 })
 
+verify_cluster({
+	'fr': (18782, 'Wikidébats:Accueil de test'),
+	'en': (18781, 'Wikidebates:Test home'),
+	'de': (18783, 'Wikidebatten:Teststartseite'),
+	'es': (18784, 'Wikidebates:Inicio de prueba'),
+	'it': (18785, 'Wikidibattiti:Pagina di prova'),
+	'pt': (18786, 'Wikidebates:Página de teste'),
+})
+
 for skin in ('vector', 'minerva'):
 	for port, title in ((18781, 'Restricted fixture'), (18782, 'Page non indexable')):
 		result = head(port, title, useskin=skin)
 		assert any('noindex' in value for value in result.robots), (skin, title, result.robots)
 		assert result.alternates == {}, (skin, title, result.alternates)
-	assert head(18781, 'Untranslated fixture', useskin=skin).alternates == {}
-	assert head(18781, 'English ordinary', useskin=skin, oldid=os.environ['old_revision']).alternates == {}
-	assert head(18781, 'English ordinary', useskin=skin, action='history').alternates == {}
+	assert head(18782, 'Untranslated fixture', useskin=skin).alternates == {}
+	assert head(18782, 'French ordinary', useskin=skin, oldid=os.environ['old_revision']).alternates == {}
+	assert head(18782, 'French ordinary', useskin=skin, action='history').alternates == {}
 	print('PASS noindex, untranslated, old revision and history', skin)
 PY
 
 
 # The direct job test uses a valid target payload. Verify an actual remote
 # purge through the local MediaWiki API by observing page_touched in MariaDB.
-sql ill_ci_fr -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='French_ordinary'"
-printf '%s\n' '$job = new InterlanguageCentralExtensionPurgeJob( Title::newFromText( "English ordinary" ), [ "ill" => [ "fr" => [ "French ordinary" => true ] ] ] ); if ( !$job->run() ) { exit( 1 ); }' | MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php eval
-test "$(sql ill_ci_fr -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='French_ordinary'")" != '20000101000000'
-grep -F 'POST /api.php?action=purge' "$config/fr.log"
+sql ill_ci_en -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='English_ordinary'"
+printf '%s\n' '$job = new InterlanguageCentralExtensionPurgeJob( Title::newFromText( "French ordinary" ), [ "ill" => [ "en" => [ "English ordinary" => true ] ] ] ); if ( !$job->run() ) { exit( 1 ); }' | MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php eval
+test "$(sql ill_ci_en -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='English_ordinary'")" != '20000101000000'
+grep -F 'POST /api.php?action=purge' "$config/en.log"
 echo 'PASS remote purge job and database invalidation'
-echo 'PASS disposable Interlanguage and WikiSEO six-edition integration'
+# The direct job test above cannot detect malformed payloads from LinksUpdate.
+# Exercise a real central edit, with an unchanged supplemental DE peer.
+run_purges() {
+	MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php runJobs --type=purgeDependentWikis --maxjobs=100
+}
+run_purges
+edit_page fr 'Purge lifecycle' 'Initial mapping [[en:Purge old target]]'
+edit_page en 'Purge old target' 'Old peer'
+edit_page en 'Purge new target' 'New peer'
+edit_page de 'Purge lifecycle' 'Supplemental peer'
+run_purges
+sql ill_ci_en -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title IN ('Purge_old_target','Purge_new_target')"
+sql ill_ci_de -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='Purge_lifecycle'"
+edit_page fr 'Purge lifecycle' 'Changed mapping [[en:Purge new target]]'
+test "$(sql ill_ci_fr -e "SELECT ll_title FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Purge_lifecycle' AND ll_lang='en'")" = 'Purge new target'
+run_purges
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page WHERE page_namespace=0 AND page_title IN ('Purge_old_target','Purge_new_target') AND page_touched<>'20000101000000'")" = 2
+test "$(sql ill_ci_de -e "SELECT COUNT(*) FROM page WHERE page_namespace=0 AND page_title='Purge_lifecycle' AND page_touched<>'20000101000000'")" = 1
+echo 'PASS actual central edit purges old, new and supplemental peers'
+
+sql ill_ci_en -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='Purge_new_target'"
+edit_page fr 'Purge lifecycle' 'Unchanged mapping, different text [[en:Purge new target]]'
+run_purges
+test "$(sql ill_ci_en -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='Purge_new_target'")" = '20000101000000'
+echo 'PASS unchanged central language links do not trigger a remote purge'
+
+echo 'PASS disposable Interlanguage and WikiSEO six-edition integration (FR central)'
