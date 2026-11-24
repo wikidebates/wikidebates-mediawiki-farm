@@ -474,6 +474,50 @@ test "$(sql ill_ci_fr -e "SELECT ill_title FROM interlanguage_links JOIN page ON
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Reserved_fallback' AND pp_propname='wikirouge-langlinks'")" = 0
 echo 'PASS same-title fallback cannot overwrite an existing supplemental mapping'
 
+# Reverse discovery through actual local redirects, including a namespace
+# change. The other page with the same title text must not gain a group.
+edit_page fr 'Redirect cluster' 'Translation through a redirect [[en:English redirect alias]]'
+edit_page en 'English redirect alias' '#REDIRECT [[Template:English redirect middle]]'
+edit_page en 'Template:English redirect middle' '#REDIRECT [[Template:English redirect target]]'
+edit_page en 'English redirect target' 'Unrelated main-namespace page'
+edit_page en 'Template:English redirect target' 'Actual English translation'
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM redirect JOIN page ON page_id=rd_from WHERE page_title='English_redirect_middle' AND rd_namespace=10 AND rd_title='English_redirect_target'")" = 1
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='English_redirect_target' AND pp_propname='wikirouge-langlinks'")" = 1
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=0 AND page_title='English_redirect_target' AND pp_propname='wikirouge-langlinks'")" = 0
+python3 - <<'PY'
+import json
+import urllib.parse
+import urllib.request
+params = dict(action='query', prop='langlinks', titles='Template:English redirect target', format='json')
+url = 'http://127.0.0.1:18781/api.php?' + urllib.parse.urlencode(params)
+with urllib.request.urlopen(url, timeout=30) as response:
+	data = json.load(response)
+page, = data['query']['pages'].values()
+assert any(link['lang'] == 'fr' and link['*'].replace('_', ' ') == 'Redirect cluster'
+	for link in page.get('langlinks', [])), data
+PY
+echo 'PASS native reverse discovery through real redirect aliases, with namespace isolation'
+
+# Direct and indirect matches must not compete for the same local page.
+edit_page fr 'Redirect conflict direct' 'Direct claim [[en:Conflict redirect target]]'
+edit_page fr 'Redirect conflict indirect' 'Indirect claim [[en:Conflict redirect alias]]'
+edit_page en 'Conflict redirect alias' '#REDIRECT [[Conflict redirect target]]'
+edit_page en 'Conflict redirect target' 'Ambiguous translation'
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Conflict_redirect_target' AND pp_propname='wikirouge-langlinks'")" = 0
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title IN ('Redirect_conflict_direct','Redirect_conflict_indirect') AND ill_lang='en'")" = 0
+echo 'PASS competing native redirect claims do not establish an arbitrary mapping'
+
+# Exercise the explicit central DB lookup using actual MediaWiki page and
+# redirect rows. The final title exists in two namespaces with distinct links.
+edit_page fr 'Central redirect final' 'Unrelated main page [[en:Wrong forward peer]]'
+edit_page fr 'Template:Central redirect final' 'Actual destination [[en:Correct forward peer]]'
+edit_page fr 'Template:Central redirect middle' '#REDIRECT [[Template:Central redirect final]]'
+edit_page fr 'Central redirect entry' '#REDIRECT [[Template:Central redirect middle]]'
+edit_page fr 'Central redirect broken' '#REDIRECT [[Template:Central redirect absent]]'
+printf '%s\n' '$extension = new InterlanguageExtension(); $data = $extension->getLinksFromDB( "Central redirect entry" ); $links = $data["query"]["pages"][0]["langlinks"] ?? []; if ( $links !== [ [ "lang" => "en", "*" => "Correct forward peer" ] ] ) { throw new RuntimeException( json_encode( $data ) ); } $data = $extension->getLinksFromDB( "Central redirect broken" ); if ( !isset( $data["query"]["pages"][-1]["missing"] ) ) { throw new RuntimeException( "Broken central redirect did not return missing" ); }' |
+	MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php eval
+echo 'PASS explicit central lookup follows the real namespace and rejects a missing destination'
+
 # Validate the actual cleanup utility on the disposable central database.
 # Preserve all valid supplemental rows and every native langlink.
 sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) VALUES (4294967294,'pt','Orphan cleanup fixture')"
