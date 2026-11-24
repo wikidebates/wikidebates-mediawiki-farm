@@ -14,6 +14,9 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parents[2]
 REPORT = ROOT / "upstream-audit.json"
+PROPOSALS = ROOT / "upstream-security-proposals"
+SHA = re.compile(r"[0-9a-f]{40}$")
+OFFICIAL_EXTENSION = re.compile(r"extensions/([A-Za-z0-9_-]+)$")
 API = "https://api.github.com"
 SECURITY = re.compile(r"\b(?:CVE-\d{4}-\d+|GHSA-[\w-]+|SECURITY\s*:|security (?:fix|vulnerability|patch|backport))", re.I)
 STABLE = re.compile(r"v?(\d+)\.(\d+)\.(\d+)$")
@@ -160,6 +163,67 @@ def inspect_core():
 		return unavailable(row, exc)
 
 
+def release_candidates(current, versions):
+	stable = [v for v in versions if v is not None]
+	if not stable:
+		raise ValueError("no stable versions returned")
+	latest = max(stable)
+	same = max((v for v in stable if v[0] == current[0]), default=current)
+	row = {"head": ".".join(map(str, same)),
+		"category": "release" if same > current else "current",
+		"latest_stable": ".".join(map(str, latest))}
+	if latest[0] > current[0]:
+		row["major_candidate"] = row["latest_stable"]
+	return row
+
+
+def major_rows(rows):
+	# Major-release notifications are independent of same-major updates.
+	return [
+		{"name": r["name"], "kind": "composer-major", "base": r["base"],
+			"head": r["major_candidate"], "category": "major-release",
+			"reason": "new major; check release notes and Composer compatibility"}
+		for r in rows if r.get("major_candidate")
+	]
+
+
+def security_patch(row):
+	"""Only propose verified fast-forward official Wikimedia REL1_43 gitlinks."""
+	match = OFFICIAL_EXTENSION.fullmatch(row["name"])
+	if (row.get("category") != "security" or row.get("kind") != "pin"
+		or row.get("branch") != "REL1_43" or not match
+		or row.get("repo") != "wikimedia/mediawiki-extensions-" + match[1]
+		or not SHA.fullmatch(row.get("base") or "")
+		or not SHA.fullmatch(row.get("head") or "")
+		or row["base"] == row["head"] or not row.get("security_commits")):
+		return None
+	path, base, head = row["name"], row["base"], row["head"]
+	return (
+		f"diff --git a/{path} b/{path}\n"
+		f"index {base}..{head} 160000\n"
+		f"--- a/{path}\n+++ b/{path}\n@@ -1 +1 @@\n"
+		f"-Subproject commit {base}\n+Subproject commit {head}\n"
+	)
+
+
+def prepare_security_proposals(rows):
+	PROPOSALS.mkdir(exist_ok=True)
+	manifest = []
+	for row in rows:
+		patch = security_patch(row)
+		if patch is None:
+			continue
+		name = row["name"].split("/")[-1] + ".patch"
+		# Check against the actual farm index, without applying or writing a gitlink.
+		subprocess.run(["git", "apply", "--cached", "--check", "-"],
+			input=patch, text=True, check=True, cwd=ROOT)
+		(PROPOSALS / name).write_text(patch, encoding="utf-8")
+		manifest.append({**{k: row[k] for k in
+			("name", "repo", "branch", "base", "head", "security_commits")}, "patch": name})
+	(PROPOSALS / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+	return manifest
+
+
 def inspect_package(package):
 	row = {"name": package["name"], "kind": "composer-release", "base": package["version"]}
 	try:
@@ -168,9 +232,7 @@ def inspect_package(package):
 			return {**row, "category": "review", "reason": "non-stable locked version"}
 		data = get_json("https://repo.packagist.org/p2/" + package["name"] + ".json", github=False)
 		versions = [version(p["version"]) for p in data["packages"][package["name"]]]
-		latest = max(v for v in versions if v and v[0] == current[0])
-		return {**row, "head": ".".join(map(str, latest)),
-			"category": "release" if latest > current else "current"}
+		return {**row, **release_candidates(current, versions)}
 	except (OSError, ValueError, KeyError, TypeError) as exc:
 		return unavailable(row, exc)
 
@@ -183,11 +245,14 @@ def fingerprint(row):
 		value["security_commits"] = sorted(row["security_commits"])
 	elif row["category"] == "release":
 		value["head"] = row["head"]
+	elif row["category"] == "major-release":
+		value["base"] = row["base"].split(".")[0]
+		value["head"] = row["head"].split(".")[0]
 	return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
 def actionable(row):
-	return row["category"] in {"security", "runtime", "release", "review"}
+	return row["category"] in {"security", "runtime", "release", "major-release", "review"}
 
 
 def scan():
@@ -198,13 +263,15 @@ def scan():
 		if p["name"] in PACKAGES]
 	with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
 		result = list(pool.map(lambda r: r if "category" in r else inspect(r), rows))
-		result += list(pool.map(inspect_package, packages))
+		package_results = list(pool.map(inspect_package, packages))
+		result += package_results + major_rows(package_results)
 	result.append(inspect_core())
 	result.sort(key=lambda r: (r["name"], r["kind"]))
 	alerts = [r for r in result if actionable(r)]
 	for row in alerts:
 		row["fingerprint"] = fingerprint(row)
-	REPORT.write_text(json.dumps({"rows": result, "alerts": alerts}, indent=2) + "\n")
+	proposals = prepare_security_proposals(result)
+	REPORT.write_text(json.dumps({"rows": result, "alerts": alerts, "security_proposals": proposals}, indent=2) + "\n")
 	lines = ["# Upstream triage (advisory only)", "",
 		"| Component | Category | Base | Head | Details |", "|---|---|---|---|---|"]
 	for row in result:
@@ -212,7 +279,7 @@ def scan():
 		lines.append(f"| {row['name']} | {row['category']} | {(row.get('base') or '-')[:12]} | "
 			f"{(row.get('head') or '-')[:12]} | {detail} |")
 	lines += ["", "Maintenance includes translations and development-only files by heuristic. "
-		"Unmarked runtime changes are not certified safe. Composer releases are same-major candidates, not compatibility decisions."]
+		"Unmarked runtime changes are not certified safe. Composer releases (including new majors) are candidates, not compatibility decisions."]
 	summary = os.environ.get("GITHUB_STEP_SUMMARY")
 	if summary:
 		with open(summary, "a", encoding="utf-8") as out:
@@ -221,6 +288,7 @@ def scan():
 	if output:
 		with open(output, "a", encoding="utf-8") as out:
 			out.write(f"alerts={len(alerts)}\n")
+	print(f"{len(proposals)} security patch proposals (not applied).")
 	print(f"{len(result)} comparisons; {len(alerts)} actionable candidates; "
 		f"{sum(r['category'] == 'unavailable' for r in result)} unavailable.")
 	for row in result:
@@ -256,7 +324,8 @@ def notify():
 		base = row.get("base") or "-"
 		head = row.get("head") or "-"
 		label = {"security": "Sécurité signalée", "runtime": "Code/configuration",
-			"release": "Version candidate", "review": "Vérification manuelle"}[row["category"]]
+			"release": "Version candidate", "major-release": "Nouvelle majeure à examiner",
+			"review": "Vérification manuelle"}[row["category"]]
 		lines.append(f"- **{label} — {row['name']}** : {base[:12]} → {head[:12]}"
 			+ (f" ({row['reason']})" if row.get("reason") else ""))
 	lines += ["", f"[Rapport Actions](https://github.com/{repo}/actions/runs/{os.environ['GITHUB_RUN_ID']})", ""]

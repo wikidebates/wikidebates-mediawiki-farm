@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import unittest
 
-from auditUpstreamChanges import classify, fingerprint, module_rows, unseen_candidates, version
+from auditUpstreamChanges import classify, fingerprint, module_rows, unseen_candidates, version, release_candidates, major_rows, security_patch
 
 
 def comparison(paths, messages, **kwargs):
@@ -57,6 +57,25 @@ class TriageTest(unittest.TestCase):
 		rows = [{"fingerprint": seen}, {"fingerprint": unseen}]
 		self.assertEqual(unseen_candidates(rows, pages), [rows[1]])
 		self.assertEqual(unseen_candidates([rows[0]], pages), [])
+
+	def test_major_candidates_and_deduplication(self):
+		r = release_candidates((12, 1, 9), [(12, 1, 9), (12, 1, 10), (15, 1, 0), None])
+		self.assertEqual(r["head"], "12.1.10")
+		self.assertEqual(r["major_candidate"], "15.1.0")
+		rows = major_rows([{"name": "mediawiki/maps", "base": "12.1.9", **r}])
+		self.assertEqual(rows[0]["category"], "major-release")
+		self.assertEqual(fingerprint(rows[0]), fingerprint({**rows[0], "head": "15.2.0"}))
+		self.assertNotEqual(fingerprint(rows[0]), fingerprint({**rows[0], "head": "16.0.0"}))
+
+	def test_security_patch_only_official_release_branch(self):
+		row = {"name": "extensions/AntiSpoof", "kind": "pin", "category": "security",
+			"branch": "REL1_43", "repo": "wikimedia/mediawiki-extensions-AntiSpoof",
+			"base": "a" * 40, "head": "b" * 40, "security_commits": ["c" * 40]}
+		self.assertIn("160000", security_patch(row))
+		for change in ({"branch": "master"}, {"kind": "fork-upstream"},
+			{"repo": "wikidebates/custom"}, {"category": "review"}, {"head": "invalid"},
+			{"name": "extensions/../AntiSpoof"}):
+			self.assertIsNone(security_patch({**row, **change}))
 
 	def test_versions(self):
 		self.assertGreater(version("1.43.12"), version("1.43.9"))
