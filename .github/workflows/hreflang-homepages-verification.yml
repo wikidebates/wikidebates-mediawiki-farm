@@ -1,0 +1,52 @@
+name: One-off multilingual canonical verification
+on:
+  push:
+    branches:
+      - 'audit/hreflang-homepages-20261124'
+    paths:
+      - '.github/workflows/hreflang-homepages-verification.yml'
+permissions:
+  contents: read
+jobs:
+  observe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tests/ci/publicSeoAudit.py
+      - name: Read only the four homepages not covered by the general SEO audit
+        run: |
+          python3 - <<'PY'
+          import json
+          import sys
+          import urllib.parse
+          sys.path.insert(0, 'tests/ci')
+          from publicSeoAudit import get, homepage
+          titles = {
+              'de': 'Wikidebatten:Hauptseite',
+              'es': 'Wikidebates:Página principal',
+              'it': 'Wikidibattiti:Pagina principale',
+              'pt': 'Wikidebates:Página principal',
+          }
+          for lang, title in titles.items():
+              host = lang + '.wikidebates.org'
+              root = 'https://' + host + '/'
+              result = {'language': lang, 'mainpage': title}
+              try:
+                  status, final, headers, body = get(root, host)
+                  result.update(http=status, final_url=final)
+                  if status == 200 and 'text/html' in headers.get('content-type', '').lower():
+                      _, data = homepage(body)
+                      result.update(canonicals=data['canonicals'], robots=data['robots'],
+                                    googlebot=data['googlebot'], x_robots_tag=headers.get('x-robots-tag', ''))
+                      expected = root + 'wiki/' + title.replace(' ', '_')
+                      result['matches_article_route'] = len(data['canonicals']) == 1 and urllib.parse.unquote(data['canonicals'][0]) == expected
+                  else:
+                      result['unverified'] = 'No HTML response'
+              except (OSError, ValueError, TypeError) as exc:
+                  result['unverified'] = type(exc).__name__
+              print('HOME_CANONICAL ' + json.dumps(result, ensure_ascii=False), flush=True)
+          PY
