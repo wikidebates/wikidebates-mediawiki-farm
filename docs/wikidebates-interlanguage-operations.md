@@ -162,12 +162,11 @@ orphelin est revérifié au moment du DELETE. Toute différence entraîne
 l'annulation de la transaction. Le mode simulation est celui par défaut.
 
 Conserver le JSON d'origine dans le répertoire privé des audits, vérifier
-son empreinte connue avant utilisation et ne pas l'écraser. Exemple pour
-le relevé existant du 24 novembre 2026 :
+son empreinte connue avant utilisation et ne pas l'écraser. Exemple (renseigner le nom réel du fichier et son empreinte vérifiée) :
 
 ```bash
-backup=/home/users/webmaster/files/interlanguage-audits/interlanguage-cleanup.7rpVIS.json
-hash=7ba0c149c4b342232cf3f4bbc7a84ce56ad50630c8c248f58b15a3770dd55be4
+backup=/home/users/webmaster/files/interlanguage-audits/cleanup-backup.json
+hash=EMPREINTE_SHA256_VERIFIEE
 
 printf '%s  %s\n' "$hash" "$backup" | sha256sum -c -
 
