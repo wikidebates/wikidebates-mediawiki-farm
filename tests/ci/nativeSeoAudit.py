@@ -13,10 +13,10 @@ from urllib.parse import quote, unquote, urlsplit
 
 from publicSeoAudit import allowed_url, get
 
-# The English debate's route is a candidate based on its editorial title.
-# A missing/redirected sample is reported, never treated as a successful test.
+# All five canonical routes observed on 2026-11-24. A missing or redirected
+# sample is reported, never treated as a successful test.
 SAMPLES = (
-	("fr", "debate", "Faut-il instaurer un revenu de base ?", "debate"),
+	("fr", "debate", "Un revenu de base doit-il être instauré ?", "debate"),
 	("en", "debate", "Should a basic income be introduced?", "debate"),
 	("fr", "argument", "Le revenu de base apporte de meilleures conditions de vie", "argument"),
 	("en", "argument", "Basic income brings better living conditions", "argument"),
