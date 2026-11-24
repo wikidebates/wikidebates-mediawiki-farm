@@ -3,9 +3,9 @@ Description=Schedule MediaWiki Interlanguage purge jobs (%i)
 
 [Timer]
 OnBootSec=2min
-OnUnitInactiveSec=1min
+OnUnitInactiveSec=5min
 AccuracySec=15s
-RandomizedDelaySec=15s
+RandomizedDelaySec=30s
 Unit=mw-interlanguage-purge@%i.service
 
 [Install]
