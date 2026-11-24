@@ -132,6 +132,11 @@ edit_page en 'Argument:Example' 'Synthetic argument'
 edit_page en 'Institutional information' 'Synthetic institutional page'
 edit_page en 'Shared page' 'Dependent same-title fixture'
 
+# A native translation and a same-title fallback must form one reciprocal cluster.
+edit_page fr 'Mixed fallback fixture' 'Central mixed fixture [[en:Explicit translation fixture]]'
+edit_page en 'Explicit translation fixture' 'Explicit dependent fixture'
+edit_page de 'Mixed fallback fixture' 'Same-title fallback fixture'
+
 # All five dependent editions reuse the same central translations.
 edit_page fr 'Débat multilingue ?' 'Six-language fixture [[en:Multilingual debate]] [[de:Mehrsprachige Debatte]] [[es:Debate multilingüe]] [[it:Dibattito multilingue]] [[pt:Debate multilingue]]'
 edit_page en 'Multilingual debate' 'Synthetic English debate'
@@ -149,6 +154,7 @@ edit_page fr 'French ordinary' 'French body, new revision [[en:English ordinary]
 # The extension must persist a real cross-database fallback mapping.
 test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Shared_page' AND ill_lang='en' AND ill_title='Shared page'")" = 1
 echo 'PASS cross-database fallback write'
+test "$(sql ill_ci_fr -e \"SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Mixed_fallback_fixture' AND ill_lang='de' AND ill_title='Mixed fallback fixture'\")" = 1
 
 for lang in "${langs[@]}"; do
 	MW_CONFIG_FILE="$config/$lang/LocalSettings.php" php -S "127.0.0.1:${ports[$lang]}" -t "$root" >"$config/$lang.log" 2>&1 &
@@ -286,6 +292,12 @@ for en, fr in (
 	('Shared page', 'Shared page'),
 ):
 	verify_cluster({'en': (18781, en), 'fr': (18782, fr)})
+
+verify_cluster({
+	'fr': (18782, 'Mixed fallback fixture'),
+	'en': (18781, 'Explicit translation fixture'),
+	'de': (18783, 'Mixed fallback fixture'),
+})
 
 verify_cluster({
 	'en': (18781, 'Multilingual debate'),
