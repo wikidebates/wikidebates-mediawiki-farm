@@ -5,6 +5,8 @@ on:
     paths:
       - 'tests/ci/publicSeoAudit.py'
       - 'tests/ci/testPublicSeoAudit.py'
+      - 'tests/ci/nativeSeoAudit.py'
+      - 'tests/ci/testNativeSeoAudit.py'
       - '.github/workflows/public-seo-audit.yml'
       - 'docs/wikidebates-seo-rollout.md'
 permissions:
@@ -20,7 +22,13 @@ jobs:
           sparse-checkout: |
             tests/ci/publicSeoAudit.py
             tests/ci/testPublicSeoAudit.py
+            tests/ci/nativeSeoAudit.py
+            tests/ci/testNativeSeoAudit.py
       - name: Offline contract tests
         run: python3 -m unittest discover -s tests/ci -p 'testPublicSeoAudit.py'
       - name: Bounded public observations and namespace inventory
         run: python3 tests/ci/publicSeoAudit.py --namespace-inventory
+      - name: Offline native SEO audit contracts
+        run: python3 -m unittest discover -s tests/ci -p 'testNativeSeoAudit.py'
+      - name: Observe fixed native SEO samples (informational before deployment)
+        run: python3 tests/ci/nativeSeoAudit.py
