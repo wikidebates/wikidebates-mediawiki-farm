@@ -1,0 +1,50 @@
+{
+	"name": "LuaSandbox maintenance checks",
+	"on": {
+		"pull_request": {
+			"paths": [
+				"scripts/luasandbox/**",
+				"tests/ci/testLuaSandboxCheck.py",
+				".github/workflows/luasandbox-maintenance.yml"
+			]
+		},
+		"push": {
+			"branches": [
+				"main"
+			],
+			"paths": [
+				"scripts/luasandbox/**",
+				"tests/ci/testLuaSandboxCheck.py",
+				".github/workflows/luasandbox-maintenance.yml"
+			]
+		},
+		"workflow_dispatch": {}
+	},
+	"permissions": {
+		"contents": "read"
+	},
+	"jobs": {
+		"luasandbox-maintenance": {
+			"runs-on": "ubuntu-24.04",
+			"timeout-minutes": 5,
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"submodules": false,
+						"sparse-checkout": "scripts/luasandbox\ntests/ci/testLuaSandboxCheck.py"
+					}
+				},
+				{
+					"name": "Validate shell syntax",
+					"run": "bash -n scripts/luasandbox/install.sh\nbash -n scripts/luasandbox/uninstall.sh\nbash -n scripts/luasandbox/wikidebates-luasandbox-check"
+				},
+				{
+					"name": "Offline simulated repair tests",
+					"run": "python3 -m unittest discover -s tests/ci -p 'testLuaSandboxCheck.py'"
+				}
+			]
+		}
+	}
+}
