@@ -151,3 +151,18 @@ Les tests hors réseau sont bloquants, mais une réponse publique non vérifiée
 est rapportée comme telle et ne bloque pas une fusion de code.
 
 Ne pas publier de modification de production sur la seule base de cette sonde.
+
+## Contrôle ciblé des débats et arguments après renouvellement des caches
+
+La PR #178 intègre déjà les dernières versions natives. La sonde distincte lit cinq pages FR/EN sur le revenu de base (les cinq chemins canoniques ont été observés le 24 novembre 2026). Elle vérifie le JSON-LD du corps et les balises de l'en-tête ensemble : canonical, description, dates, types, langue, absence de graphes concurrents et de marqueurs, compteurs de listes et liens hreflang. Elle réutilise les limites HTTP existantes (12 s, 2 Mio, un redirect HTTPS même hôte). Aucun crawl, purge, accès aux liens externes ou cache-busting. Une réponse bloquée est non vérifiée, jamais un succès. Les deux couples FR/EN sont comparés sans supposer que les liens éditoriaux existent réellement.
+
+```sh
+python3 tests/ci/nativeSeoAudit.py
+# Après déploiement et renouvellement des caches seulement :
+python3 tests/ci/nativeSeoAudit.py --strict
+# Ajouter --expect-pairs seulement après confirmation des correspondances éditoriales.
+```
+
+Le contrôle est un échantillonnage des réponses anonymes, pas une validation de toutes les pages, ni un audit Google. Les PR déclenchant le workflow public-seo-audit exécutent les tests hors réseau puis les cinq observations supplémentaires à titre informatif. Aucun cron ajouté. Le déploiement peut conserver le commit déjà approuvé de la PR #178 : ces scripts de recette ne modifient aucun fichier d'exécution.
+
+Premier relevé public du workflow 45452859941 : cinq HTTP 200, anciens QAPage sur les deux débats, absence de LearningResource et de hreflang sur les cinq pages. Le débat français répondait aussi sur l'ancien titre avec canonical vers `Un_revenu_de_base_doit-il_être_instauré_?` ; la sonde utilise désormais cette destination. Ce relevé ne distingue pas une ancienne version installée d'une ancienne version de HTML en cache.
