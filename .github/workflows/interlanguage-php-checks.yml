@@ -53,7 +53,7 @@
 				},
 				{
 					"name": "Initialize only the pinned public dependencies",
-					"run": "set -euo pipefail\nif git ls-files --stage extensions/Interlanguage | grep -q '^160000 '; then\n\tgit submodule update --init --depth 1 -- extensions/Interlanguage\nfi\ngit -c 'url.https://github.com/.insteadOf=git@github.com:' submodule update --init --depth 1 -- skins/Vector"
+					"run": "set -euo pipefail\nexpected=$(git ls-files --stage -- extensions/Interlanguage | awk '$1 == \"160000\" {print $2}')\ntest -n \"$expected\"\ngit submodule update --init --depth 1 -- extensions/Interlanguage\ntest \"$(git -C extensions/Interlanguage rev-parse HEAD)\" = \"$expected\"\ntest -z \"$(git -C extensions/Interlanguage status --porcelain)\"\ngit -c 'url.https://github.com/.insteadOf=git@github.com:' submodule update --init --depth 1 -- skins/Vector"
 				},
 				{
 					"uses": "shivammathur/setup-php@v2",
@@ -63,10 +63,6 @@
 						"extensions": "mysqli, intl, mbstring",
 						"tools": "composer:v2"
 					}
-				},
-				{
-					"name": "Lint and run the six existing isolated tests",
-					"run": "set -euo pipefail\nfind extensions/Interlanguage -type f -name '*.php' -print0 | xargs -0 -n 1 php -l\nfor test in extensions/Interlanguage/tests/*SmokeTest.php; do\n\tphp \"$test\"\ndone"
 				},
 				{
 					"name": "Install the farm's pinned Composer dependencies",

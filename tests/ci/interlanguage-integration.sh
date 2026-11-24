@@ -48,6 +48,7 @@ $wgMessageCacheType = CACHE_NONE;
 $wgJobRunRate = 0;
 $wgEnableEmail = false;
 $wgShowExceptionDetails = true;
+$wgGroupPermissions['*']['purge'] = true;
 // MediaWiki 1.43 uses a namespaced core API module; explicitly register the
 // legacy extension module in these fixtures, rather than testing core by mistake.
 $wgAutoloadLocalClasses['ApiQueryLangLinks'] = "$IP/extensions/Interlanguage/api/ApiQueryLangLinks.php";
@@ -93,10 +94,12 @@ edit_page() {
 edit_page en 'English ordinary' 'English body [[fr:French ordinary]]'
 edit_page en 'Debate:Example' 'Synthetic debate [[fr:Debat:Exemple]]'
 edit_page en 'Argument:Example' 'Synthetic argument [[fr:Argument:Exemple]]'
+edit_page en 'Institutional information' 'Synthetic institutional page [[fr:Informations institutionnelles]]'
 edit_page en 'Shared page' 'Central same-title fixture'
 edit_page fr 'French ordinary' 'French body'
 edit_page fr 'Debat:Exemple' 'Synthetic debate'
 edit_page fr 'Argument:Exemple' 'Synthetic argument'
+edit_page fr 'Informations institutionnelles' 'Synthetic institutional page'
 edit_page fr 'Shared page' 'Dependent same-title fixture'
 
 # The extension must persist a real cross-database fallback mapping.
@@ -114,6 +117,7 @@ done
 
 python3 - <<'PY'
 import json
+from html.parser import HTMLParser
 import urllib.parse
 import urllib.request
 
@@ -134,10 +138,16 @@ def expect_link(port, title, language, other_title):
 	assert links[0]['url'].startswith('http://127.0.0.1:'), (title, data)
 	print('PASS API', title, language, other_title)
 
+for port in (18781, 18782):
+	site = api(port, action='query', meta='siteinfo')['query']['general']
+	assert site['generator'] == 'MediaWiki 1.43.12', site['generator']
+	print('PASS exact MediaWiki version', site['generator'])
+
 for english, french in (
 	('English ordinary', 'French ordinary'),
 	('Debate:Example', 'Debat:Exemple'),
 	('Argument:Example', 'Argument:Exemple'),
+	('Institutional information', 'Informations institutionnelles'),
 	('Shared page', 'Shared page'),
 ):
 	expect_link(18781, english, 'fr', french)
@@ -147,12 +157,38 @@ parsed = api(18781, action='parse', text='{{languagelink:fr|French ordinary}}', 
 assert any(link['lang'] == 'fr' for link in parsed['parse']['langlinks']), parsed
 print('PASS central parser function')
 
+parsed = api(18782, action='parse', text='{{interlangue:English ordinary}}', title='French ordinary', prop='properties')
+assert any(p['name'] == 'interlanguage_pages' and 'English ordinary' in p['*'] for p in parsed['parse']['properties']), parsed
+print('PASS dependent parser function and persisted parser property')
+
+class Links(HTMLParser):
+	def __init__(self):
+		super().__init__()
+		self.urls = []
+
+	def handle_starttag(self, tag, attrs):
+		if tag == 'a':
+			self.urls.append(dict(attrs).get('href', ''))
+
 for port, title in ((18781, 'English ordinary'), (18782, 'French ordinary')):
 	url = f'http://127.0.0.1:{port}/index.php?' + urllib.parse.urlencode({'title': title})
 	with urllib.request.urlopen(url, timeout=30) as response:
 		html = response.read().decode()
 	assert 'errorbox' not in html and 'mw-parser-output' in html, title
 	assert ('French body' if port == 18782 else 'English body') in html, title
-	print('PASS rendered page', title)
+	links = Links()
+	links.feed(html)
+	other_port, other_title = (18781, 'English ordinary') if port == 18782 else (18782, 'French ordinary')
+	assert any(urllib.parse.urlparse(href).netloc == f'127.0.0.1:{other_port}' and urllib.parse.parse_qs(urllib.parse.urlparse(href).query).get('title', [''])[0].replace('_', ' ') == other_title for href in links.urls), (title, links.urls)
+	print('PASS rendered page and language link', title)
 PY
+
+
+# The direct job test uses a valid target payload. Verify an actual remote
+# purge through the local MediaWiki API by observing page_touched in MariaDB.
+sql ill_ci_fr -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title='French_ordinary'"
+printf '%s\n' '$job = new InterlanguageCentralExtensionPurgeJob( Title::newFromText( "English ordinary" ), [ "ill" => [ "fr" => [ "French ordinary" => true ] ] ] ); if ( !$job->run() ) { exit( 1 ); }' | MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php eval
+test "$(sql ill_ci_fr -e "SELECT page_touched FROM page WHERE page_namespace=0 AND page_title='French_ordinary'")" != '20000101000000'
+grep -F 'POST /api.php?action=purge' "$config/fr.log"
+echo 'PASS remote purge job and database invalidation'
 echo 'PASS disposable Interlanguage FR/EN integration'
