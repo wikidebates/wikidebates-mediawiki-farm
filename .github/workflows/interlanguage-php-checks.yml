@@ -10,7 +10,11 @@
 				"extensions/Interlanguage/**",
 				".gitmodules",
 				".github/workflows/interlanguage-php-checks.yml",
-				"tests/ci/interlanguage-integration.sh"
+				"tests/ci/interlanguage-integration.sh",
+				"extensions/WikiSEO",
+				"extensions/MobileFrontend",
+				"skins/Vector",
+				"skins/MinervaNeue"
 			]
 		},
 		"pull_request": {
@@ -19,7 +23,11 @@
 				"extensions/Interlanguage/**",
 				".gitmodules",
 				".github/workflows/interlanguage-php-checks.yml",
-				"tests/ci/interlanguage-integration.sh"
+				"tests/ci/interlanguage-integration.sh",
+				"extensions/WikiSEO",
+				"extensions/MobileFrontend",
+				"skins/Vector",
+				"skins/MinervaNeue"
 			]
 		},
 		"workflow_dispatch": null
@@ -53,7 +61,7 @@
 				},
 				{
 					"name": "Initialize only the pinned public dependencies",
-					"run": "set -euo pipefail\nexpected=$(git ls-files --stage -- extensions/Interlanguage | awk '$1 == \"160000\" {print $2}')\ntest -n \"$expected\"\ngit submodule update --init --depth 1 -- extensions/Interlanguage\ntest \"$(git -C extensions/Interlanguage rev-parse HEAD)\" = \"$expected\"\ntest -z \"$(git -C extensions/Interlanguage status --porcelain)\"\ngit -c 'url.https://github.com/.insteadOf=git@github.com:' submodule update --init --depth 1 -- skins/Vector"
+					"run": "set -euo pipefail\nfor path in extensions/Interlanguage extensions/WikiSEO skins/Vector; do\n\texpected=$(git ls-files --stage -- \"$path\" | awk '$1 == \"160000\" {print $2}')\n\ttest -n \"$expected\"\n\tgit -c 'url.https://github.com/.insteadOf=git@github.com:' submodule update --init --depth 1 -- \"$path\"\n\ttest \"$(git -C \"$path\" rev-parse HEAD)\" = \"$expected\"\n\ttest -z \"$(git -C \"$path\" status --porcelain)\"\ndone\ngit -c 'url.https://github.com/wikimedia/mediawiki-extensions-MobileFrontend.git.insteadOf=https://gerrit.wikimedia.org/r/mediawiki/extensions/MobileFrontend' submodule update --init --depth 1 -- extensions/MobileFrontend\ntest \"$(git -C extensions/MobileFrontend rev-parse HEAD)\" = \"$(git ls-files --stage -- extensions/MobileFrontend | awk '$1 == \"160000\" {print $2}')\"\n# The production Minerva fork is private. Use an explicitly pinned public\n# upstream REL1_43 checkout in this disposable runner, not a new gitlink.\ntest ! -e skins/MinervaNeue/.git\ngit init -q skins/MinervaNeue\ngit -C skins/MinervaNeue fetch --depth 1 https://github.com/wikimedia/mediawiki-skins-MinervaNeue.git 67ea6ed0d74cb069a2369262f3044d142f58b155\ngit -C skins/MinervaNeue checkout -q --detach FETCH_HEAD\ntest \"$(git -C skins/MinervaNeue rev-parse HEAD)\" = 67ea6ed0d74cb069a2369262f3044d142f58b155\necho 'Testing pinned public upstream Minerva; private production fork not checked out.'"
 				},
 				{
 					"uses": "shivammathur/setup-php@v2",
@@ -73,7 +81,7 @@
 					"run": "bash -n tests/ci/interlanguage-integration.sh"
 				},
 				{
-					"name": "Run real FR/EN integration",
+					"name": "Verify Interlanguage and hreflang on six disposable editions",
 					"env": {
 						"INTERLANGUAGE_CI_DB_PASSWORD": "ci-only-disposable-db"
 					},
