@@ -1,0 +1,43 @@
+{
+	"name": "Offline SEO cache inventory",
+	"on": {
+		"pull_request": {
+			"paths": [
+				"ops/seo/**",
+				"tests/ci/testLegacySeoCacheInventory.php",
+				".github/workflows/seo-cache-inventory.yml"
+			]
+		},
+		"workflow_dispatch": {}
+	},
+	"permissions": {
+		"contents": "read"
+	},
+	"jobs": {
+		"seo-cache-inventory": {
+			"runs-on": "ubuntu-24.04",
+			"timeout-minutes": 5,
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"sparse-checkout": "ops/seo\ntests/ci/testLegacySeoCacheInventory.php",
+						"sparse-checkout-cone-mode": false
+					}
+				},
+				{
+					"uses": "shivammathur/setup-php@v2",
+					"with": {
+						"php-version": "8.4",
+						"coverage": "none"
+					}
+				},
+				{
+					"name": "Lint and offline fixture contracts",
+					"run": "php -l ops/seo/auditLegacySeoCaches.php\nphp -l ops/seo/LegacySeoCacheInventory.php\nphp tests/ci/testLegacySeoCacheInventory.php"
+				}
+			]
+		}
+	}
+}
