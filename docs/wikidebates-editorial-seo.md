@@ -92,3 +92,23 @@ Aucun suivi automatique d'une URL externe trouvée dans une page.
 Ces dix requêtes maximales supplémentaires portent le budget du script
 principal à 70 requêtes avec les autres options et redirections. Les
 observations publiques restent informatives et les tests simulés bloquants.
+
+## Dépendances des modèles historiques
+
+```sh
+python3 tests/ci/publicSeoAudit.py --lang fr --lang en --lang es --editorial-inventory --template-inventory
+```
+
+L'inventaire éditorial inclut désormais `Plantilla:Metaetiquetas` et cinq
+pages FR de pédagogie, comparaison, navigation et aide. Les trois modèles
+historiques ont une limite de source de 16 384 caractères ; les autres pages
+gardent leurs extraits habituels. Une source tronquée ne doit pas être traitée
+comme intégrale. L'option `--template-inventory` ajoute une requête fixe
+`list=embeddedin` par modèle FR/EN/ES, sans suivre les continuations et sans
+lire les sources des pages retournées. Une continuation signale un relevé
+incomplet ; le nombre observé n'est pas alors un total. La liste ne prouve
+pas que chaque page appelle directement le modèle ni quels paramètres elle
+lui transmet. Vérifier les appels avant remplacement, y compris les modèles
+intermédiaires et les pages hors du périmètre éditorial. Le budget cumulé
+passe de 70 à 76 requêtes maximum, redirections comprises. Aucun changement
+de configuration, de sous-module ou de contenu wiki.
