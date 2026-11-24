@@ -84,7 +84,7 @@
 					"if": "always()",
 					"with": {
 						"name": "pinned-dependency-inventory",
-						"path": "submodule-audit.json\nupstream-audit.json"
+						"path": "submodule-audit.json\nupstream-audit.json\nupstream-security-proposals/"
 					}
 				}
 			]
