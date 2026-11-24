@@ -81,14 +81,21 @@ et ne pas installer des modèles concurrents sans besoin établi.
 python3 tests/ci/publicSeoAudit.py --all-homepages --editorial-inventory --shared-assets
 ```
 
-L'option shared-assets ajoute exactement trois GET de PNG (les URL sociale
-partagée et française observées, ainsi qu'une candidate française suivie
-par Git) et deux GET de robots.txt, sur les deux hôtes explicitement
+L'option shared-assets ajoute exactement cinq GET de PNG (les URL sociales
+partagée et française observées, une candidate française suivie par Git,
+l'URL anglaise du SEO natif et sa variante en minuscules présente dans
+Git) et trois GET de robots.txt, sur les trois hôtes explicitement
 autorisés. Au plus un redirect vers une autre URL de la même liste et du
 même hôte. Les dimensions sont lues dans IHDR, pas par décodage complet.
 La taille, le type MIME, X-Robots-Tag et les groupes pertinents de robots.txt
 sont rapportés sans interpréter complètement les règles d'un moteur.
 Aucun suivi automatique d'une URL externe trouvée dans une page.
-Ces dix requêtes maximales supplémentaires portent le budget du script
-principal à 70 requêtes avec les autres options et redirections. Les
+Ces seize requêtes maximales supplémentaires portent le budget du script
+principal à 76 requêtes avec les autres options et redirections. Les
 observations publiques restent informatives et les tests simulés bloquants.
+
+Le contrôle de l'URL anglaise est sensible à la casse : le message natif
+`wikidebates-debate-seo-image` référence `logo-Wikidebates-Twitter.png`,
+alors que Git suit `logo-wikidebates-twitter.png`. Ne modifier l'URL qu'après
+observation publique de la différence. La sonde native rapporte également
+les URL et attributs sociaux effectivement émis sans suivre ces URL.

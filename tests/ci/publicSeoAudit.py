@@ -61,10 +61,14 @@ SHARED_ASSETS = (
 	"https://farm.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png",
 	"https://fr.wikidebates.org/w/resources/assets/logo-Wikidebats-Twitter.png",
 	"https://fr.wikidebates.org/w/resources/assets/logo-wikidebats-twitter.png",
+	# Exact EN native i18n URL and the lowercase file tracked by the farm.
+	"https://en.wikidebates.org/w/resources/assets/logo-Wikidebates-Twitter.png",
+	"https://en.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png",
 )
 ASSET_ROBOTS = (
 	"https://farm.wikidebates.org/robots.txt",
 	"https://fr.wikidebates.org/robots.txt",
+	"https://en.wikidebates.org/robots.txt",
 )
 
 
@@ -386,7 +390,7 @@ def audit_shared_assets(opener=get):
 			row["reason"] = type(exc).__name__
 		robots.append(row)
 	return {"images": images, "robots": robots,
-		"scope": "Three fixed PNG GETs and two robots.txt GETs; at most one permitted redirect each."}
+		"scope": "Five fixed PNG GETs and three robots.txt GETs; at most one permitted redirect each."}
 
 
 class Head(HTMLParser):
@@ -538,7 +542,7 @@ def main():
 	parser.add_argument("--all-homepages", action="store_true",
 		help="observe the homepage on every selected edition, not just FR/EN")
 	parser.add_argument("--shared-assets", action="store_true",
-		help="check three explicitly reviewed social PNGs and two robots.txt files")
+		help="check five explicitly reviewed social PNGs and three robots.txt files")
 	parser.add_argument("--editorial-inventory", action="store_true",
 		help="read fixed institutional page properties and bounded latest wikitext excerpts")
 	parser.add_argument("--namespace-inventory", action="store_true",
