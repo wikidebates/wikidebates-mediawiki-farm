@@ -3,7 +3,7 @@ import unittest
 from urllib.request import Request
 from publicSeoAudit import (
 	NAMESPACE_QUERY, OneRedirect, allowed_url, audit, audit_namespaces,
-	homepage, namespace_inventory, same_origin, sitemap_index,
+	homepage, namespace_inventory, same_origin, sitemap_index, sitemap_policy,
 )
 from urllib.parse import urlencode
 
@@ -82,6 +82,30 @@ class SeoAuditTest(unittest.TestCase):
 		self.assertTrue(result["namespaces"]["3000"]["content"])
 		with self.assertRaises(ValueError):
 			namespace_inventory(b'{"query":{"general":{},"namespaces":{}}}')
+
+	def test_editorial_policy_keeps_portals_and_accepts_empty_namespaces(self):
+		index = {
+			"http": 200, "files_by_namespace": {"0": 1, "4": 1, "3000": 1},
+			"duplicate_locations": 0, "wrong_origin": 0, "unclassified": 0,
+		}
+		inventory = {"http": 200, "namespaces": {str(n): {} for n in (0, 4, 12, 3000)}}
+		self.assertEqual(sitemap_policy("fr", index, inventory)["status"], "ok")
+		self.assertEqual(sitemap_policy("fr", index)["expected_without_files"], [12])
+		self.assertEqual(sitemap_policy("de", index)["unexpected_namespaces"], [3000])
+		index["files_by_namespace"]["3100"] = 1
+		self.assertEqual(sitemap_policy("fr", index)["unexpected_namespaces"], [3100])
+		self.assertEqual(sitemap_policy("fr", index)["status"], "mismatch")
+		self.assertEqual(sitemap_policy("fr", {"http": 403})["status"], "unverified")
+		self.assertEqual(sitemap_policy("fr", index, {"http": 403})["status"], "unverified")
+
+	def test_editorial_policy_requires_project_and_known_namespaces(self):
+		index = {"http": 200, "files_by_namespace": {"0": 1}}
+		self.assertEqual(sitemap_policy("fr", index)["status"], "mismatch")
+		index["files_by_namespace"]["4"] = 1
+		inventory = {"http": 200, "namespaces": {"0": {}, "4": {}, "12": {}}}
+		self.assertEqual(sitemap_policy("fr", index, inventory)["unknown_allowed_namespaces"], [3000])
+		index["duplicate_locations"] = 1
+		self.assertEqual(sitemap_policy("de", index)["status"], "mismatch")
 
 	def test_namespace_unavailable_is_not_empty_success(self):
 		def opener(url, host):

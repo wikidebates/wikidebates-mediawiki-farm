@@ -15,6 +15,12 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 LANGS = ("de", "en", "es", "fr", "it", "pt")
+# Editorial namespace selection, checked against public siteinfo on 2026-11-24.
+# This is an audit expectation, not a second sitemap generator or live config.
+SITEMAP_NAMESPACES = {
+	lang: frozenset((0, 4, 12, 3000) if lang in ("fr", "en") else (0, 4, 12))
+	for lang in LANGS
+}
 AGENT = "Wikidebates-public-SEO-audit/1.0"
 XML_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 MAX_BYTES = 2 * 1024 * 1024
@@ -140,6 +146,33 @@ def sitemap_index(body, lang):
 		"duplicate_locations": len(locations) - len(set(locations)),
 		"wrong_origin": wrong_origin, "unclassified": unclassified,
 	}
+
+
+def sitemap_policy(lang, index, inventory=None):
+	"""Compare index files to the explicit editorial namespace selection."""
+	allowed = SITEMAP_NAMESPACES[lang]
+	result = {"allowed_namespaces": sorted(allowed), "status": "unverified"}
+	if index.get("http") != 200 or "files_by_namespace" not in index:
+		return result
+	unexpected = sorted(int(key) for key in index["files_by_namespace"] if int(key) not in allowed)
+	result["unexpected_namespaces"] = unexpected
+	result["expected_without_files"] = sorted(allowed - {int(key) for key in index["files_by_namespace"]})
+	# An empty editorial namespace is legitimate. The project namespace is
+	# required here because all six actual main pages belong to it.
+	result["project_present"] = "4" in index["files_by_namespace"]
+	if inventory is not None:
+		if inventory.get("http") != 200 or "namespaces" not in inventory:
+			return result
+		missing = sorted(allowed - {int(key) for key in inventory["namespaces"]})
+		result["unknown_allowed_namespaces"] = missing
+		if missing:
+			result["status"] = "mismatch"
+			return result
+	result["status"] = "mismatch" if (
+		unexpected or not result["project_present"] or index.get("duplicate_locations")
+		or index.get("wrong_origin") or index.get("unclassified")
+	) else "ok"
+	return result
 
 
 def namespace_inventory(body):
@@ -305,6 +338,8 @@ def main():
 		help="limit the audit to selected languages")
 	parser.add_argument("--namespace-inventory", action="store_true",
 		help="also request the public namespace inventory once per selected wiki")
+	parser.add_argument("--expect-sitemap-policy", action="store_true",
+		help="fail if a selected live index does not match the documented policy")
 	args = parser.parse_args()
 	langs = list(dict.fromkeys(args.lang or LANGS))
 	results = []
@@ -312,13 +347,17 @@ def main():
 		entry = audit(lang, include_home=lang in ("fr", "en"))
 		if args.namespace_inventory:
 			entry["namespace_inventory"] = audit_namespaces(lang)
+		entry["sitemap_policy"] = sitemap_policy(lang, entry["sitemap"], entry.get("namespace_inventory"))
 		results.append(entry)
 	print(json.dumps({
 		"read_only": True, "scope": "indexes only; FR/EN homepage and one same-host OG image HEAD",
 		"namespace_inventory": args.namespace_inventory,
 		"results": results,
 	}, indent=2, ensure_ascii=False))
+	return int(args.expect_sitemap_policy and any(
+		entry["sitemap_policy"]["status"] != "ok" for entry in results
+	))
 
 
 if __name__ == "__main__":
-	main()
+	raise SystemExit(main())
