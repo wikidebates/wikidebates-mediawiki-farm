@@ -55,7 +55,11 @@ python3 tests/ci/publicSeoAudit.py --lang fr --lang en
 
 Six index XML, et pour FR/EN seulement : la racine publique et au plus un HEAD
 de l'image Open Graph du même hôte. Au maximum un redirect HTTPS même hôte
-par requête, réponse GET limitée à 2 Mio, timeout 12 s. Pas de parcours des
+par requête (20 requêtes HTTP au maximum si chaque requête est redirigée),
+réponse GET limitée à 2 Mio, timeout 12 s. Les images doivent avoir une
+extension reconnue ; seules les URL sans paramètres ou avec le hash
+WikiSEO version=... sont sondées. Les HEAD restent des HEAD après redirect.
+Pas de parcours des
 sitemaps enfants, de GET des articles listés, de contournement Cloudflare,
 de requête à une image externe, de purge ou de paramètre de cache-busting.
 

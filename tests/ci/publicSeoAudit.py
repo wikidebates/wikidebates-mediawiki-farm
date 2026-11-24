@@ -32,28 +32,52 @@ def same_origin(url, host):
 		return False
 
 
+def allowed_url(url, host, scope):
+	if not same_origin(url, host) or any(c in url for c in ("\r", "\n", "\\")):
+		return False
+	parts = urllib.parse.urlsplit(url)
+	if scope == "homepage":
+		return not parts.query and (parts.path == "/" or parts.path.startswith("/wiki/"))
+	if scope == "index":
+		return not parts.query and parts.path.startswith("/w/sitemaps/") and parts.path.endswith(".xml")
+	if scope == "image":
+		return (
+			bool(re.search(r"\.(?:png|jpe?g|webp|gif|svg|avif|ico)$", parts.path, re.I))
+			and (not parts.query or bool(re.fullmatch(r"version=[a-fA-F0-9]{32}", parts.query)))
+		)
+	return False
+
+
 class OneRedirect(urllib.request.HTTPRedirectHandler):
-	def __init__(self, host):
+	def __init__(self, host, scope):
 		self.host = host
+		self.scope = scope
 		self.used = False
 
 	def redirect_request(self, req, fp, code, msg, headers, newurl):
-		if self.used or not same_origin(newurl, self.host):
+		if self.used or not allowed_url(newurl, self.host, self.scope):
 			raise ValueError("Unexpected redirect")
 		self.used = True
-		return super().redirect_request(req, fp, code, msg, headers, newurl)
+		# urllib's normal redirect handler can change HEAD into GET.
+		redirected = super().redirect_request(req, fp, code, msg, headers, newurl)
+		if redirected is not None:
+			redirected.method = req.get_method()
+		return redirected
 
 
 def get(url, host, method="GET"):
-	if not same_origin(url, host):
+	scope = "image" if method == "HEAD" else (
+		"index" if urllib.parse.urlsplit(url).path.startswith("/w/sitemaps/") else "homepage"
+	)
+	if not allowed_url(url, host, scope):
 		raise ValueError("Unexpected URL")
-	opener = urllib.request.build_opener(OneRedirect(host))
+	opener = urllib.request.build_opener(OneRedirect(host, scope))
 	request = urllib.request.Request(url, method=method, headers={
 		"User-Agent": AGENT, "Accept-Encoding": "identity",
 	})
 	try:
 		with opener.open(request, timeout=12) as response:
-			if not same_origin(response.geturl(), host):
+			if not allowed_url(response.geturl(), host, scope):
 				raise ValueError("Unexpected final URL")
 			body = response.read(MAX_BYTES + 1) if method == "GET" else b""
 			if len(body) > MAX_BYTES:
@@ -203,7 +227,7 @@ def audit(lang, opener=get, include_home=False):
 			images = head.tags.get("og:image", [])
 			if images:
 				image = urllib.parse.urljoin(final, images[0])
-				if same_origin(image, host):
+				if images[0] and allowed_url(image, host, "image"):
 					try:
 						code, _, image_headers, _ = opener(image, host, "HEAD")
 						page["image_probe"] = {
@@ -213,7 +237,7 @@ def audit(lang, opener=get, include_home=False):
 					except (ValueError, OSError) as exc:
 						page["image_probe"] = {"unverified": type(exc).__name__}
 				else:
-					page["image_probe"] = {"unverified": "image not on same HTTPS host"}
+					page["image_probe"] = {"unverified": "not a same-host static image URL"}
 		result["homepage"] = page
 	except (ValueError, OSError, UnicodeError) as exc:
 		result["homepage"] = {"unverified": type(exc).__name__}

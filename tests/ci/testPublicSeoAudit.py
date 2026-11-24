@@ -1,6 +1,7 @@
 """Offline public SEO observation tests, no network."""
 import unittest
-from publicSeoAudit import audit, homepage, same_origin, sitemap_index
+from urllib.request import Request
+from publicSeoAudit import OneRedirect, allowed_url, audit, homepage, same_origin, sitemap_index
 
 
 def index(*urls):
@@ -33,6 +34,27 @@ class SeoAuditTest(unittest.TestCase):
 			"https://fr.wikidebates.org/#fragment"):
 			self.assertFalse(same_origin(url, "fr.wikidebates.org"))
 		self.assertTrue(same_origin("https://fr.wikidebates.org/wiki/Accueil", "fr.wikidebates.org"))
+
+	def test_restrict_requests_to_read_only_paths(self):
+		host = "fr.wikidebates.org"
+		self.assertFalse(allowed_url("https://" + host + "/wiki/Accueil?action=purge", host, "homepage"))
+		self.assertFalse(allowed_url("https://" + host + "/wiki/Accueil?action=purge", host, "image"))
+		self.assertFalse(allowed_url("https://" + host + "/logo.png?action=purge", host, "image"))
+		self.assertTrue(allowed_url("https://" + host + "/logo.png?version=" + "a" * 32, host, "image"))
+
+	def test_redirect_keeps_head_and_rejects_second_or_action(self):
+		host = "fr.wikidebates.org"
+		handler = OneRedirect(host, "image")
+		req = Request("https://" + host + "/a.png", method="HEAD")
+		newurl = "https://" + host + "/b.png"
+		redirected = handler.redirect_request(req, None, 302, "", {}, newurl)
+		self.assertEqual(redirected.get_method(), "HEAD")
+		with self.assertRaises(ValueError):
+			handler.redirect_request(req, None, 302, "", {}, newurl)
+		with self.assertRaises(ValueError):
+			OneRedirect(host, "image").redirect_request(
+				req, None, 302, "", {}, "https://" + host + "/wiki/Accueil?action=purge"
+			)
 
 	def test_homepage_head_only_and_graph(self):
 		head, details = homepage(b'<html><head><link rel="canonical" href="https://example.test/">'
