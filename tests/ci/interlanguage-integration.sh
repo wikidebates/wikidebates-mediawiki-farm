@@ -154,7 +154,7 @@ edit_page fr 'French ordinary' 'French body, new revision [[en:English ordinary]
 # The extension must persist a real cross-database fallback mapping.
 test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Shared_page' AND ill_lang='en' AND ill_title='Shared page'")" = 1
 echo 'PASS cross-database fallback write'
-test "$(sql ill_ci_fr -e \"SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Mixed_fallback_fixture' AND ill_lang='de' AND ill_title='Mixed fallback fixture'\")" = 1
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Mixed_fallback_fixture' AND ill_lang='de' AND ill_title='Mixed fallback fixture'")" = 1
 
 for lang in "${langs[@]}"; do
 	MW_CONFIG_FILE="$config/$lang/LocalSettings.php" php -S "127.0.0.1:${ports[$lang]}" -t "$root" >"$config/$lang.log" 2>&1 &
