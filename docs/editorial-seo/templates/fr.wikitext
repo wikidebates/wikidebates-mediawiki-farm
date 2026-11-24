@@ -1,0 +1,24 @@
+<noinclude>[[Catégorie: Modèles importants]]
+Métadonnées des pages ordinaires de Wikidébats. Utiliser un titre complet, une description propre à la page et, si nécessaire, un type Schema.org précis.
+<pre>
+{{Métabalises
+	|titre=
+	|description=
+	|schema_type=AboutPage
+}}
+</pre>
+Pour une image personnalisée, indiquer également image_alt (vide si nécessaire). Ne pas utiliser ce modèle sur les débats ou arguments gérés par Wikidebates.
+</noinclude><includeonly>{{#seo:
+	|title={{{titre|}}}
+	|description={{{description|}}}
+	|keywords={{#if:{{{mots-clés|}}}|{{{mots-clés}}}{{#if:{{{rubriques|}}}|,&#32;{{{rubriques}}}}}|{{{rubriques|}}}}}
+	|type={{{type|website}}}
+	|og_type={{{og_type|}}}
+	|schema_type={{{schema_type|}}}
+	|section={{{section|}}}
+	|image={{{image|https://fr.wikidebates.org/w/resources/assets/logo-Wikidebats-Twitter.png}}}
+	|image_alt={{{image_alt|Balance de la raison qui pèse les arguments « pour » et « contre »}}}
+	|site_name=Wikidébats
+	|twitter_site=@Wikidebats
+	|locale=fr_FR
+}}</includeonly>
