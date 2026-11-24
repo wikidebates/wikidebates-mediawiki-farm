@@ -1,0 +1,63 @@
+{
+	"name": "SEO release compatibility and paired performance",
+	"on": {
+		"pull_request": {
+			"paths": [
+				"extensions/Wikidebates",
+				"extensions/WikiSEO",
+				"extensions/ShortDescription",
+				"composer.lock",
+				"composer.json",
+				"tests/ci/seo-release-benchmark.sh",
+				"tests/ci/summarizeSeoReleaseBenchmark.py",
+				"tests/ci/testSeoReleaseBenchmark.py",
+				".github/workflows/seo-release-benchmark.yml"
+			]
+		},
+		"workflow_dispatch": {}
+	},
+	"permissions": {
+		"contents": "read"
+	},
+	"jobs": {
+		"seo-release": {
+			"name": "seo-release",
+			"runs-on": "ubuntu-24.04",
+			"timeout-minutes": 20,
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"submodules": false
+					}
+				},
+				{
+					"name": "Initialize exact public SEO gitlinks",
+					"run": "git -c 'url.https://github.com/.insteadOf=git@github.com:' submodule update --init --depth 1 -- extensions/Wikidebates extensions/WikiSEO extensions/ShortDescription"
+				},
+				{
+					"uses": "shivammathur/setup-php@v2",
+					"with": {
+						"php-version": "8.4",
+						"extensions": "mbstring, intl, xml, pdo_sqlite, sqlite3",
+						"coverage": "none",
+						"tools": "composer:v2"
+					}
+				},
+				{
+					"name": "Install pinned farm Composer dependencies",
+					"run": "composer install --no-interaction --prefer-dist --no-progress"
+				},
+				{
+					"name": "Offline summary contracts and shell syntax",
+					"run": "bash -n tests/ci/seo-release-benchmark.sh\npython3 -m unittest discover -s tests/ci -p 'testSeoReleaseBenchmark.py'"
+				},
+				{
+					"name": "Reuse semantic tests and compare pinned extension pairs",
+					"run": "bash tests/ci/seo-release-benchmark.sh"
+				}
+			]
+		}
+	}
+}
