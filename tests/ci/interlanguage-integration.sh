@@ -45,6 +45,13 @@ for lang in "${langs[@]}"; do
 		--server "http://127.0.0.1:$port" --scriptpath '' \
 		--lang "$lang" --skins Vector --pass "$admin_password" \
 		"Interlanguage CI $lang" Admin
+	case "$lang" in
+		fr) project='Wikidébats' ;;
+		de) project='Wikidebatten' ;;
+		it) project='Wikidibattiti' ;;
+		*) project='Wikidebates' ;;
+	esac
+	printf '\n$wgMetaNamespace = "%s";\n' "$project" >> "$config/$lang/LocalSettings.php"
 	cat >> "$config/$lang/LocalSettings.php" <<'PHP'
 $wgScriptPath = '';
 $wgArticlePath = '/index.php?title=$1';
@@ -61,14 +68,21 @@ $wgExemptFromUserRobotsControl = [];
 $wgWikiSeoDefaultLanguage = null;
 $wgWikiSeoDisableLogoFallbackImage = true;
 $wgHideInterlanguageLinks = isset( $_GET['illcihide'] );
-$wgWikiSeoInterlanguageArticleUrls = [
-	'en' => 'http://127.0.0.1:18781/index.php?title=$1',
-	'fr' => 'http://127.0.0.1:18782/index.php?title=$1',
-	'de' => 'http://127.0.0.1:18783/index.php?title=$1',
-	'es' => 'http://127.0.0.1:18784/index.php?title=$1',
-	'it' => 'http://127.0.0.1:18785/index.php?title=$1',
-	'pt' => 'http://127.0.0.1:18786/index.php?title=$1',
-];
+$wgWikiSeoInterlanguageArticleUrls = [];
+foreach ( [
+	'en' => [18781, 'Wikidebates'],
+	'fr' => [18782, 'Wikidébats'],
+	'de' => [18783, 'Wikidebatten'],
+	'es' => [18784, 'Wikidebates'],
+	'it' => [18785, 'Wikidibattiti'],
+	'pt' => [18786, 'Wikidebates'],
+] as $illCode => [ $illPort, $illProject ] ) {
+	$wgWikiSeoInterlanguageArticleUrls[$illCode] = [
+		'article' => 'http://127.0.0.1:' . $illPort . '/index.php?title=$1',
+		'namespaceAliases' => [ 'Project' => $illProject, $illProject => $illProject ],
+	];
+}
+unset( $illCode, $illPort, $illProject );
 wfLoadExtension( 'WikiSEO' );
 wfLoadExtension( 'MobileFrontend' );
 wfLoadSkin( 'MinervaNeue' );
@@ -144,12 +158,24 @@ edit_page de 'Mehrsprachige Debatte' 'Synthetic German debate'
 edit_page es 'Debate multilingüe' 'Synthetic Spanish debate'
 edit_page it 'Dibattito multilingue' 'Synthetic Italian debate'
 edit_page pt 'Debate multilingue' 'Synthetic Portuguese debate'
+
+# Actual localized project namespaces, with Project: stored centrally.
+edit_page fr 'Wikidébats:Accueil de test' 'Project fixture [[en:Project:Test home]] [[de:Project:Teststartseite]] [[es:Project:Inicio de prueba]] [[it:Project:Pagina di prova]] [[pt:Project:Página de teste]]'
+edit_page en 'Wikidebates:Test home' 'English project fixture'
+edit_page de 'Wikidebatten:Teststartseite' 'German project fixture'
+edit_page es 'Wikidebates:Inicio de prueba' 'Spanish project fixture'
+edit_page it 'Wikidibattiti:Pagina di prova' 'Italian project fixture'
+edit_page pt 'Wikidebates:Página de teste' 'Portuguese project fixture'
 edit_page fr 'Page non indexable' '__NOINDEX__ [[en:Restricted fixture]]'
 edit_page en 'Restricted fixture' '__NOINDEX__'
 edit_page fr 'Untranslated fixture' 'No translation'
 old_revision=$(sql ill_ci_fr -e "SELECT page_latest FROM page WHERE page_namespace=0 AND page_title='French_ordinary'")
 export old_revision
 edit_page fr 'French ordinary' 'French body, new revision [[en:English ordinary]]'
+
+# Inject legacy central self-mapping and conflicting supplemental entry.
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'fr','Wrong French title' FROM page WHERE page_namespace=0 AND page_title='Mixed_fallback_fixture' ON DUPLICATE KEY UPDATE ill_title=VALUES(ill_title)"
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Obsolete English title' FROM page WHERE page_namespace=0 AND page_title='Mixed_fallback_fixture' ON DUPLICATE KEY UPDATE ill_title=VALUES(ill_title)"
 
 # The extension must persist a real cross-database fallback mapping.
 test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Shared_page' AND ill_lang='en' AND ill_title='Shared page'")" = 1
@@ -306,6 +332,15 @@ verify_cluster({
 	'es': (18784, 'Debate multilingüe'),
 	'it': (18785, 'Dibattito multilingue'),
 	'pt': (18786, 'Debate multilingue'),
+})
+
+verify_cluster({
+	'fr': (18782, 'Wikidébats:Accueil de test'),
+	'en': (18781, 'Wikidebates:Test home'),
+	'de': (18783, 'Wikidebatten:Teststartseite'),
+	'es': (18784, 'Wikidebates:Inicio de prueba'),
+	'it': (18785, 'Wikidibattiti:Pagina di prova'),
+	'pt': (18786, 'Wikidebates:Página de teste'),
 })
 
 for skin in ('vector', 'minerva'):
