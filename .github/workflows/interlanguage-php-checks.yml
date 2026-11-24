@@ -14,7 +14,8 @@
 				"extensions/WikiSEO",
 				"extensions/MobileFrontend",
 				"skins/Vector",
-				"skins/MinervaNeue"
+				"skins/MinervaNeue",
+				"ops/interlanguage/**"
 			]
 		},
 		"pull_request": {
@@ -27,7 +28,8 @@
 				"extensions/WikiSEO",
 				"extensions/MobileFrontend",
 				"skins/Vector",
-				"skins/MinervaNeue"
+				"skins/MinervaNeue",
+				"ops/interlanguage/**"
 			]
 		},
 		"workflow_dispatch": null
@@ -77,8 +79,8 @@
 					"run": "composer install --no-interaction --prefer-dist --no-progress"
 				},
 				{
-					"name": "Check integration shell syntax",
-					"run": "bash -n tests/ci/interlanguage-integration.sh"
+					"name": "Check integration shell and maintenance PHP syntax",
+					"run": "bash -n tests/ci/interlanguage-integration.sh\nphp -l ops/interlanguage/cleanupMappings.php\nphp -l ops/interlanguage/configureApiRoutes.php"
 				},
 				{
 					"name": "Verify Interlanguage and hreflang on six disposable editions",
