@@ -33,6 +33,7 @@ $describe = static function ( $row ) use ( $canonicalNamespaces ) {
 	$prefix = $ns === NS_MAIN ? '' : ( $canonicalNamespaces[$ns] ?? '' ) . ':';
 	return [
 		'id' => (int)$row->page_id,
+		'namespace' => $ns,
 		'key' => $title->getPrefixedDBkey(),
 		'lookup' => $prefix . $title->getText(),
 		'redirect' => (bool)$row->page_is_redirect,
@@ -154,7 +155,7 @@ def title_forms(page):
 	Do not normalize arbitrary colon-containing main-namespace titles.
 	"""
 	forms = {key(page["key"]), key(page["lookup"])}
-	if ":" in page["lookup"] and ":" in page["key"]:
+	if page.get("namespace", 0) != 0 and ":" in page["lookup"] and ":" in page["key"]:
 		for value in tuple(forms):
 			prefix, name = value.split(":", 1)
 			forms.add(prefix + ":_" + name.lstrip("_"))
