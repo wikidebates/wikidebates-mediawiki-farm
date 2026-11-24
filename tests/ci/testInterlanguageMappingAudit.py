@@ -3,8 +3,8 @@ import unittest
 from interlanguageMappingAudit import analyze, LANGS
 
 
-def page(page_id, key, lookup=None, redirect=False):
-	return dict(status="exists", id=page_id, key=key, lookup=lookup or key.replace("_", " "), redirect=redirect)
+def page(page_id, key, lookup=None, redirect=False, namespace=0):
+	return dict(status="exists", id=page_id, key=key, lookup=lookup or key.replace("_", " "), redirect=redirect, namespace=namespace)
 
 
 def fixture():
@@ -46,6 +46,26 @@ class MappingAuditTests(unittest.TestCase):
 		self.assertIn("NONCANONICAL_TARGET_PATH", issues)
 		self.assertNotIn("NATIVE_REVERSE_LOOKUP_RISK", issues)
 		self.assertIn("STORED_PEER_MISMATCH", issues)
+
+	def test_equivalent_namespace_aliases_are_not_mapping_errors(self):
+		central, editions = fixture()
+		central["pages"]["1"] = page(1, "Wikidébats:Débat", "Project:Débat", namespace=4)
+		central["links"][0][3] = "Project:Debate"
+		editions["en"]["targets"] = {
+			"Project:Debate": page(3, "Wikidebates:Debate", "Project:Debate", namespace=4),
+		}
+		editions["en"]["stored"]["3"] = [["fr", "Project: Débat"], ["de", "Debatte"]]
+		editions["de"]["stored"]["4"] = [["fr", "Project:Débat"], ["en", "Project:Debate"]]
+		report = analyze(central, editions)
+		self.assertNotIn("STORED_PEER_MISMATCH", report["issues"])
+		self.assertIn("NONCANONICAL_TARGET_PATH", report["issues"])
+		self.assertEqual(report["counts"]["stored_peer_equivalent_namespace_forms"], 3)
+
+	def test_arbitrary_main_namespace_colon_is_not_an_alias(self):
+		central, editions = fixture()
+		central["pages"]["1"] = page(1, "Topic:Debate")
+		editions["en"]["stored"]["3"][0][1] = "Topic: Debate"
+		self.assertIn("STORED_PEER_MISMATCH", analyze(central, editions)["issues"])
 
 	def test_orphan_missing_redirect_and_conflict(self):
 		central, editions = fixture()
