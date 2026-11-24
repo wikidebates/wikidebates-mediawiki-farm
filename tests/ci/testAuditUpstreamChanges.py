@@ -17,6 +17,10 @@ class TriageTest(unittest.TestCase):
 	def test_maintenance_even_with_dev_advisory(self):
 		self.assertEqual(classify(comparison(["i18n/fr.json", "package-lock.json"], ["GHSA-abcd-efgh-ijkl"]))["category"], "maintenance")
 
+	def test_release_automation(self):
+		data = comparison([".release-please-manifest.json", "release-please-config.json", ".github/workflows/release.yml"], ["Release automation"])
+		self.assertEqual(classify(data)["category"], "maintenance")
+
 	def test_security_and_runtime(self):
 		data = comparison(["includes/AntiSpoof.php"], ["SECURITY: fix", "CVE-2026-132683"])
 		self.assertEqual(classify(data)["category"], "security")

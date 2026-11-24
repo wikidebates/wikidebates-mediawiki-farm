@@ -56,7 +56,8 @@ def non_runtime(path):
 		or parts[0] in {".github", "tests", "test", "docs", "doc", ".phan"}
 		or name in {"package-lock.json", "README", "README.md", "CHANGELOG", "CHANGELOG.md",
 			"CONTRIBUTING.md", "Gruntfile.js", ".eslintrc.json", ".stylelintrc.json",
-			".gitignore", ".gitattributes", "AGENTS.md"}
+			".gitignore", ".gitattributes", "AGENTS.md",
+			".release-please-manifest.json", "release-please-config.json"}
 	)
 
 
@@ -112,7 +113,11 @@ def inspect(row):
 		base = urllib.parse.quote(row["base"], safe="")
 		target = urllib.parse.quote(head, safe="")
 		data = gh(f"repos/{repo}/compare/{base}...{target}?per_page=100")
-		return {**row, **classify(data)}
+		result = classify(data)
+		if row["name"] == "extensions/CrawlerProtection/build" and result["category"] == "runtime":
+			result["category"] = "maintenance"
+			result["reason"] = "optional Docker build tooling; not deployed application code"
+		return {**row, **result}
 	except (OSError, ValueError, KeyError, TypeError) as exc:
 		return unavailable(row, exc)
 
