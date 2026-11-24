@@ -185,6 +185,11 @@ class SeoAuditTest(unittest.TestCase):
 		self.assertEqual(audit_transclusions("es", lambda *args: (403, "", {}, b""))["status"],
 			"unverified")
 
+	def test_fixed_editorial_titles_fit_one_api_request(self):
+		for titles in EDITORIAL_TITLES.values():
+			self.assertLessEqual(len(titles), 50)
+			self.assertEqual(len(set(titles)), len(titles))
+
 	def test_legacy_template_has_larger_bounded_source(self):
 		title = LEGACY_TEMPLATES["es"]
 		source = "x" * (EDITORIAL_PREVIEW + 1)

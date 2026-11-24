@@ -1,0 +1,822 @@
+{
+	"source_run": 45472288074,
+	"legacy_calls": {
+		"fr": 29,
+		"en": 16,
+		"es": 7
+	},
+	"pages": [
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Accueil",
+			"revid": 229892,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "append",
+					"after": "{{Métabalises\n\t|titre=Wikidébats – L’encyclopédie des arguments pour et contre\n\t|description=Explorez les arguments pour et contre, leurs justifications et leurs objections, dans une encyclopédie libre et collaborative de débats.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:À propos",
+			"revid": 187261,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n  |titre=À propos de Wikidébats, l'encyclopédie des débats\n  |description=Vous souhaitez vous forger une opinion sur un sujet ? Wikidébats est une encyclopédie de débats qui présente, pour chacun d’eux, les arguments pour et contre ainsi que leurs objections.\n}}",
+					"after": "{{Métabalises\n\t|titre=À propos de Wikidébats\n\t|description=Découvrez le fonctionnement de Wikidébats, l’encyclopédie libre qui organise les arguments pour et contre, leurs justifications et leurs objections.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Ce qu'est Wikidébats et ce que Wikidébats n'est pas",
+			"revid": 229876,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Ce qu'est Wikidébats et ce que Wikidébats n'est pas\n|description=Wikidébats est une encyclopédie de débats libre et collaborative. Elle n'est pas un forum de discussion ni un site de sondages.\n}}",
+					"after": "{{Métabalises\n\t|titre=Ce qu’est Wikidébats et ce que Wikidébats n’est pas\n\t|description=Comprenez ce qui distingue une encyclopédie collaborative de débats d’un forum de discussion, d’un sondage ou d’une encyclopédie de controverses.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Points de départ",
+			"revid": 189775,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Points de départ du projet Wikidébats\n|description=Parce que trop souvent discute rime avec dispute, on en tire la conclusion générale que « les goûts et les couleurs, ça se discute pas ».\n}}",
+					"after": "{{Métabalises\n\t|titre=Points de départ du projet Wikidébats\n\t|description=Pourquoi confronter les opinions ? Découvrez les difficultés du débat d’idées et les motivations à l’origine du projet Wikidébats.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Objectifs",
+			"revid": 138413,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Objectifs de Wikidébats, l'encyclopédie des débats\n|description=Wikidébats sert à former des opinions éclairées, critiques, rationnellement fondées.\n}}",
+					"after": "{{Métabalises\n\t|titre=Objectifs de Wikidébats\n\t|description=Former des opinions éclairées, développer l’esprit critique et favoriser le débat démocratique : découvrez les objectifs de Wikidébats.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Grandes lignes du projet",
+			"revid": 229888,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises|titre=Grandes lignes du projet Wikidébats|description=Face aux obstacles évoqués, une idée a germé : constituer une encyclopédie de débats, dans laquelle on viendrait puiser des arguments...}}",
+					"after": "{{Métabalises\n\t|titre=Grandes lignes du projet Wikidébats\n\t|description=Découvrez le projet d’une encyclopédie collaborative qui structure arguments et contre-arguments pour faciliter la confrontation des points de vue.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Comparatif des encyclopédies de débats existantes",
+			"revid": 229877,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Comparatif des encyclopédies de débats existantes\n|description=Wikidébats n'est pas la seule encyclopédie de débats. Divers sites existent, avec leurs points forts et leurs points faibles.\n}}",
+					"after": "{{Métabalises\n\t|titre=Comparatif des encyclopédies de débats – Wikidébats\n\t|description=Comparez les formats des encyclopédies de débats : listes d’arguments, tableaux, arbres argumentatifs et cartes, avec leurs avantages et limites.\n\t|type=article\n\t|section=À propos de Wikidébats\n\t|schema_type=Article\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Principes fondateurs",
+			"revid": 138419,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Principes fondateurs de Wikidébats, l'encyclopédie des débats\n|description=Les principes fondateurs de Wikidébats sont au nombre de huit : exhaustivité, générosité, non-engagement, lisibilité, impersonnalité, vérifiabilité, liberté de contenu et savoir-vivre.\n}}",
+					"after": "{{Métabalises\n\t|titre=Principes fondateurs de Wikidébats\n\t|description=Les huit principes de Wikidébats : exhaustivité, générosité, non-engagement, lisibilité, impersonnalité, vérifiabilité, liberté de contenu et savoir-vivre.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Apresentação do Wikidebates (PT)",
+			"revid": 195917,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Wikidebates, uma enciclopédia de debates\n|description=Você deseja formar uma opinião sobre um debate qualquer? Wikidebates é um wiki de debates – uma enciclopédia de argumentos a favor e contra.\n}}",
+					"after": "{{Métabalises\n\t|titre=Apresentação do Wikidebates em português\n\t|description=Conheça o projeto de uma enciclopédia colaborativa que reúne argumentos a favor e contra para ajudar a formar uma opinião fundamentada.\n\t|schema_type=AboutPage\n\t|image_alt=Balança da razão que pesa os argumentos a favor e contra\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Presentation of Wikidebates (EN)",
+			"revid": 195912,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises|titre=Wikidebates, the Encyclopedia of Debates|description=You want to form your opinion on a given topic of debate?  Wikidebats is a wiki of debates – an encyclopedia of pro and con arguments on controversial issues.}}",
+					"after": "{{Métabalises\n\t|titre=Presentation of Wikidebates in English\n\t|description=Discover a collaborative encyclopedia that brings together arguments for and against controversial questions to help readers form informed opinions.\n\t|schema_type=AboutPage\n\t|image_alt=Scales of reason weighing arguments for and against\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Presentazione de Wikidibattiti (IT)",
+			"revid": 167869,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Wikidibatto, l'enciclopedia dei dibattiti\n|description=Ti auguri di farti un’idea su un certo dibattito? Wikidibattiti è un wiki di dibattiti – un'enciclopedia di argomentazioni pro e contro su qualsiasi tipo di soggetto.}}",
+					"after": "{{Métabalises\n\t|titre=Presentazione di Wikidibattiti in italiano\n\t|description=Scopri il progetto di un’enciclopedia collaborativa che raccoglie gli argomenti pro e contro per aiutare a formarsi un’opinione informata.\n\t|schema_type=AboutPage\n\t|image_alt=Bilancia della ragione che soppesa gli argomenti pro e contro\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Präsentation von Wikidebatten (DE)",
+			"revid": 34033,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises|titre=Wikidebatten, die Enzyklopädie der Debatten|description=Sie wollen sich über ein kontrovers diskutiertes Thema eine Meinung bilden? Wikidebatten ist eine Enzyklopädie der Debatten – eine Enzyklopädie der Pro- und Kontraargumente in einer Kontroverse.}}",
+					"after": "{{Métabalises\n\t|titre=Präsentation von Wikidebatten auf Deutsch\n\t|description=Entdecken Sie das Projekt einer gemeinschaftlich erstellten Enzyklopädie, die Pro- und Kontra-Argumente zur fundierten Meinungsbildung zusammenführt.\n\t|schema_type=AboutPage\n\t|image_alt=Waage der Vernunft, die Pro- und Kontra-Argumente abwägt\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Foire aux questions",
+			"revid": 229420,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Wikidébats : Foire aux questions (FAQ)\n|description=Cette '''foire aux questions''' se propose de répondre à quelques questions couramment posées concernant ce projet d'encyclopédie de débats.\n}}",
+					"after": "{{Métabalises\n\t|titre=Foire aux questions – Wikidébats\n\t|description=Pourquoi ce format de débat ? Comment sont présentés les arguments ? Retrouvez les réponses aux questions fréquentes sur Wikidébats.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Pour aller plus loin",
+			"revid": 183490,
+			"schema": "CollectionPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Wikidébats : Lectures pour aller plus loin\n|description=Wikidébats est un projet qui est le fruit de diverses lectures, réflexions et inspirations. Écrits sans lien direct avec Wikidébats, ces textes décrivent néanmoins les motivations, les enjeux ou encore les présupposés théoriques qui fondent le projet.\n}}",
+					"after": "{{Métabalises\n\t|titre=Lectures pour aller plus loin – Wikidébats\n\t|description=Découvrez les lectures et textes qui éclairent les motivations, les enjeux et les fondements théoriques du projet Wikidébats.\n\t|schema_type=CollectionPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Appel au libre-examen et à la tradition de l’agora",
+			"revid": 229882,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Appel au libre-examen et à la tradition de l’agora, d'Emmanuel-Juste Duits\n|description=Ce texte est un appel à renouer avec la tradition grecque de l'agora et de la discussion rationnelle des croyances quelles qu'elles soient.\n}}",
+					"after": "{{Métabalises\n\t|titre=Appel au libre-examen et à la tradition de l’agora – Wikidébats\n\t|description=Emmanuel-Juste Duits appelle à renouer avec la tradition de l’agora et de la discussion rationnelle des croyances et des opinions.\n\t|type=article\n\t|section=À propos de Wikidébats\n\t|schema_type=Article\n\t|schema_author=Emmanuel-Juste Duits\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Qu'est-ce que le débat méthodique ?",
+			"revid": 138414,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Qu'est-ce que le débat méthodique ?, d'Emmanuel-Juste Duits\n|description=Ce texte décrit les motivations du débat méthodique et d'un site comme Wikidébats, face à la partialité des sources d'information et l'absence de confrontation des points de vue.\n}}",
+					"after": "{{Métabalises\n\t|titre=Qu’est-ce que le débat méthodique ? – Wikidébats\n\t|description=Emmanuel-Juste Duits explique pourquoi confronter méthodiquement les arguments et les objections face à la partialité des sources d’information.\n\t|type=article\n\t|section=À propos de Wikidébats\n\t|schema_type=Article\n\t|schema_author=Emmanuel-Juste Duits\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Dépasser la complexité",
+			"revid": 138422,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Dépasser la complexité, d'Emmanuel-Juste Duits\n|description=Ce texte présente l'intérêt d'une méthode faisant le tour des principales questions de société, afin de ne pas laisser les individus désemparés face à la pluralité et la technicité de ces questions.\n}}",
+					"after": "{{Métabalises\n\t|titre=Dépasser la complexité – Wikidébats\n\t|description=Emmanuel-Juste Duits propose une méthode pour aborder la diversité et la complexité des grandes questions de société sans se sentir démuni.\n\t|type=article\n\t|section=À propos de Wikidébats\n\t|schema_type=Article\n\t|schema_author=Emmanuel-Juste Duits\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:L'agora du 21e siècle",
+			"revid": 229889,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=L'agora du 21e siècle, d'Emmanuel-Juste Duits\n|description=Ce texte décrit de façon visionnaire les grandes lignes d'un site comme Wikidébats, ses motivations et ses enjeux, dans une société où n'existe encore aucun outil permettant de synthétiser, confronter et mettre à l'épreuve les grandes options politiques, philosophiques, religieuses et sociales.\n}}",
+					"after": "{{Métabalises\n\t|titre=L’agora du 21e siècle – Wikidébats\n\t|description=Dans ce texte des années 1990, Emmanuel-Juste Duits envisage un espace de confrontation méthodique des grandes options politiques, philosophiques et sociales.\n\t|type=article\n\t|section=À propos de Wikidébats\n\t|schema_type=Article\n\t|schema_author=Emmanuel-Juste Duits\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Presentación de Wikidebates (ES)",
+			"revid": 195915,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises|titre=Wikidebates, una enciclopedia de debates|description=¿Le gustaría formarse una opinión sobre un debate? Wikidebates es una enciclopedia que presenta el conjunto de posiciones a favor y en contra.}}",
+					"after": "{{Métabalises\n\t|titre=Presentación de Wikidebates en español\n\t|description=Conoce el proyecto de una enciclopedia colaborativa que reúne los argumentos a favor y en contra para ayudar a formarse una opinión fundamentada.\n\t|schema_type=AboutPage\n\t|image_alt=Balanza de la razón que sopesa los argumentos a favor y en contra\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Laboratoire du débat méthodique",
+			"revid": 183488,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Association : le Laboratoire du débat méthodique\n|description=Objet et principes fondateurs du Laboratoire du débat méthodique (LABODEM).\n}}",
+					"after": "{{Métabalises\n\t|titre=Le Laboratoire du débat méthodique – Wikidébats\n\t|description=Découvrez l’objet et les principes de l’association qui anime Wikidébats et conçoit, expérimente et diffuse des méthodes de débat.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Exploitation pédagogique",
+			"revid": 146613,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Exploitation pédagogique de Wikidébats\n|description=Vous êtes enseignant et travaillez l'argumentation ou l’esprit critique ? Pourquoi ne pas faire contribuer vos élèves ou vos étudiants sur Wikidébats ?\n|mots-clés=utilisation, pédagogique, classe, école, université, fac, enseignant,projet,stage,Wikidébats\n}}",
+					"after": "{{Métabalises\n\t|titre=Exploitation pédagogique de Wikidébats\n\t|description=Enseignants : faites travailler l’argumentation, la recherche de sources et l’esprit critique à vos élèves ou étudiants en construisant un wikidébat.\n\t|mots-clés=utilisation, pédagogique, classe, école, université, fac, enseignant,projet,stage,Wikidébats\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Evènements",
+			"revid": 138421,
+			"schema": "CollectionPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Évènements autour de Wikidébats, l'encyclopédie des débats\n|description=Les évènements à venir où nous rencontrer pour découvrir ou participer à l'encyclopédie Wikidébats.\n}}",
+					"after": "{{Métabalises\n\t|titre=Événements autour de Wikidébats\n\t|description=Retrouvez les rencontres, débats et événements autour de Wikidébats, ainsi que les éventuels prochains rendez-vous du projet.\n\t|schema_type=CollectionPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Aide:Créer un débat",
+			"revid": 228538,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n  | titre = Aide : Créer un débat\n  | description = Vous souhaitez amorcer un débat ? Voici les grandes étapes afin de créer la page d'un wikidébat.\n}}",
+					"after": "{{Métabalises\n\t|titre=Créer un débat – Aide Wikidébats\n\t|description=Apprenez à choisir un sujet, formuler une question, rechercher et structurer les arguments pour et contre, puis créer la page du débat.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Portail:Débats",
+			"revid": 183427,
+			"schema": "CollectionPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n | titre = Wikidébats : Portail des débats\n | description = Portail de recherche des débats ajoutés sur l'encyclopédie Wikidébats.\n}}",
+					"after": "{{Métabalises\n\t|titre=Portail des débats – Wikidébats\n\t|description=Explorez les débats de Wikidébats par rubrique, sujet ou état d’avancement et découvrez leurs arguments pour et contre.\n\t|schema_type=CollectionPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Portail:Arguments",
+			"revid": 45504,
+			"schema": "CollectionPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Wikidébats : Portail des arguments\n|description=Portail de recherche des arguments ajoutés sur l'encyclopédie Wikidébats.\n}}",
+					"after": "{{Métabalises\n\t|titre=Portail des arguments – Wikidébats\n\t|description=Recherchez les arguments recensés dans les débats de Wikidébats et accédez à leurs pages détaillées.\n\t|schema_type=CollectionPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Le chaînon manquant de la démocratie",
+			"revid": 229881,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Wikidébats, le chaînon manquant de la démocratie\n|description=Vous trouvez les débats sur Internet trop confus ? Les débats dans les médias vous laissent sur votre faim ? Wikidébats est une nouvelle plateforme d’information neutre, structurée et exhaustive pour renouer avec le débat d’idées.\n}}",
+					"after": "{{Métabalises\n\t|titre=Wikidébats, le chaînon manquant de la démocratie\n\t|description=Découvrez comment Wikidébats propose une information structurée et ouverte à la confrontation des opinions pour favoriser le débat d’idées.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Portail:Autoévaluations",
+			"revid": 228544,
+			"schema": "CollectionPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n  |titre=Wikidébats : Situez-vous dans un débat\n  |description=Autoévaluez-vous en répondant, pour chaque argument, à deux questions : 1. Cet argument est-il bien fondé ? 2. Cet argument est-il important selon vous ?\n}}",
+					"after": "{{Métabalises\n\t|titre=Testez-vous : situez-vous dans un débat – Wikidébats\n\t|description=Évaluez le bien-fondé et l’importance des arguments pour et contre afin de découvrir comment vous vous situez dans un débat.\n\t|schema_type=CollectionPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Pourquoi faut-il débattre ?",
+			"revid": 229890,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Pourquoi faut-il débattre ?, d'Emmanuel-Juste Duits\n|description=Écrit par Emmanuel-Juste Duits au lancement du site Hyperdébat dans les années 2000, ce texte continue, vingt ans plus tard, à poser les jalons d'un site de débat méthodique tel que Wikidébats.\n}}",
+					"after": "{{Métabalises\n\t|titre=Pourquoi faut-il débattre ? – Wikidébats\n\t|description=Dans ce texte issu du projet Hyperdébat, Emmanuel-Juste Duits explore les motivations du débat méthodique et la mise à l’épreuve des opinions.\n\t|type=article\n\t|section=À propos de Wikidébats\n\t|schema_type=Article\n\t|schema_author=Emmanuel-Juste Duits\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Sortir de la confusion",
+			"revid": 149356,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Sortir de la confusion, d'Emmanuel-Juste Duits\n|description=\n}}",
+					"after": "{{Métabalises\n\t|titre=Sortir de la confusion – Wikidébats\n\t|description=Emmanuel-Juste Duits présente la démarche qui fonde Wikidébats : confronter méthodiquement les visions du monde pour dépasser la confusion.\n\t|type=article\n\t|section=À propos de Wikidébats\n\t|schema_type=Article\n\t|schema_author=Emmanuel-Juste Duits\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Wikidébats:Contribuer",
+			"revid": 183617,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Métabalises\n|titre=Contribuer à Wikidébats\n|description=Wikidébats est un projet collaboratif, parce que constituer une telle encyclopédie est une tâche colossale, qui impose la participation la plus large.\n}}",
+					"after": "{{Métabalises\n\t|titre=Contribuer à Wikidébats\n\t|description=Créez un compte, lancez un débat, complétez des arguments ou participez à la communauté : découvrez comment contribuer à Wikidébats.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Portail:Contributions",
+			"revid": 240631,
+			"schema": "CollectionPage",
+			"operations": [
+				{
+					"kind": "append",
+					"after": "{{Métabalises\n\t|titre=Portail des contributions – Wikidébats\n\t|description=Trouvez des débats et arguments à compléter, sourcer, corriger ou réorganiser et participez à l’amélioration de Wikidébats.\n\t|schema_type=CollectionPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Aide:Utiliser les pages de discussion",
+			"revid": 45389,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "append",
+					"after": "{{Métabalises\n\t|titre=Utiliser les pages de discussion – Aide Wikidébats\n\t|description=Apprenez à échanger avec les autres contributeurs, signer vos messages et utiliser les pages de discussion pour améliorer Wikidébats.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Aide:Sommaire",
+			"revid": 145508,
+			"schema": "CollectionPage",
+			"operations": [
+				{
+					"kind": "append",
+					"after": "{{Métabalises\n\t|titre=Aide et documentation – Wikidébats\n\t|description=Retrouvez les guides pour prendre en main Wikidébats, modifier des pages, ajouter du contenu et rédiger des débats.\n\t|schema_type=CollectionPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "fr",
+			"title": "Aide:Tour de présentation",
+			"revid": 45493,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "append",
+					"after": "{{Métabalises\n\t|titre=Tour de présentation – Aide Wikidébats\n\t|description=Découvrez l’interface de Wikidébats grâce à une visite guidée du site.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Main Page",
+			"revid": 10944,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Wikidebates, the Encyclopedia of “Pro” and “Con” Arguments\n|type=website\n}}",
+					"after": "{{Meta tags\n\t|title=Wikidebates – The Encyclopedia of Pro and Con Arguments\n\t|description=Explore arguments for and against debated questions, their supporting reasons and objections, in a free, collaborative encyclopedia of debates.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Why",
+			"revid": 544,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Why Wikidebates? Motives of an encyclopedia of debates\n|description=We are all the products of a certain education, as well as of a certain social conditioning. Yet, the scope of all opinions is considerably broader than that of the opinions which we each hold.\n}}",
+					"after": "{{Meta tags\n\t|title=Why Wikidebates?\n\t|description=Explore the reasons behind Wikidebates and why examining opposing viewpoints matters for developing informed, independent opinions.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Founding Principles",
+			"revid": 4451,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Founding Principles of Wikidebates, the Encyclopedia of Debates\n|description=Wikidebates’s founding principles are exhaustivity, charity, non-partisanship, readability, impersonality, verifiability, free content, mutual respect and civility. \n}}",
+					"after": "{{Meta tags\n\t|title=Founding principles – Wikidebates\n\t|description=Discover the principles of Wikidebates: comprehensiveness, charity, non-partisanship, readability, impersonality, verifiability, free content and civility.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:About",
+			"revid": 10939,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=About Wikidebates, the encyclopedia of debates and for and against arguments\n|description=You want to form your opinion on a given topic of debate? You’re looking to better understand the different positions on a topic of debate without spending hours researching arguments scattered throughout the internet? Wikidebates serves exactly that purpose.\n}}",
+					"after": "{{Meta tags\n\t|title=About Wikidebates\n\t|description=Discover how Wikidebates, a free collaborative encyclopedia, organises arguments for and against debated questions, with reasons and objections.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Aims",
+			"revid": 545,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Aims of Wikidebates, the encyclopedia of debates\n|description=Wikidebates is an encyclopedia of debates of which the primary objective is to help form educated and rational opinions.\n}}",
+					"after": "{{Meta tags\n\t|title=Aims of Wikidebates\n\t|description=Discover how Wikidebates aims to help readers develop critical thinking, form informed opinions and take part in democratic debate.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Educational Use and Purposes",
+			"revid": 550,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Educational use of Wikidebates for teachers – Wikidebates, the encyclopedia of debates\n|description=If you are a teacher and are interested in debates and critical thinking, you might consider having your students contribute to Wikidebates by structuring and summarising a debate. \n}}",
+					"after": "{{Meta tags\n\t|title=Educational use of Wikidebates\n\t|description=Help students develop critical thinking, research and argumentation skills by collaboratively structuring and summarising a debate on Wikidebates.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:What is Methodical Debate?",
+			"revid": 554,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=What is Methodical Debate?, by Emmanuel-Juste Duits\n|description=Aren’t you tired of reading books or websites that narrowly develop one sole truth without taking any consideration of possible objections to it?\n}}",
+					"after": "{{Meta tags\n\t|title=What is methodical debate? – Wikidebates\n\t|description=Emmanuel-Juste Duits explains why examining opposing arguments and objections methodically can help overcome one-sided information.\n\t|type=article\n\t|section=About Wikidebates\n\t|schema_type=Article\n\t|schema_author=Emmanuel-Juste Duits\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:What Wikidebates is",
+			"revid": 542,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=What Wikidebates is – an encyclopedia of debates\n}}",
+					"after": "{{Meta tags\n\t|title=What Wikidebates is\n\t|description=Discover a collaborative debate encyclopedia that organises arguments for and against questions in a clear, editable structure.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Beyond Complexity",
+			"revid": 551,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Beyond complexity, by Emmanuel-Juste Duits\n|description=This text presents the importance of developing a method for debating the essential issues at stake in society, so as not to leave any individual feeling overwhelmed by the sheer amount, and complexity, of these issues.\n}}",
+					"after": "{{Meta tags\n\t|title=Beyond complexity – Wikidebates\n\t|description=Emmanuel-Juste Duits explores how a methodical approach to debate can help people navigate the complexity of major social issues.\n\t|type=article\n\t|section=About Wikidebates\n\t|schema_type=Article\n\t|schema_author=Emmanuel-Juste Duits\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Help:Creating a debate",
+			"revid": 5581,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Help: Creating a wikidebate\n|description=You wish to begin a debate on Wikidebates? Here are the main steps to creating a wikidebate.\n}}",
+					"after": "{{Meta tags\n\t|title=Creating a debate – Wikidebates help\n\t|description=Learn how to choose a debate topic, formulate a yes-or-no question, research opposing arguments and create a debate page on Wikidebates.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Frequently Asked Questions",
+			"revid": 617,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Frequently Asked Questions about Wikidebates, the Encyclopedia of Debates\n|description=Typical questions & answers about the Wikidebates encyclopedia project.\n}}",
+					"after": "{{Meta tags\n\t|title=Frequently asked questions – Wikidebates\n\t|description=Find answers to frequently asked questions about Wikidebates, its presentation of arguments and the aims of the collaborative encyclopedia.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:What Wikidebates is not",
+			"revid": 543,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=What Wikidebates is not\n|description=Wikidebates is not a discussion forum, a polling site nor an encyclopedia of controversies.\n}}",
+					"after": "{{Meta tags\n\t|title=What Wikidebates is not\n\t|description=Learn why Wikidebates is a collaborative encyclopedia of arguments rather than a discussion forum, opinion poll or encyclopedia of controversies.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Democracy's Missing Link",
+			"revid": 10583,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Wikidebates, Democracy's Missing Link\n|description=Wikidebates offers a structured, comprehensive and neutral information platform for ideological debating: an open and rigorous 21st century public agora.\n}}",
+					"after": "{{Meta tags\n\t|title=Wikidebates, democracy’s missing link\n\t|description=Discover how Wikidebates proposes structured, open and comprehensive information to foster critical thinking and democratic debate.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Comparison of Existing Debate Encyclopedias",
+			"revid": 4570,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Comparison of existing debate encyclopedias\n|description=Wikidebates is not the only debate encyclopedia. Other sites exist, which have both strengths and weaknesses.\n}}",
+					"after": "{{Meta tags\n\t|title=Comparison of debate encyclopedias – Wikidebates\n\t|description=Compare how debate encyclopedias present arguments, using pro and con lists, tables, argument trees and other visual formats.\n\t|type=article\n\t|section=About Wikidebates\n\t|schema_type=Article\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:The 21st Century Agora",
+			"revid": 552,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=The 21st Century Agora, by Emmanuel-Just Duits\n|description=This text was written by Emmanuel-Just Duits, in the mid-1990s, as a chapter of his book The Network Man - Thinking and Acting in Complexity. This visionary text describes the guidelines of a site such as what Wikidebates aims to become, regarding its goals and its purposes.\n}}",
+					"after": "{{Meta tags\n\t|title=The 21st century agora – Wikidebates\n\t|description=In this text from the 1990s, Emmanuel-Juste Duits envisages a space for confronting competing viewpoints through structured, methodical debate.\n\t|type=article\n\t|section=About Wikidebates\n\t|schema_type=Article\n\t|schema_author=Emmanuel-Juste Duits\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Laboratory of Methodical Debate",
+			"revid": 1649,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Meta tags\n|title=Laboratory of Methodical Debate – Wikidebates, the encyclopedia of debates\n|description=Wikidebates is a project managed by “the Laboratory of Methodical Debate” organisation. Its objective and founding principles are: Neutrality, Exhaustivity of arguments, Debates focused on arguments, Structure and clarity, and Ethics of discussion.\n}}",
+					"after": "{{Meta tags\n\t|title=The Laboratory of Methodical Debate – Wikidebates\n\t|description=Discover the aims and founding principles of the organisation behind Wikidebates, dedicated to developing and sharing methods of debate.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "en",
+			"title": "Wikidebates:Contribute",
+			"revid": 10945,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "append",
+					"after": "{{Meta tags\n\t|title=Contribute to Wikidebates\n\t|description=Start a debate, join community discussions or contact the team: discover how to contribute to the collaborative Wikidebates project.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "es",
+			"title": "Wikidebates:Página principal",
+			"revid": 282,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Metaetiquetas\n|título=Wikidebates, la enciclopedia de los debates y argumentos a favor y en contra\n|descripción=¿Le gustaría formarse una opinión sobre un debate? Wikidebates es una enciclopedia de argumentos a favor y en contra.\n|tipo=website\n}}",
+					"after": "{{Metaetiquetas\n\t|título=Wikidebates – La enciclopedia de los argumentos a favor y en contra\n\t|descripción=Explora los argumentos a favor y en contra, sus justificaciones y objeciones, en una enciclopedia libre y colaborativa de debates.\n}}"
+				},
+				{
+					"kind": "replace",
+					"before": "Wikidebates es un proyecto que, en la actualidad, existe solamente en francés, si bien su objetivo es convertirse en una enciclopedia de debates multilingüe, tal como Wikipedia.",
+					"after": "Wikidebates es una enciclopedia de debates libre, colaborativa y multilingüe. La edición en español sigue en desarrollo y está abierta a nuevas contribuciones."
+				}
+			]
+		},
+		{
+			"wiki": "es",
+			"title": "Wikidebates:La falsa alternativa de la globalización",
+			"revid": 287,
+			"schema": "Article",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Metaetiquetas\n|título=La falsa alternativa de la globalización, de Emmanuel-Juste Duits\n|descripción=Este libro es un instrumento al servicio de los exploradores que desean superar sistemas y medios cerrados.\n}}",
+					"after": "{{Metaetiquetas\n\t|título=La falsa alternativa de la globalización – Wikidebates\n\t|descripción=Emmanuel-Juste Duits propone una reflexión sobre la globalización y la iniciativa de los ciudadanos para superar los sistemas de pensamiento cerrados.\n\t|tipo=article\n\t|section=Acerca de Wikidebates\n\t|schema_type=Article\n\t|schema_author=Emmanuel-Juste Duits\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "es",
+			"title": "Wikidebates:El eslabón perdido de la democracia",
+			"revid": 312,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Metaetiquetas\n|título=Wikidebates, el eslabón perdido de la democracia\n|descripción=Wikidebates es una nueva plataforma de información neutra, estructurada y exhaustiva para reconectar con el debate de ideas.\n}}",
+					"after": "{{Metaetiquetas\n\t|título=Wikidebates, el eslabón perdido de la democracia\n\t|descripción=Descubre cómo Wikidebates propone organizar y confrontar los argumentos para favorecer el pensamiento crítico y el debate democrático.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "es",
+			"title": "Wikidebates:Puntos de partida del proyecto",
+			"revid": 265,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Metaetiquetas\n|título=Puntos de partida del proyecto Wikidebates, la enciclopedia de los debates\n|descripción=Hoy en día parece esencial, con el desarrollo de internet y la posibilidad dada por los hipervínculos de poder profundizar una información, de poner en marcha un espacio virtual de confrontación de opiniones, haciendo figurar  – por cada una de entre ellas – las razones que las fundamentan y las objeciones que le hacen frente. De este modo, tendremos entonces una herramienta, un recurso que nos entrega la posibilidad de formarse, sin grandes dificultades, opiniones racionalmente fundadas, es decir, fundadas en buen conocimiento de los argumentos que pueden justificarlas. Wikidebates es una tentativa de respuesta a esta constatación.\n}}",
+					"after": "{{Metaetiquetas\n\t|título=Puntos de partida del proyecto Wikidebates\n\t|descripción=Conoce las razones que motivan Wikidebates y la necesidad de confrontar opiniones, sus fundamentos y sus objeciones de forma metódica.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "es",
+			"title": "Wikidebates:Principios rectores",
+			"revid": 252,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Metaetiquetas\n|título=Principios rectores de Wikidebates, la enciclopedia de los debates\n|descripción=Los principios rectores de Wikidebates: exhaustividad, caridad, no compromiso, inteligibilidad, impersonalidad, verificabilidad, libertad de contenido y cordialidad y savoir-vivre.\n}}",
+					"after": "{{Metaetiquetas\n\t|título=Principios rectores – Wikidebates\n\t|descripción=Conoce los principios de Wikidebates: exhaustividad, caridad, no partidismo, claridad, impersonalidad, verificabilidad, contenido libre y respeto.\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "es",
+			"title": "Wikidebates:Objetivos",
+			"revid": 243,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Metaetiquetas\n|título=Objetivos de Wikidebates, la enciclopedia de los debates\n|descripción=Wikidebates es una enciclopedia de debates, cuyo objetivo primero es de servir a la elaboración de opiniones informadas y racionalmente fundadas.\n}}",
+					"after": "{{Metaetiquetas\n\t|título=Objetivos de Wikidebates\n\t|descripción=Descubre cómo Wikidebates busca favorecer la formación de opiniones informadas y fundamentadas mediante el examen de argumentos a favor y en contra.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "es",
+			"title": "Wikidebates:Acerca de",
+			"revid": 280,
+			"schema": "AboutPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{Metaetiquetas\n|título=Wikidebates, la enciclopedia de los debates y argumentos a favor y en contra\n|descripción=¿Le gustaría formarse una opinión sobre un debate? Wikidebates es una enciclopedia de argumentos a favor y en contra.\n}}",
+					"after": "{{Metaetiquetas\n\t|título=Acerca de Wikidebates\n\t|descripción=Descubre el funcionamiento de Wikidebates, una enciclopedia colaborativa que reúne argumentos a favor y en contra de cuestiones debatidas.\n\t|schema_type=AboutPage\n}}"
+				}
+			]
+		},
+		{
+			"wiki": "de",
+			"title": "Wikidebatten:Hauptseite",
+			"revid": 55,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{#seo:\n|title=Wikidebatten, die Enzyklopädie der Debatten und Pro- und Kontra-Argumente\n|description=Sie wollen sich über ein kontrovers diskutiertes Thema eine Meinung bilden? Wikidebatten ist eine Enzyklopädie der Debatten – eine Enzyklopädie der Pro- und Kontra-Argumente in einer Kontroverse.\n|keywords=Enzyklopädie,Debatte,Meinung,Argument,Einwand,Gefallen,Gegen,Wiki\n|image=https://farm.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png\n|image_alt=Ausgewogenheit der Argumente, Vor- und Nachteile abwägen\n|type=website\n|site_name=Wikidebatten\n|twitter_site=@Wikidebats\n|google-site-verification=76d1055d3ec815c\n|locale=de_DE\n|hreflang_en-us=https://en.wikidebates.org/\n|hreflang_es-es=https://es.wikidebates.org/\n|hreflang_fr-fr=https://fr.wikidebates.org/\n|hreflang_it-it=https://it.wikidebates.org/\n|hreflang_pt-pt=https://pt.wikidebates.org/\n}}",
+					"after": "{{#seo:\n\t|title=Wikidebatten – Die Enzyklopädie der Pro- und Kontra-Argumente\n\t|title_mode=replace\n\t|description=Entdecken Sie Pro- und Kontra-Argumente, ihre Begründungen und Einwände in einer freien, gemeinschaftlich erstellten Enzyklopädie der Debatten.\n\t|og_type=website\n\t|schema_type=WebPage\n\t|image=https://farm.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png\n\t|image_alt=Waage der Vernunft, die Pro- und Kontra-Argumente abwägt\n\t|site_name=Wikidebatten\n\t|twitter_site=@Wikidebats\n\t|locale=de_DE\n}}"
+				},
+				{
+					"kind": "replace",
+					"before": "Wikidebatten existiert bislang nur in französischer Sprache, aber das Ziel ist eine vielsprachige Enzyklopädie, ähnlich wie Wikipedia.",
+					"after": "Wikidebatten ist Teil einer mehrsprachigen, freien und gemeinschaftlich erstellten Enzyklopädie der Debatten. Die deutschsprachige Ausgabe befindet sich noch im Aufbau und freut sich über neue Beiträge."
+				}
+			]
+		},
+		{
+			"wiki": "it",
+			"title": "Wikidibattiti:Pagina principale",
+			"revid": 90,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{#seo:\n|title=Wikidibattiti, l'enciclopedia dei dibattiti\n|description=Ti auguri di farti un’idea su un certo dibattito? Wikidibattiti è un wiki di dibattiti – un'enciclopedia di argomenti pro e contro su qualsiasi tipo di soggetto.\n|keywords=enciclopedia,dibattito,argomenti,pro,contro,obiezione,wiki\n|image=https://farm.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png\n|image_alt=Equilibrio della ragione, che pesa i pro ei contro\n|type=website\n|site_name=Wikidibattiti\n|twitter_site=@Wikidebats\n|google-site-verification=76d1055d3ec815c\n|locale=it_IT\n|hreflang_de-de=https://de.wikidebates.org/\n|hreflang_en-us=https://en.wikidebates.org/\n|hreflang_es-es=https://es.wikidebates.org/\n|hreflang_fr-fr=https://fr.wikidebates.org/\n|hreflang_pt-pt=https://pt.wikidebates.org/\n}}",
+					"after": "{{#seo:\n\t|title=Wikidibattiti – L’enciclopedia degli argomenti pro e contro\n\t|title_mode=replace\n\t|description=Esplora gli argomenti pro e contro, le loro giustificazioni e obiezioni, in un’enciclopedia libera e collaborativa dei dibattiti.\n\t|og_type=website\n\t|schema_type=WebPage\n\t|image=https://farm.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png\n\t|image_alt=Bilancia della ragione che soppesa gli argomenti pro e contro\n\t|site_name=Wikidibattiti\n\t|twitter_site=@Wikidebats\n\t|locale=it_IT\n}}"
+				},
+				{
+					"kind": "replace",
+					"before": "Wikidibattiti è un progetto attualmente esistente solo in francese, ma il suo obiettivo è quello di essere una enciclopedia di dibattiti multilingue, similmente a Wikipedia.",
+					"after": "Wikidibattiti fa parte di un’enciclopedia dei dibattiti libera, collaborativa e multilingue. L’edizione italiana è ancora in fase di sviluppo e accoglie nuovi contributi."
+				}
+			]
+		},
+		{
+			"wiki": "pt",
+			"title": "Wikidebates:Página principal",
+			"revid": 75,
+			"schema": "WebPage",
+			"operations": [
+				{
+					"kind": "replace",
+					"before": "{{#seo:\n|title=Wikidebates, uma enciclopédia de debates e argumentos a favor e contra\n|description=Você deseja formar uma opinião sobre um debate qualquer? Wikidebates é um wiki de debates – uma enciclopédia de argumentos a favor e contra.\n|keywords=enciclopédia,debate,argumentos,a favor,contra,objeção,wiki\n|image=https://farm.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png\n|image_alt=equilíbrio da razão, que pesa os prós e os contras\n|type=website\n|site_name=Wikidebates\n|twitter_site=@Wikidebats\n|google-site-verification=76d1055d3ec815c\n|locale=pt_PT\n|hreflang_de-de=https://de.wikidebates.org/\n|hreflang_en-us=https://en.wikidebates.org/\n|hreflang_es-es=https://es.wikidebates.org/\n|hreflang_fr-fr=https://fr.wikidebates.org/\n|hreflang_it-it=https://it.wikidebates.org/\n|hreflang_pt-pt=https://pt.wikidebates.org/\n}}",
+					"after": "{{#seo:\n\t|title=Wikidebates – A enciclopédia dos argumentos a favor e contra\n\t|title_mode=replace\n\t|description=Explore os argumentos a favor e contra, suas justificativas e objeções, em uma enciclopédia livre e colaborativa de debates.\n\t|og_type=website\n\t|schema_type=WebPage\n\t|image=https://farm.wikidebates.org/w/resources/assets/logo-wikidebates-twitter.png\n\t|image_alt=Balança da razão que pesa os argumentos a favor e contra\n\t|site_name=Wikidebates\n\t|twitter_site=@Wikidebats\n\t|locale=pt_PT\n}}"
+				},
+				{
+					"kind": "replace",
+					"before": "Wikidebates é um projeto que existe atualmente apenas em francês, mas seu objetivo é de se tornar uma enciclopédia de debates multilíngue.",
+					"after": "Wikidebates é uma enciclopédia de debates livre, colaborativa e multilíngue. A edição em português ainda está em desenvolvimento e aberta a novas contribuições."
+				},
+				{
+					"kind": "replace",
+					"before": "== Contatto ==",
+					"after": "== Contato =="
+				}
+			]
+		}
+	]
+}
