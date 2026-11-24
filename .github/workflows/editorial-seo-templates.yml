@@ -1,0 +1,76 @@
+name: Editorial SEO templates (isolated MediaWiki)
+
+on:
+  pull_request:
+    paths:
+      - 'docs/editorial-seo/**'
+      - 'tests/ci/editorialSeoTemplates.php'
+      - '.github/workflows/editorial-seo-templates.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  editorial-templates:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            docs/editorial-seo
+            tests/ci/editorialSeoTemplates.php
+      - uses: actions/checkout@v5
+        with:
+          repository: wikimedia/mediawiki
+          ref: 1.43.12
+          path: .mw-lab
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: wikidebates/WikiSEO
+          ref: e73f65035731f93006e1b80271b9f40979c4ffc9
+          path: .mw-lab/extensions/WikiSEO
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: wikidebates/wikidebates-core
+          ref: 21d0c0d27ac72b9392d859d695c56230a868d772
+          path: .wd-lab
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: StarCitizenTools/mediawiki-extensions-ShortDescription
+          ref: 683dde18ac00fcfebde0fbfb59fe1552c171386c
+          path: .mw-lab/extensions/ShortDescription
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          repository: wikimedia/mediawiki-extensions-ParserFunctions
+          ref: f1a2626836e3b4448e5ceeb4eca20880e6357b87
+          path: .mw-lab/extensions/ParserFunctions
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, intl, xml, pdo_sqlite, sqlite3
+          coverage: none
+          tools: composer
+      - name: Install disposable MediaWiki dependencies
+        working-directory: .mw-lab
+        run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Parse actual candidate templates and all 61 new calls
+        env:
+          MW_INSTALL_PATH: ${{ github.workspace }}/.mw-lab
+          WD_SEO_LAB_BOOTSTRAP: ${{ github.workspace }}/.wd-lab/tests/mediawikiEnvironment.php
+        run: |
+          set -euo pipefail
+          for lang in fr en es de it pt; do
+            extensions=WikiSEO,ShortDescription
+            if [ "$lang" = fr ]; then
+              extensions="$extensions,ParserFunctions"
+            fi
+            WD_TEST_LANGUAGE="$lang" WD_TEST_EXTENSIONS="$extensions" php -d display_errors=1 -d error_reporting=E_ALL tests/ci/editorialSeoTemplates.php
+          done

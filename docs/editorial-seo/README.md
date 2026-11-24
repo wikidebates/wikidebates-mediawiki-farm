@@ -115,3 +115,10 @@ renvoyant au livre : Article désigne le texte publié, pas le livre.
 
 Aucune écriture dans les wikis n'est effectuée par ce lot. Les tests de
 l'audit ne sont pas des tests du parseur MediaWiki des nouveaux modèles.
+
+Le workflow `editorial-seo-templates.yml` est une recette isolée du parseur
+avec MediaWiki 1.43.12, PHP 8.4, le WikiSEO épinglé et 61 appels. Le harnais
+SQLite jetable provient de wikidebates-core ; il ne charge aucune configuration
+ni base de production. ParserFunctions est chargé seulement en FR pour tester
+le modèle ES sans cette dépendance. Les contrôles ne remplacent pas la relecture
+des sources intégrales avant édition ni la recette des caches réels.
