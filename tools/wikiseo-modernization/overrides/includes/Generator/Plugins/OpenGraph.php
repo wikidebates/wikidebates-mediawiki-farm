@@ -113,6 +113,15 @@ class OpenGraph extends AbstractBaseGenerator implements GeneratorInterface {
 			foreach ( [ 'author', 'modified_time', 'published_time', 'section', 'keywords' ] as $key ) {
 				unset( $this->metadata[$key] );
 			}
+		} else {
+			foreach ( [ 'modified_time', 'published_time' ] as $key ) {
+				$date = MetaValues::date( $this->metadata[$key] ?? null );
+				if ( $date === null ) {
+					unset( $this->metadata[$key] );
+				} else {
+					$this->metadata[$key] = $date;
+				}
+			}
 		}
 
 		$this->setFallbackImageIfEnabled();
@@ -125,15 +134,20 @@ class OpenGraph extends AbstractBaseGenerator implements GeneratorInterface {
 				// An external image URL has no local file metadata.
 			}
 		}
-		if ( !isset( $this->metadata['image_secure_url'] ) ) {
-			$secure = MetaValues::secureUrl( $this->metadata['image'] ?? null );
-			if ( $secure !== null ) {
-				$this->metadata['image_secure_url'] = $secure;
-			}
+		$secure = MetaValues::secureUrl(
+			$this->metadata['image_secure_url'] ?? $this->metadata['image'] ?? null
+		);
+		if ( $secure !== null ) {
+			$this->metadata['image_secure_url'] = $secure;
+		} else {
+			unset( $this->metadata['image_secure_url'] );
 		}
 		if ( !isset( $this->metadata['locale'] ) ) {
 			$lang = MediaWikiServices::getInstance()->getContentLanguage()->getCode();
-			$this->metadata['locale'] = [ 'fr' => 'fr_FR', 'en' => 'en_US' ][$lang] ?? $lang;
+			$locales = [ 'fr' => 'fr_FR', 'en' => 'en_US' ];
+			if ( isset( $locales[$lang] ) ) {
+				$this->metadata['locale'] = $locales[$lang];
+			}
 		}
 	}
 
