@@ -1,42 +1,89 @@
-name: Interlanguage PHP checks
-
-on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'extensions/Interlanguage/**'
-      - '.github/workflows/interlanguage-php-checks.yml'
-  pull_request:
-    paths:
-      - 'extensions/Interlanguage/**'
-      - '.github/workflows/interlanguage-php-checks.yml'
-  workflow_dispatch:
-
-permissions:
-  contents: read
-
-jobs:
-  interlanguage:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-          submodules: false
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          coverage: none
-      - name: Lint active Interlanguage files
-        run: |
-          find extensions/Interlanguage -type f -name '*.php' -print0 |
-            xargs -0 -n 1 php -l
-      - name: Run isolated regression tests
-        run: |
-          php extensions/Interlanguage/tests/InterlanguageSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguageApiSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguageDatabaseSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguageParserSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguageCentralSmokeTest.php
-          php extensions/Interlanguage/tests/InterlanguagePurgeSmokeTest.php
+{
+	"name": "Interlanguage PHP checks",
+	"on": {
+		"push": {
+			"branches": [
+				"main"
+			],
+			"paths": [
+				"extensions/Interlanguage",
+				"extensions/Interlanguage/**",
+				".gitmodules",
+				".github/workflows/interlanguage-php-checks.yml",
+				"tests/ci/interlanguage-integration.sh"
+			]
+		},
+		"pull_request": {
+			"paths": [
+				"extensions/Interlanguage",
+				"extensions/Interlanguage/**",
+				".gitmodules",
+				".github/workflows/interlanguage-php-checks.yml",
+				"tests/ci/interlanguage-integration.sh"
+			]
+		},
+		"workflow_dispatch": null
+	},
+	"permissions": {
+		"contents": "read"
+	},
+	"jobs": {
+		"interlanguage": {
+			"runs-on": "ubuntu-latest",
+			"timeout-minutes": 35,
+			"services": {
+				"mariadb": {
+					"image": "mariadb:10.11",
+					"env": {
+						"MARIADB_ROOT_PASSWORD": "ci-only-disposable-db"
+					},
+					"ports": [
+						"3306:3306"
+					],
+					"options": "--health-cmd='healthcheck.sh --connect --innodb_initialized' --health-interval=10s --health-timeout=5s --health-retries=12"
+				}
+			},
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"submodules": false
+					}
+				},
+				{
+					"name": "Initialize only the pinned public dependencies",
+					"run": "set -euo pipefail\nif git ls-files --stage extensions/Interlanguage | grep -q '^160000 '; then\n\tgit submodule update --init --depth 1 -- extensions/Interlanguage\nfi\ngit -c 'url.https://github.com/.insteadOf=git@github.com:' submodule update --init --depth 1 -- skins/Vector"
+				},
+				{
+					"uses": "shivammathur/setup-php@v2",
+					"with": {
+						"php-version": "8.4",
+						"coverage": "none",
+						"extensions": "mysqli, intl, mbstring",
+						"tools": "composer:v2"
+					}
+				},
+				{
+					"name": "Lint and run the six existing isolated tests",
+					"run": "set -euo pipefail\nfind extensions/Interlanguage -type f -name '*.php' -print0 | xargs -0 -n 1 php -l\nfor test in extensions/Interlanguage/tests/*SmokeTest.php; do\n\tphp \"$test\"\ndone"
+				},
+				{
+					"name": "Install the farm's pinned Composer dependencies",
+					"run": "composer install --no-interaction --prefer-dist --no-progress"
+				},
+				{
+					"name": "Check integration shell syntax",
+					"run": "bash -n tests/ci/interlanguage-integration.sh"
+				},
+				{
+					"name": "Run real FR/EN integration",
+					"env": {
+						"INTERLANGUAGE_CI_DB_PASSWORD": "ci-only-disposable-db"
+					},
+					"run": "bash tests/ci/interlanguage-integration.sh"
+				}
+			]
+		}
+	}
+}
