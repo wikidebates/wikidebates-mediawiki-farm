@@ -29,7 +29,7 @@
 	},
 	"jobs": {
 		"interlanguage": {
-			"runs-on": "ubuntu-latest",
+			"runs-on": "ubuntu-24.04",
 			"timeout-minutes": 35,
 			"services": {
 				"mariadb": {
@@ -40,7 +40,7 @@
 					"ports": [
 						"3306:3306"
 					],
-					"options": "--health-cmd='healthcheck.sh --connect --innodb_initialized' --health-interval=10s --health-timeout=5s --health-retries=12"
+					"options": "--health-cmd=\"healthcheck.sh --connect --innodb_initialized\" --health-interval=10s --health-timeout=5s --health-retries=12"
 				}
 			},
 			"steps": [
@@ -85,5 +85,9 @@
 				}
 			]
 		}
+	},
+	"concurrency": {
+		"group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}",
+		"cancel-in-progress": "${{ github.event_name == 'pull_request' }}"
 	}
 }
