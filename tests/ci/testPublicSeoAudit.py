@@ -1,7 +1,11 @@
 """Offline public SEO observation tests, no network."""
 import unittest
 from urllib.request import Request
-from publicSeoAudit import OneRedirect, allowed_url, audit, homepage, same_origin, sitemap_index
+from publicSeoAudit import (
+	NAMESPACE_QUERY, OneRedirect, allowed_url, audit, audit_namespaces,
+	homepage, namespace_inventory, same_origin, sitemap_index, sitemap_policy,
+)
+from urllib.parse import urlencode
 
 
 def index(*urls):
@@ -55,6 +59,58 @@ class SeoAuditTest(unittest.TestCase):
 			OneRedirect(host, "image").redirect_request(
 				req, None, 302, "", {}, "https://" + host + "/wiki/Accueil?action=purge"
 			)
+
+	def test_namespace_inventory_exact_query_and_content_flag(self):
+		host = "fr.wikidebates.org"
+		url = "https://" + host + "/w/api.php?" + urlencode(NAMESPACE_QUERY)
+		self.assertTrue(allowed_url(url, host, "namespaces"))
+		self.assertFalse(allowed_url(url + "&action=purge", host, "namespaces"))
+		self.assertFalse(allowed_url(url.replace("siteinfo", "tokens"), host, "namespaces"))
+		body = b'{"query":{"general":{"mainpage":"Project:Home"},"namespaces":{'
+		body += b'"0":{"id":0,"*":"","content":""},"4":{"id":4,"*":"Project","canonical":"Project"},'
+		body += b'"3000":{"id":3000,"*":"Portal","content":""}}}}'
+		calls = []
+		def opener(request_url, request_host):
+			calls.append((request_url, request_host))
+			return 200, request_url, {}, body
+		result = audit_namespaces("fr", opener)
+		self.assertEqual(calls, [(url, host)])
+		self.assertEqual(result["mainpage"], "Project:Home")
+		self.assertTrue(result["namespaces"]["0"]["content"])
+		self.assertFalse(result["namespaces"]["4"]["content"])
+		self.assertEqual(result["namespaces"]["3000"]["name"], "Portal")
+		self.assertTrue(result["namespaces"]["3000"]["content"])
+		with self.assertRaises(ValueError):
+			namespace_inventory(b'{"query":{"general":{},"namespaces":{}}}')
+
+	def test_editorial_policy_keeps_portals_and_accepts_empty_namespaces(self):
+		index = {
+			"http": 200, "files_by_namespace": {"0": 1, "4": 1, "3000": 1},
+			"duplicate_locations": 0, "wrong_origin": 0, "unclassified": 0,
+		}
+		inventory = {"http": 200, "namespaces": {str(n): {} for n in (0, 4, 12, 3000)}}
+		self.assertEqual(sitemap_policy("fr", index, inventory)["status"], "ok")
+		self.assertEqual(sitemap_policy("fr", index)["expected_without_files"], [12])
+		self.assertEqual(sitemap_policy("de", index)["unexpected_namespaces"], [3000])
+		index["files_by_namespace"]["3100"] = 1
+		self.assertEqual(sitemap_policy("fr", index)["unexpected_namespaces"], [3100])
+		self.assertEqual(sitemap_policy("fr", index)["status"], "mismatch")
+		self.assertEqual(sitemap_policy("fr", {"http": 403})["status"], "unverified")
+		self.assertEqual(sitemap_policy("fr", index, {"http": 403})["status"], "unverified")
+
+	def test_editorial_policy_requires_project_and_known_namespaces(self):
+		index = {"http": 200, "files_by_namespace": {"0": 1}}
+		self.assertEqual(sitemap_policy("fr", index)["status"], "mismatch")
+		index["files_by_namespace"]["4"] = 1
+		inventory = {"http": 200, "namespaces": {"0": {}, "4": {}, "12": {}}}
+		self.assertEqual(sitemap_policy("fr", index, inventory)["unknown_allowed_namespaces"], [3000])
+		index["duplicate_locations"] = 1
+		self.assertEqual(sitemap_policy("de", index)["status"], "mismatch")
+
+	def test_namespace_unavailable_is_not_empty_success(self):
+		def opener(url, host):
+			return 403, url, {}, b""
+		self.assertEqual(audit_namespaces("en", opener), {"http": 403})
 
 	def test_homepage_head_only_and_graph(self):
 		head, details = homepage(b'<html><head><link rel="canonical" href="https://example.test/">'

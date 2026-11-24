@@ -3,8 +3,9 @@
 ## Configuration relevée le 24 novembre 2026 (FR et EN)
 
 Le serveur et le serveur canonique sont déjà en HTTPS sur le bon sous-domaine.
-EnableCanonicalServerLink est activé. MetadataGenerators contient OpenGraph et
-Twitter, mais pas SchemaOrg. ShortDescriptionEnableTagline est actif ;
+EnableCanonicalServerLink est activé. Au moment du relevé initial, MetadataGenerators contenait OpenGraph et
+Twitter, mais pas SchemaOrg. L'administrateur a ensuite confirmé l'ajout
+de SchemaOrg ; vérifier l'émission publique de JSON-LD après le déploiement. ShortDescriptionEnableTagline est actif ;
 WikiSeoDefaultLanguage est nul. SitemapNamespaces est false et la politique
 du namespace 3100 est noindex. Ne pas supposer que les autres wikis ont la même
 configuration.
@@ -37,6 +38,79 @@ Le générateur ignore les pages portant la propriété noindex et accepte
 --skip-redirects. La politique NamespaceRobotPolicies, les règles WikiSEO
 et les canoniques éditoriales ne sont pas automatiquement toutes reflétées.
 Ne pas changer le cron, les fichiers XML ou robots.txt avant cet inventaire.
+L'option --namespace-inventory de la sonde lit aussi l'identité des espaces
+de noms déclarés par chacun des six wikis. Le marqueur content de siteinfo
+est informatif : les pages de projet et d'aide peuvent être éditoriales sans
+ce marqueur. Les identifiants personnalisés ne sont pas devinés.
+
+### Politique des sitemaps validée par l'inventaire public
+
+L'inventaire des six wikis a réussi le 24 novembre 2026 (HTTP 200).
+Les espaces 0, 4 et 12 existent partout ; 3000 (Portail/Portal) est présent
+sur FR et EN seulement. 3100 (Autoévaluation/Self assessment) ne doit pas
+être soumis. Les attributs SMW (102), formulaires (106), concepts (108),
+schémas (112), modules (828), sujets Flow (2600), utilisateurs, discussions,
+fichiers, modèles et pages système sont hors sélection.
+
+Les catégories (14) mélangent navigation éditoriale et maintenance cachée :
+les retirer provisoirement du sitemap ne change ni leur indexabilité ni
+leur accessibilité. Idem pour les fichiers et Google Images. Les pages
+principales, de projet, d'aide et les portails restent soumises, sauf
+redirections et exclusions natives __NOINDEX__.
+
+Dans les configurations effectives, **après la détermination du wiki** :
+
+FR/EN :
+
+```php
+$wgSitemapNamespaces = [
+	NS_MAIN,
+	NS_PROJECT,
+	NS_HELP,
+	3000, // Portail / Portal
+];
+```
+
+DE/ES/IT/PT :
+
+```php
+$wgSitemapNamespaces = [
+	NS_MAIN,
+	NS_PROJECT,
+	NS_HELP,
+];
+```
+
+Si la configuration est partagée, choisir le tableau d'après le wiki
+effectif et non d'après la langue de l'interface du visiteur. Vérifier
+l'ensemble des NamespaceRobotPolicies avant de régénérer les sitemaps.
+Ne pas utiliser wgContentNamespaces comme liste automatique : les attributs
+SMW peuvent y être inclus, alors que l'accueil de certains wikis ne l'est pas.
+
+### Régénération et validation
+
+Conserver les chemins et identifiants du générateur natif actuellement
+utilisés par le cron. Vérifier sa commande effective avant toute publication ;
+un argument --namespaces écrase wgSitemapNamespaces. Ajouter --skip-redirects
+s'il est absent, ou conserver cet argument s'il est déjà présent.
+
+Tester la génération dans un répertoire temporaire non public, avec les
+mêmes options --wiki, --identifier, --urlpath et --compress que le cron,
+puis vérifier l'index avant de publier. Ne pas supprimer les anciens fichiers
+de sitemap en bloc : ils peuvent encore être consultés par un moteur.
+Ne pas modifier les URL publiques ou les règles de robots.txt dans ce lot.
+
+Après publication, exécuter :
+
+```sh
+python3 tests/ci/publicSeoAudit.py --namespace-inventory --expect-sitemap-policy
+```
+
+Le code de sortie 1 indique un index inaccessible ou non conforme à la
+sélection attendue. Les espaces autorisés mais vides ne nécessitent pas de
+fichier. Le fichier de projet (4) est attendu car tous les accueils sont dans
+cet espace. Ce contrôle ne vérifie pas chaque URL des sitemaps enfants.
+Sans --expect-sitemap-policy, la sonde reste informative.
 
 Privilégier un lien Sitemap vers l'index propre à chaque hôte. Vérifier que
 les sitemaps et les ressources de rendu accessibles au public sont lisibles
@@ -51,12 +125,15 @@ https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag
 ```sh
 python3 tests/ci/publicSeoAudit.py
 python3 tests/ci/publicSeoAudit.py --lang fr --lang en
+python3 tests/ci/publicSeoAudit.py --namespace-inventory
 ```
 
 Six index XML, et pour FR/EN seulement : la racine publique et au plus un HEAD
 de l'image Open Graph du même hôte. Au maximum un redirect HTTPS même hôte
 par requête (20 requêtes HTTP au maximum si chaque requête est redirigée),
-réponse GET limitée à 2 Mio, timeout 12 s. Les images doivent avoir une
+réponse GET limitée à 2 Mio, timeout 12 s. L'option --namespace-inventory
+ajoute au plus six lectures siteinfo, uniquement avec la requête fixe
+namespaces|general (32 requêtes HTTP au maximum avec redirections). Les images doivent avoir une
 extension reconnue ; seules les URL sans paramètres ou avec le hash
 WikiSEO version=... sont sondées. Les HEAD restent des HEAD après redirect.
 Pas de parcours des

@@ -22,5 +22,5 @@ jobs:
             tests/ci/testPublicSeoAudit.py
       - name: Offline contract tests
         run: python3 -m unittest discover -s tests/ci -p 'testPublicSeoAudit.py'
-      - name: Bounded public observations
-        run: python3 tests/ci/publicSeoAudit.py
+      - name: Bounded public observations and namespace inventory
+        run: python3 tests/ci/publicSeoAudit.py --namespace-inventory
