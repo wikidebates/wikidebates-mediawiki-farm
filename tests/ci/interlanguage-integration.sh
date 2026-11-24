@@ -541,13 +541,19 @@ refresh_property_peers() {
 	printf '%s\n' '$GLOBALS["wgInterlanguagePurgeLinkUpdateLanguages"] = [ "en" ]; $job = new InterlanguageCentralExtensionPurgeJob( Title::newFromText( "Property refresh cluster" ), [ "ill" => [ "en" => [ "Property old peer" => true, "Property new peer" => true ] ] ] ); if ( !$job->run() ) { exit( 1 ); }' |
 		MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php eval
 }
+# In MediaWiki 1.43 linkpurge is normally implicit. Declaring it as an
+# available right removes that implicit grant, so the negative fixture
+# actually denies it (setting a group flag false alone does not).
 cat >> "$config/en/LocalSettings.php" <<'PHP'
+$wgAvailableRights[] = 'linkpurge';
 $wgGroupPermissions['*']['linkpurge'] = false;
 PHP
+curl --fail --silent --show-error --request POST 'http://127.0.0.1:18781/api.php?action=purge&format=json&titles=Property_new_peer&forcelinkupdate=1' |
+	python3 -c 'import json,sys; data=json.load(sys.stdin); assert "purged" in data["purge"][0] and "linkupdate" not in data["purge"][0], data'
 refresh_property_peers
 test "$(property_count Property_old_peer)" = 1
 test "$(property_count Property_new_peer)" = 0
-echo 'PASS denied linkpurge does not masquerade as a property update'
+echo 'PASS denied explicit linkpurge does not masquerade as a property update'
 
 # The anonymous grant is restricted to the ephemeral integration runner.
 cat >> "$config/en/LocalSettings.php" <<'PHP'
