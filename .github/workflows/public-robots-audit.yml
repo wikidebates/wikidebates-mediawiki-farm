@@ -1,0 +1,28 @@
+name: Public robots policy (read-only)
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'docs/seo/robots-policy.txt'
+      - 'docs/wikidebates-robots-rollout.md'
+      - 'tests/ci/robotsPolicy.py'
+      - 'tests/ci/testRobotsPolicy.py'
+      - '.github/workflows/public-robots-audit.yml'
+permissions:
+  contents: read
+jobs:
+  public-robots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            docs/seo/robots-policy.txt
+            tests/ci/robotsPolicy.py
+            tests/ci/testRobotsPolicy.py
+      - name: Offline policy contract
+        run: python3 -m unittest discover -s tests/ci -p 'testRobotsPolicy.py'
+      - name: Compare current public robots files with proposed policy
+        run: python3 tests/ci/robotsPolicy.py --audit
