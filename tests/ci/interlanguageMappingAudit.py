@@ -175,7 +175,6 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 		}
 	}
 	$found = [];
-	$ids = [];
 	foreach ( $groups as $ns => $keys ) {
 		foreach ( array_chunk( array_map( 'strval', array_keys( $keys ) ), 500 ) as $chunk ) {
 			foreach ( $db->select( 'page', $fields, [
@@ -183,10 +182,6 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 			], __FILE__ ) as $row ) {
 				$page = $describeRedirect( $row );
 				$found[$ns][$row->page_title] = $page;
-				$ids[(int)$row->page_id] = true;
-				if ( ( $page['redirect_status'] ?? null ) === 'valid' ) {
-					$ids[$page['destination']['id']] = true;
-				}
 			}
 		}
 	}
@@ -204,30 +199,38 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 	}
 	unset( $entry );
 	$stored = [];
+	$storedPages = [];
 	if ( $lang !== 'fr' && getenv( 'WD_ILL_MODE' ) === 'resolve' ) {
-		foreach ( array_chunk( array_keys( $ids ), 500 ) as $chunk ) {
-			foreach ( $db->select( 'page_props', [ 'pp_page', 'pp_value' ], [
-				'pp_page' => $chunk, 'pp_propname' => 'wikirouge-langlinks',
-			], __FILE__ ) as $row ) {
-				$links = @unserialize( $row->pp_value, [ 'allowed_classes' => false ] );
-				$clean = [];
-				$valid = is_array( $links );
-				if ( $valid ) {
-					foreach ( $links as $item ) {
-						if ( !is_array( $item ) || !is_string( $item['lang'] ?? null ) ||
-							!is_string( $item['*'] ?? null )
-						) {
-							$valid = false;
-							break;
-						}
-						$clean[] = [ $item['lang'], $item['*'] ];
+		// Use the pp_propname_page index to inventory all properties, not only
+		// currently mapped pages. Otherwise removed translations can never be
+		// detected by the audit of stale persisted data.
+		foreach ( $db->select(
+			[ 'page_props', 'page' ],
+			array_merge( [ 'pp_page', 'pp_value' ], $fields ),
+			[ 'pp_propname' => 'wikirouge-langlinks' ],
+			__FILE__, [], [ 'page' => [ 'LEFT JOIN', 'pp_page = page_id' ] ]
+		) as $row ) {
+			$links = @unserialize( $row->pp_value, [ 'allowed_classes' => false ] );
+			$clean = [];
+			$valid = is_array( $links );
+			if ( $valid ) {
+				foreach ( $links as $item ) {
+					if ( !is_array( $item ) || !is_string( $item['lang'] ?? null ) ||
+						!is_string( $item['*'] ?? null )
+					) {
+						$valid = false;
+						break;
 					}
+					$clean[] = [ $item['lang'], $item['*'] ];
 				}
-				$stored[$row->pp_page] = $valid ? $clean : null;
+			}
+			$stored[$row->pp_page] = $valid ? $clean : null;
+			if ( $row->page_id !== null ) {
+				$storedPages[$row->pp_page] = $describe( $row );
 			}
 		}
 	}
-	$data = [ 'targets' => (object)$parsed, 'stored' => (object)$stored ];
+	$data = [ 'targets' => (object)$parsed, 'stored' => (object)$stored, 'stored_pages' => (object)$storedPages ];
 }
 if ( file_put_contents( getenv( 'WD_ILL_OUTPUT' ), json_encode( $data, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE ) ) === false ) {
 	throw new RuntimeException( 'Could not write audit snapshot' );
@@ -438,6 +441,26 @@ def analyze(central, editions):
 					issue("STORED_EXTRA_PEER", peer=code, actual=sorted(actual[code]), **context)
 				else:
 					check("STORED_OUTSIDE_CLUSTER", peer=code, actual=sorted(actual[code]), **context)
+	# Inspect properties of former peers as well as current groups. The
+	# snapshots are not one cross-wiki transaction, so a disconnected page
+	# is a review item, not an instruction to delete anything.
+	for lang in LANGS[1:]:
+		edition = editions[lang]
+		stored_pages = edition.get("stored_pages", {})
+		for page_id, links in edition["stored"].items():
+			counts["stored_properties_total"] += 1
+			if (lang, int(page_id)) in target_sources:
+				continue
+			page = stored_pages.get(page_id)
+			context = dict(lang=lang, page_id=int(page_id), target=page["key"] if page else None)
+			if page is None:
+				issue("STORED_ORPHAN_PAGE", **context)
+			else:
+				kind = "STORED_ON_REDIRECT" if page["redirect"] else "STORED_WITHOUT_EFFECTIVE_GROUP"
+				check(kind, **context)
+			if links is None:
+				issue("STORED_LINKS_MALFORMED", **context)
+			counts["stored_properties_without_effective_group"] += 1
 	return dict(counts=dict(counts), issues=dict(issues), review=dict(review), observations=dict(observations))
 
 

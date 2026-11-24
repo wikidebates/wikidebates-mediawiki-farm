@@ -27,9 +27,9 @@ def fixture():
 	editions = {lang: {"targets": {}, "stored": {}} for lang in LANGS}
 	editions["fr"]["targets"]["Débat"] = fr
 	editions["en"] = {"targets": {"Debate": en},
-		"stored": {"3": [["fr", "Débat"], ["de", "Debatte"]]}}
+		"stored": {"3": [["fr", "Débat"], ["de", "Debatte"]]}, "stored_pages": {"3": en}}
 	editions["de"] = {"targets": {"Debatte": de},
-		"stored": {"4": [["fr", "Débat"], ["en", "Debate"]]}}
+		"stored": {"4": [["fr", "Débat"], ["en", "Debate"]]}, "stored_pages": {"4": de}}
 	return central, editions
 
 
@@ -158,6 +158,21 @@ class MappingAuditTests(unittest.TestCase):
 		report = analyze(central, editions)
 		self.assertIn("STORED_PEER_UNVERIFIED", report["review"])
 		self.assertNotIn("STORED_PEER_MISMATCH", report["issues"])
+
+
+	def test_properties_of_former_peers_are_detected(self):
+		central, editions = fixture()
+		editions["en"]["stored"]["5"] = [["fr", "Débat"]]
+		editions["en"]["stored"]["6"] = [["fr", "Débat"]]
+		editions["en"]["stored"]["7"] = None
+		editions["en"]["stored_pages"]["5"] = page(5, "Former_peer")
+		editions["en"]["stored_pages"]["6"] = page(6, "Old_redirect", redirect=True)
+		report = analyze(central, editions)
+		self.assertEqual(report["counts"]["stored_properties_without_effective_group"], 3)
+		self.assertEqual(report["review"]["STORED_WITHOUT_EFFECTIVE_GROUP"][0]["target"], "Former_peer")
+		self.assertIn("STORED_ON_REDIRECT", report["review"])
+		self.assertIn("STORED_ORPHAN_PAGE", report["issues"])
+		self.assertIn("STORED_LINKS_MALFORMED", report["issues"])
 
 
 if __name__ == "__main__":
