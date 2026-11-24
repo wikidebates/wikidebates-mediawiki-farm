@@ -1,0 +1,33 @@
+name: WikiSEO modernisation - PHP 8.4 syntax and standalone checks
+
+on:
+	push:
+		branches:
+			- "feature/wikiseo-modernization-*"
+		paths:
+			- "tools/wikiseo-modernization/**"
+			- ".github/workflows/wikiseo-modernization.yml"
+	pull_request:
+		paths:
+			- "tools/wikiseo-modernization/**"
+			- ".github/workflows/wikiseo-modernization.yml"
+	workflow_dispatch:
+
+jobs:
+	php84:
+		runs-on: ubuntu-latest
+		steps:
+			- uses: actions/checkout@v4
+			- uses: shivammathur/setup-php@v2
+			  with:
+				  php-version: '8.4'
+				  coverage: none
+			- name: Syntax validation
+			  shell: bash
+			  run: |
+				  set -euo pipefail
+				  find tools/wikiseo-modernization/overrides -name '*.php' -print0 | xargs -0 -n 1 php -l
+				  php -l tools/wikiseo-modernization/tests/meta_values.php
+				  sh -n tools/wikiseo-modernization/apply.sh
+			- name: Standalone behavior and JSON-LD safety
+			  run: php tools/wikiseo-modernization/tests/meta_values.php
