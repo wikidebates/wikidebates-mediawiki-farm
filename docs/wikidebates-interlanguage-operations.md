@@ -18,9 +18,15 @@ Ces chiffres sont un instantané et non des constantes de nettoyage.
 
 Le relevé a trouvé seulement cinq URL API renseignées parmi les trente
 couples de langues distinctes. Les cinq désignent EN. JobRunRate vaut
-zéro sur les six wikis ; le crontab utilisateur inspecté ne montre pas
-de runner explicite. Vérifier les services et crons système, puis les
-files existantes avant de conclure qu'aucun runner ne fonctionne.
+zéro sur les six wikis. Le relevé suivant confirme deux boucles de
+runJobs déjà actives pour FR et EN (50 secondes, 200 tâches, pause 5 s).
+Aucune boucle DE/ES/IT/PT n'a été observée. La file FR contenait 25 693
+tâches replaceText, 113 tâches CirrusSearch et une revertedTagUpdate.
+Aucune tâche purgeDependentWikis n'a été affichée. Ne pas ajouter de
+runner général concurrent ni arrêter les boucles existantes. Vérifier
+leur gestionnaire et prévoir uniquement les runners ciblés nécessaires.
+Les 30 préfixes distants existent dans les tables SQL avec les URL
+/wiki/$1 attendues ; 25 champs iw_api sont vides.
 
 Conserver la configuration interwiki comme source de vérité. Vérifier
 si InterwikiCache est statique ou si le service lit la table SQL.
@@ -72,7 +78,7 @@ bash tests/ci/runInterlanguageMappingAudit.sh
 
 Le script lit les tables existantes via la maintenance eval de MediaWiki,
 sans réseau public, parsing, purge, suppression ni modification de page.
-Il utilise un verrou flock, un répertoire privé $HOME/interlanguage-audits
+Il utilise un verrou flock, un répertoire privé /home/users/webmaster/files/interlanguage-audits
 et un rapport JSON horodaté accompagné de son journal. En cas d'échec,
 il conserve un journal d'échec mais ne publie pas de rapport incomplet.
 Les rapports sont conservés pour comparaison ; leur archivage ou
