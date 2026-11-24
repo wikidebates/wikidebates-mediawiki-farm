@@ -1,0 +1,38 @@
+{
+	"extensions/ReplaceText": {
+		"repo": "wikimedia/mediawiki-extensions-ReplaceText",
+		"branch": "REL1_43",
+		"fork_pin": "3b73f7c979adb9f30196b27b65bbe7bbe80d06aa",
+		"upstream_base": "9926afcee8548a688a25275b60aa6edaa81559c3"
+	},
+	"extensions/Thanks": {
+		"repo": "wikimedia/mediawiki-extensions-Thanks",
+		"branch": "REL1_43",
+		"fork_pin": "8fd327bdd01d2b07a83a20ebb07f38c76a18230e",
+		"upstream_base": "3e5942636477234f8fce9d545a91b784fd8cea23"
+	},
+	"skins/Vector": {
+		"repo": "wikimedia/mediawiki-skins-Vector",
+		"branch": "REL1_43",
+		"fork_pin": "cc328437a3ea798b7fce24c83bd9287944d461ab",
+		"upstream_base": "31a11ab6c9a9e39539b2a2d220a964ff20ccac4f"
+	},
+	"extensions/ContactPage": {
+		"repo": "wikimedia/mediawiki-extensions-ContactPage",
+		"branch": "REL1_43",
+		"fork_pin": "c345750b65b6532d63f0d7a6f45abef4a53b3c46",
+		"upstream_base": "4ad5c2552ae940f7ca7eda24da33d64383d77d18"
+	},
+	"extensions/HitCounters": {
+		"repo": "wikimedia/mediawiki-extensions-HitCounters",
+		"branch": "master",
+		"fork_pin": "ad7689b65f38988ff4f86e8e49e00dc90dc91b60",
+		"upstream_base": "181108ae9f1da278e9451dd8d3cadab719373a7b"
+	},
+	"skins/MinervaNeue": {
+		"repo": "wikimedia/mediawiki-skins-MinervaNeue",
+		"branch": "REL1_43",
+		"fork_pin": "1c171203b984f73253d84ec81848c6a40fbdd8a1",
+		"upstream_base": "f112a99b194d35a132c3eaa89edc3edd756a5f52"
+	}
+}
