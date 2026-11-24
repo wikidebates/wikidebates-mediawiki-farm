@@ -752,6 +752,8 @@ native_raw=$(sql ill_ci_fr -e "SELECT ll_title FROM langlinks JOIN page ON page_
 move_page en 'Template:Lifecycle native old' 'Template:Lifecycle native new'
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Lifecycle_native_new' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Lifecycle_native_central%'")" = 1
 delete_page en 'Template:Lifecycle native old'
+# Emit the disposable fixture's actual property state on failure.
+sql ill_ci_en -e "SELECT page_title,pp_value FROM page LEFT JOIN page_props ON pp_page=page_id AND pp_propname='wikirouge-langlinks' WHERE page_namespace=10 AND page_title IN ('Lifecycle_native_old','Lifecycle_native_new')"
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Lifecycle_native_new' AND pp_propname='wikirouge-langlinks'")" = 0
 test "$(sql ill_ci_fr -e "SELECT ll_title FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Lifecycle_native_central' AND ll_lang='en'")" = "$native_raw"
 echo 'PASS native links unchanged across dependent move and deletion of its redirect'
