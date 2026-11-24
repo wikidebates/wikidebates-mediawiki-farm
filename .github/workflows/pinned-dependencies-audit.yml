@@ -80,7 +80,7 @@
 					"run": "python3 tests/ci/auditUpstreamChanges.py"
 				},
 				{
-					"uses": "actions/upload-artifact@v4",
+					"uses": "actions/upload-artifact@v7.0.2",
 					"if": "always()",
 					"with": {
 						"name": "pinned-dependency-inventory",
