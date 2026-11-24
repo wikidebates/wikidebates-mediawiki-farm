@@ -474,4 +474,50 @@ test "$(sql ill_ci_fr -e "SELECT ill_title FROM interlanguage_links JOIN page ON
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Reserved_fallback' AND pp_propname='wikirouge-langlinks'")" = 0
 echo 'PASS same-title fallback cannot overwrite an existing supplemental mapping'
 
+# Validate the actual cleanup utility on the disposable central database.
+# Preserve all valid supplemental rows and every native langlink.
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) VALUES (4294967294,'pt','Orphan cleanup fixture')"
+backup="$config/cleanup-backup.json"
+printf '%s\n' '$db = \MediaWiki\MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase(); $rows = []; foreach ($db->select(["interlanguage_links","page"],["ill_from","ill_lang","ill_title"],["(ill_lang = '\''fr'\'' OR page_id IS NULL)"],__METHOD__,[],["page"=>["LEFT JOIN","page_id=ill_from"]]) as $row) { $rows[] = ["ill_from"=>(int)$row->ill_from,"ill_lang"=>$row->ill_lang,"ill_title"=>$row->ill_title]; } file_put_contents(getenv("ILL_CLEANUP_TEST_BACKUP"),json_encode(["database"=>$db->getDomainID(),"entries"=>$rows],JSON_THROW_ON_ERROR));' |
+	ILL_CLEANUP_TEST_BACKUP="$backup" MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php eval
+hash=$(sha256sum "$backup" | cut -d' ' -f1)
+valid_before=$(sql ill_ci_fr -e "SELECT ill_from,ill_lang,ill_title FROM interlanguage_links JOIN page ON page_id=ill_from WHERE ill_lang<>'fr' ORDER BY ill_from,ill_lang")
+native_before=$(sql ill_ci_fr -e "SELECT ll_from,ll_lang,ll_title FROM langlinks ORDER BY ll_from,ll_lang")
+all_before=$(sql ill_ci_fr -e "SELECT ill_from,ill_lang,ill_title FROM interlanguage_links ORDER BY ill_from,ill_lang")
+
+cleanup_fixture() {
+	MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php ./ops/interlanguage/cleanupMappings.php "$@"
+}
+cleanup_fixture --backup="$backup" --sha256="$hash" | tee "$config/cleanup-preview.log"
+grep -Fx 'PREVIEW ONLY' "$config/cleanup-preview.log"
+grep -Fx 'Total: 2' "$config/cleanup-preview.log"
+test "$(sql ill_ci_fr -e "SELECT ill_from,ill_lang,ill_title FROM interlanguage_links ORDER BY ill_from,ill_lang")" = "$all_before"
+
+if cleanup_fixture --backup="$backup" --sha256="$(printf '%064d' 0)" --apply; then
+	echo 'Cleanup unexpectedly accepted an invalid hash' >&2
+	exit 1
+fi
+python3 - "$backup" "$config/changed-backup.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1]) as f:
+	data = json.load(f)
+data["entries"][0]["ill_title"] += " changed"
+with open(sys.argv[2], "w") as f:
+	json.dump(data, f)
+PY
+changed_hash=$(sha256sum "$config/changed-backup.json" | cut -d' ' -f1)
+if cleanup_fixture --backup="$config/changed-backup.json" --sha256="$changed_hash" --apply; then
+	echo 'Cleanup unexpectedly accepted a changed candidate' >&2
+	exit 1
+fi
+test "$(sql ill_ci_fr -e "SELECT ill_from,ill_lang,ill_title FROM interlanguage_links ORDER BY ill_from,ill_lang")" = "$all_before"
+echo 'PASS cleanup rejects invalid hashes and changed snapshots without deleting rows'
+
+cleanup_fixture --backup="$backup" --sha256="$hash" --apply
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links LEFT JOIN page ON page_id=ill_from WHERE ill_lang='fr' OR page_id IS NULL")" = 0
+test "$(sql ill_ci_fr -e "SELECT ill_from,ill_lang,ill_title FROM interlanguage_links JOIN page ON page_id=ill_from WHERE ill_lang<>'fr' ORDER BY ill_from,ill_lang")" = "$valid_before"
+test "$(sql ill_ci_fr -e "SELECT ll_from,ll_lang,ll_title FROM langlinks ORDER BY ll_from,ll_lang")" = "$native_before"
+echo 'PASS transactional cleanup removes only backed-up self and orphan mappings'
+
 echo 'PASS disposable Interlanguage and WikiSEO six-edition integration (FR central)'
