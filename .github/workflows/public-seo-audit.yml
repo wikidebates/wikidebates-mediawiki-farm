@@ -1,0 +1,26 @@
+name: Public SEO indexes and homepages (read-only)
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'tests/ci/publicSeoAudit.py'
+      - 'tests/ci/testPublicSeoAudit.py'
+      - '.github/workflows/public-seo-audit.yml'
+      - 'docs/wikidebates-seo-rollout.md'
+permissions:
+  contents: read
+jobs:
+  public-seo:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            tests/ci/publicSeoAudit.py
+            tests/ci/testPublicSeoAudit.py
+      - name: Offline contract tests
+        run: python3 -m unittest discover -s tests/ci -p 'testPublicSeoAudit.py'
+      - name: Bounded public observations
+        run: python3 tests/ci/publicSeoAudit.py
