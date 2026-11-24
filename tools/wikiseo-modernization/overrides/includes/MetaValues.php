@@ -12,6 +12,7 @@ final class MetaValues {
 	private const SCHEMA_TYPES = [
 		'WebPage', 'AboutPage', 'ContactPage', 'CollectionPage', 'ProfilePage',
 		'ItemPage', 'Article', 'NewsArticle', 'BlogPosting', 'ScholarlyArticle',
+		'QAPage', 'FAQPage', 'DiscussionForumPosting', 'Question', 'Answer', 'Dataset',
 	];
 
 	public static function openGraphType( array $metadata ): string {
