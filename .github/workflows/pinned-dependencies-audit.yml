@@ -73,7 +73,6 @@
 				{
 					"name": "Classify upstream changes and release candidates",
 					"id": "triage",
-					"if": "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'pull_request'",
 					"env": {
 						"GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
 					},
@@ -91,7 +90,7 @@
 		},
 		"notify": {
 			"needs": "gitlinks",
-			"if": "github.repository == 'wikidebates/wikidebates-mediawiki-farm' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && needs.gitlinks.outputs.alerts != '0' && needs.gitlinks.outputs.alerts != ''",
+			"if": "github.repository == 'wikidebates/wikidebates-mediawiki-farm' && github.ref == 'refs/heads/main' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || github.event_name == 'push') && needs.gitlinks.outputs.alerts != '0' && needs.gitlinks.outputs.alerts != ''",
 			"runs-on": "ubuntu-latest",
 			"timeout-minutes": 5,
 			"permissions": {

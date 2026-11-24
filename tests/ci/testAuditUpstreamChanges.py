@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
+import json
+import os
+from pathlib import Path
+import subprocess
+import tempfile
 import unittest
+from unittest.mock import patch
+
+import auditUpstreamChanges as audit
 
 from auditUpstreamChanges import classify, fingerprint, module_rows, unseen_candidates, version, release_candidates, major_rows, security_patch
 
@@ -76,6 +84,60 @@ class TriageTest(unittest.TestCase):
 			{"repo": "wikidebates/custom"}, {"category": "review"}, {"head": "invalid"},
 			{"name": "extensions/../AntiSpoof"}):
 			self.assertIsNone(security_patch({**row, **change}))
+
+	def test_gitlink_proposal_round_trip_and_stale_pin(self):
+		row = {"name": "extensions/AntiSpoof", "kind": "pin", "category": "security",
+			"branch": "REL1_43", "repo": "wikimedia/mediawiki-extensions-AntiSpoof",
+			"base": "a" * 40, "head": "b" * 40, "security_commits": ["c" * 40]}
+		with tempfile.TemporaryDirectory() as folder:
+			root = Path(folder)
+			def git(*args, **kwargs):
+				return subprocess.run(["git", *args], cwd=root, check=True,
+					text=True, capture_output=True, **kwargs)
+			git("init", "-q")
+			git("update-index", "--add", "--cacheinfo", "160000", row["base"], row["name"])
+			before = git("ls-files", "--stage").stdout
+			proposals = root / "proposals"
+			with patch.object(audit, "ROOT", root), patch.object(audit, "PROPOSALS", proposals):
+				manifest = audit.prepare_security_proposals([row])
+				self.assertEqual(manifest[0]["head"], row["head"])
+				self.assertEqual(git("ls-files", "--stage").stdout, before)
+				self.assertEqual(json.loads((proposals / "manifest.json").read_text()), manifest)
+				git("apply", "--cached", str(proposals / manifest[0]["patch"]))
+				self.assertIn(row["head"], git("ls-files", "--stage").stdout)
+				with self.assertRaises(subprocess.CalledProcessError):
+					audit.prepare_security_proposals([row])
+				self.assertIn(row["head"], git("ls-files", "--stage").stdout)
+
+	def test_notification_posts_once_and_only_to_canonical_issue(self):
+		row = {"name": "extensions/Example", "category": "security", "base": "a" * 40,
+			"head": "b" * 40, "fingerprint": "c" * 64}
+		with tempfile.TemporaryDirectory() as folder:
+			report = Path(folder) / "upstream-audit.json"
+			report.write_text(json.dumps({"alerts": [row]}))
+			env = {"GITHUB_REPOSITORY": "wikidebates/wikidebates-mediawiki-farm", "GITHUB_RUN_ID": "123"}
+			with patch.object(audit, "REPORT", report), patch.dict(os.environ, env):
+				with patch.object(audit.subprocess, "check_output", return_value="[[]]") as read:
+					with patch.object(audit.subprocess, "run") as post:
+						audit.notify()
+						read.assert_called_once()
+						post.assert_called_once()
+						args = post.call_args.args[0]
+						self.assertEqual(args[:5], ["gh", "api",
+							"repos/wikidebates/wikidebates-mediawiki-farm/issues/78/comments", "--method", "POST"])
+						body = args[-1]
+						self.assertIn("<!-- upstream-audit:" + row["fingerprint"] + " -->", body)
+						self.assertIn("/actions/runs/123", body)
+				pages = [[{"user": {"login": "github-actions[bot]"}, "body": body}]]
+				with patch.object(audit.subprocess, "check_output", return_value=json.dumps(pages)):
+					with patch.object(audit.subprocess, "run") as post:
+						audit.notify()
+						post.assert_not_called()
+				with patch.dict(os.environ, {"GITHUB_REPOSITORY": "other/farm"}):
+					with patch.object(audit.subprocess, "check_output") as read:
+						with self.assertRaises(SystemExit):
+							audit.notify()
+						read.assert_not_called()
 
 	def test_versions(self):
 		self.assertGreater(version("1.43.12"), version("1.43.9"))
