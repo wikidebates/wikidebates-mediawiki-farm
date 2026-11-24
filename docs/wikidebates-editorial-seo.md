@@ -94,8 +94,33 @@ Ces seize requêtes maximales supplémentaires portent le budget du script
 principal à 76 requêtes avec les autres options et redirections. Les
 observations publiques restent informatives et les tests simulés bloquants.
 
-Le contrôle de l'URL anglaise est sensible à la casse : le message natif
-`wikidebates-debate-seo-image` référence `logo-Wikidebates-Twitter.png`,
-alors que Git suit `logo-wikidebates-twitter.png`. Ne modifier l'URL qu'après
-observation publique de la différence. La sonde native rapporte également
-les URL et attributs sociaux effectivement émis sans suivre ces URL.
+## Dépendances des modèles historiques
+
+```sh
+python3 tests/ci/publicSeoAudit.py --lang fr --lang en --lang es --editorial-inventory --template-inventory
+```
+
+L'inventaire éditorial inclut désormais `Plantilla:Metaetiquetas` et cinq
+pages FR de pédagogie, comparaison, navigation et aide. Les trois modèles
+historiques ont une limite de source de 16 384 caractères ; les autres pages
+gardent leurs extraits habituels. Une source tronquée ne doit pas être traitée
+comme intégrale. L'option `--template-inventory` ajoute une requête fixe
+`list=embeddedin` par modèle FR/EN/ES, sans suivre les continuations et sans
+lire les sources des pages retournées. Une continuation signale un relevé
+incomplet ; le nombre observé n'est pas alors un total. La liste ne prouve
+pas que chaque page appelle directement le modèle ni quels paramètres elle
+lui transmet. Vérifier les appels avant remplacement, y compris les modèles
+intermédiaires et les pages hors du périmètre éditorial. Le budget cumulé
+passe de 76 à 82 requêtes maximum, redirections comprises. Aucun changement
+de configuration, de sous-module ou de contenu wiki.
+
+## Vérification du logo natif anglais
+
+Le relevé public du 24 novembre 2026 (PR #191, job 138721796604) confirme
+HTTP 404 pour `logo-Wikidebates-Twitter.png` sur en.wikidebates.org et
+HTTP 200, image/png, 1000 × 500 pixels, 126043 octets, sans X-Robots-Tag
+restrictif pour `logo-wikidebates-twitter.png`. Les pages natives anglaises
+émettaient la première URL. La sonde native rapporte les URL et attributs
+sociaux effectivement émis sans suivre ces URL. Corriger le catalogue
+natif, puis vérifier les métadonnées après le déploiement et le
+renouvellement coordonné des caches. Aucune modification des protections.

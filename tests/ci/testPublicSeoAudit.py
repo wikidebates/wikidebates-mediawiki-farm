@@ -7,7 +7,9 @@ from unittest.mock import patch
 from urllib.request import Request
 from publicSeoAudit import (
 	ASSET_ROBOTS, EDITORIAL_PREVIEW, EDITORIAL_TAIL, EDITORIAL_TITLES, NAMESPACE_QUERY,
-	SHARED_ASSETS, OneRedirect, allowed_url, audit, audit_editorial, audit_namespaces,
+	SHARED_ASSETS, LEGACY_TEMPLATES, TEMPLATE_SOURCE_LIMIT, TRANSCLUSION_LIMIT,
+	OneRedirect, allowed_url, audit, audit_editorial, audit_namespaces, audit_transclusions,
+	transclusion_inventory, transclusion_query,
 	audit_shared_assets, editorial_inventory, editorial_query, png_dimensions,
 	homepage, main, namespace_inventory, same_origin, sitemap_index, sitemap_policy,
 )
@@ -156,6 +158,49 @@ class SeoAuditTest(unittest.TestCase):
 				self.assertEqual(main(), 0)
 			mock_audit.assert_called_once_with("de", include_home=expected)
 			self.assertTrue(json.loads(stdout.getvalue())["read_only"])
+
+	def test_transclusion_query_is_fixed_and_read_only(self):
+		host = "es.wikidebates.org"
+		url = "https://" + host + "/w/api.php?" + urlencode(transclusion_query("es"))
+		self.assertTrue(allowed_url(url, host, "transclusions"))
+		self.assertFalse(allowed_url(url + "&eicontinue=next", host, "transclusions"))
+		self.assertFalse(allowed_url(url.replace("Metaetiquetas", "Other"), host, "transclusions"))
+		self.assertFalse(allowed_url(url.replace(host, "fr.wikidebates.org"),
+			"fr.wikidebates.org", "transclusions"))
+
+	def test_transclusion_list_distinguishes_partial_and_failed(self):
+		pages = [{"pageid": 4, "ns": 4, "title": "Project:About"}]
+		payload = {"query": {"embeddedin": pages}}
+		result = transclusion_inventory(json.dumps(payload))
+		self.assertEqual(result, {"status": "ok", "count_observed": 1, "pages": pages})
+		payload["continue"] = {"eicontinue": "next"}
+		self.assertEqual(transclusion_inventory(json.dumps(payload))["status"], "incomplete")
+		self.assertEqual(transclusion_inventory(b'{"error":{"code":"blocked"}}')["status"], "api_error")
+		payload["query"]["embeddedin"] = pages * (TRANSCLUSION_LIMIT + 1)
+		with self.assertRaises(ValueError):
+			transclusion_inventory(json.dumps(payload))
+		payload["query"]["embeddedin"] = pages * 2
+		with self.assertRaises(ValueError):
+			transclusion_inventory(json.dumps(payload))
+		self.assertEqual(audit_transclusions("es", lambda *args: (403, "", {}, b""))["status"],
+			"unverified")
+
+	def test_legacy_template_has_larger_bounded_source(self):
+		title = LEGACY_TEMPLATES["es"]
+		source = "x" * (EDITORIAL_PREVIEW + 1)
+		payload = {"query": {"pages": [
+			{"title": title, "pageid": 1, "revisions": [
+				{"revid": 2, "slots": {"main": {"content": source}}}]},
+			{"title": EDITORIAL_TITLES["es"][0], "missing": True},
+		]}}
+		row = editorial_inventory(json.dumps(payload), "es")["pages"][0]
+		self.assertEqual(row["wikitext_preview"], source)
+		self.assertFalse(row["wikitext_truncated"])
+		payload["query"]["pages"][0]["revisions"][0]["slots"]["main"]["content"] = (
+			"x" * (TEMPLATE_SOURCE_LIMIT + 1))
+		row = editorial_inventory(json.dumps(payload), "es")["pages"][0]
+		self.assertEqual(len(row["wikitext_preview"]), TEMPLATE_SOURCE_LIMIT)
+		self.assertTrue(row["wikitext_truncated"])
 
 	def test_editorial_query_is_fixed_and_read_only(self):
 		host = "de.wikidebates.org"

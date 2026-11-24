@@ -36,6 +36,9 @@ EDITORIAL_TITLES = {
 		"Wikidébats:Contribuer", "Wikidébats:Foire aux questions",
 		"Portail:Débats", "Portail:Contributions",
 		"Aide:Créer un débat", "Aide:Utiliser les pages de discussion",
+		"Wikidébats:Exploitation pédagogique",
+		"Wikidébats:Comparatif des encyclopédies de débats existantes",
+		"Portail:Testez-vous", "Aide:Sommaire", "Aide:Tour de présentation",
 		"Modèle:SEO projet", "Modèle:Métabalises",
 	),
 	"en": (
@@ -45,7 +48,7 @@ EDITORIAL_TITLES = {
 		"Help:Creating a debate", "Template:SEO project", "Template:Meta tags",
 	),
 	"de": ("Wikidebatten:Hauptseite",),
-	"es": ("Wikidebates:Página principal",),
+	"es": ("Wikidebates:Página principal", "Plantilla:Metaetiquetas"),
 	"it": ("Wikidibattiti:Pagina principale",),
 	"pt": ("Wikidebates:Página principal",),
 }
@@ -53,6 +56,13 @@ EDITORIAL_PROPERTIES = (
 	"shortdesc", "description", "manualDescription", "schema_type", "og_type",
 	"title", "image", "canonical", "noindex", "page_image", "page_image_free",
 )
+LEGACY_TEMPLATES = {
+	"fr": "Modèle:Métabalises",
+	"en": "Template:Meta tags",
+	"es": "Plantilla:Metaetiquetas",
+}
+TEMPLATE_SOURCE_LIMIT = 16384
+TRANSCLUSION_LIMIT = 100
 EDITORIAL_PREVIEW = 2400
 EDITORIAL_TAIL = 1600
 # Explicit assets actually used in pageprops/heads, plus the FR candidate in Git.
@@ -79,6 +89,14 @@ def editorial_query(lang):
 		"prop": "info|pageprops|revisions", "inprop": "url",
 		"ppprop": "|".join(EDITORIAL_PROPERTIES),
 		"rvprop": "ids|content", "rvslots": "main",
+	}
+
+
+def transclusion_query(lang):
+	return {
+		"action": "query", "format": "json", "formatversion": "2",
+		"list": "embeddedin", "eititle": LEGACY_TEMPLATES[lang],
+		"eilimit": str(TRANSCLUSION_LIMIT),
 	}
 
 
@@ -114,6 +132,12 @@ def allowed_url(url, host, scope):
 			and parts.path == "/w/api.php"
 			and sorted(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
 			== sorted(editorial_query(lang).items()))
+	if scope == "transclusions":
+		lang = host.removesuffix(".wikidebates.org")
+		return (lang in LEGACY_TEMPLATES and host == lang + ".wikidebates.org"
+			and parts.path == "/w/api.php"
+			and sorted(urllib.parse.parse_qsl(parts.query, keep_blank_values=True))
+			== sorted(transclusion_query(lang).items()))
 	if scope == "asset-body":
 		return url in SHARED_ASSETS
 	if scope == "asset-robots":
@@ -152,6 +176,8 @@ def get(url, host, method="GET"):
 	)
 	if method == "GET" and path == "/w/api.php" and allowed_url(url, host, "editorial"):
 		scope = "editorial"
+	elif method == "GET" and path == "/w/api.php" and allowed_url(url, host, "transclusions"):
+		scope = "transclusions"
 	elif method == "GET" and url in SHARED_ASSETS:
 		scope = "asset-body"
 	elif method == "GET" and url in ASSET_ROBOTS:
@@ -319,10 +345,12 @@ def editorial_inventory(body, lang):
 				row["revid"] = revision.get("revid")
 				content = revision.get("slots", {}).get("main", {}).get("content")
 				if isinstance(content, str):
-					row["wikitext_preview"] = content[:EDITORIAL_PREVIEW]
-					row["wikitext_truncated"] = len(content) > EDITORIAL_PREVIEW
+					limit = (TEMPLATE_SOURCE_LIMIT if title == normalized.get(
+						LEGACY_TEMPLATES.get(lang), LEGACY_TEMPLATES.get(lang)) else EDITORIAL_PREVIEW)
+					row["wikitext_preview"] = content[:limit]
+					row["wikitext_truncated"] = len(content) > limit
 					if row["wikitext_truncated"]:
-						row["wikitext_tail"] = content[max(EDITORIAL_PREVIEW, len(content) - EDITORIAL_TAIL):]
+						row["wikitext_tail"] = content[max(limit, len(content) - EDITORIAL_TAIL):]
 			if "wikitext_preview" not in row:
 				row["source_unverified"] = True
 		rows.append(row)
@@ -341,6 +369,40 @@ def audit_editorial(lang, opener=get):
 		return result
 	except (ValueError, TypeError, KeyError, OSError, RecursionError) as exc:
 		return {"status": "unverified", "reason": type(exc).__name__}
+
+
+def transclusion_inventory(body):
+	payload = json.loads(body)
+	if "error" in payload:
+		return {"status": "api_error", "error": payload["error"].get("code")}
+	pages = payload["query"]["embeddedin"]
+	if not isinstance(pages, list) or len(pages) > TRANSCLUSION_LIMIT:
+		raise ValueError("Unexpected transclusion list")
+	seen = set()
+	rows = []
+	for page in pages:
+		pageid, ns, title = page["pageid"], page["ns"], page["title"]
+		if (type(pageid) is not int or pageid <= 0 or pageid in seen
+			or type(ns) is not int or not isinstance(title, str) or not title):
+			raise ValueError("Unexpected or duplicate transclusion")
+		seen.add(pageid)
+		rows.append({"pageid": pageid, "ns": ns, "title": title})
+	return {"status": "incomplete" if "continue" in payload else "ok",
+		"count_observed": len(rows), "pages": rows}
+
+
+def audit_transclusions(lang, opener=get):
+	host = lang + ".wikidebates.org"
+	url = "https://" + host + "/w/api.php?" + urllib.parse.urlencode(transclusion_query(lang))
+	try:
+		status, _, _, body = opener(url, host)
+		result = {"template": LEGACY_TEMPLATES[lang], "http": status, "status": "unverified"}
+		if status == 200:
+			result.update(transclusion_inventory(body))
+		return result
+	except (ValueError, TypeError, KeyError, OSError, RecursionError) as exc:
+		return {"template": LEGACY_TEMPLATES[lang], "status": "unverified",
+			"reason": type(exc).__name__}
 
 
 def png_dimensions(body):
@@ -545,6 +607,8 @@ def main():
 		help="check five explicitly reviewed social PNGs and three robots.txt files")
 	parser.add_argument("--editorial-inventory", action="store_true",
 		help="read fixed institutional page properties and bounded latest wikitext excerpts")
+	parser.add_argument("--template-inventory", action="store_true",
+		help="list at most 100 public transclusions per fixed FR/EN/ES legacy template")
 	parser.add_argument("--namespace-inventory", action="store_true",
 		help="also request the public namespace inventory once per selected wiki")
 	parser.add_argument("--expect-sitemap-policy", action="store_true",
@@ -558,6 +622,8 @@ def main():
 			entry["namespace_inventory"] = audit_namespaces(lang)
 		if args.editorial_inventory:
 			entry["editorial_inventory"] = audit_editorial(lang)
+		if args.template_inventory and lang in LEGACY_TEMPLATES:
+			entry["template_inventory"] = audit_transclusions(lang)
 		entry["sitemap_policy"] = sitemap_policy(lang, entry["sitemap"], entry.get("namespace_inventory"))
 		results.append(entry)
 	print(json.dumps({
@@ -566,6 +632,7 @@ def main():
 			if args.all_homepages else "indexes; FR/EN homepage and one same-host OG image HEAD per homepage"),
 		"namespace_inventory": args.namespace_inventory,
 		"editorial_inventory": args.editorial_inventory,
+		"template_inventory": args.template_inventory,
 		**({"shared_assets": audit_shared_assets()} if args.shared_assets else {}),
 		"results": results,
 	}, indent=2, ensure_ascii=False))
