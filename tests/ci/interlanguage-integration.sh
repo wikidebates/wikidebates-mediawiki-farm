@@ -151,7 +151,36 @@ fi
 echo 'PASS separate database permissions, central account cannot access English DB'
 cat >> "$config/en/LocalSettings.php" <<'PHP'
 $wgNamespaceAliases['ILLalias'] = NS_TEMPLATE;
+$wgNamespaceAliases['ILLproject'] = NS_PROJECT;
 PHP
+# Derive remote title rules once, on each receiving wiki, and convert them
+# into a shared static PHP array. Runtime hreflang does no remote lookup.
+for lang in "${langs[@]}"; do
+	MW_CONFIG_FILE="$config/$lang/LocalSettings.php" php maintenance/run.php ./ops/interlanguage/exportHreflangTitleRules.php > "$config/$lang/title-rules.json"
+done
+php -r '
+	$rules = [];
+	foreach ( array_slice( $argv, 1 ) as $file ) {
+		$data = json_decode( file_get_contents( $file ), true, 512, JSON_THROW_ON_ERROR );
+		$rules[$data["language"]] = $data["titleRules"];
+	}
+	if ( count( $rules ) !== 6 || $rules["en"]["namespaceAliases"]["ILLalias"] !== "Template" ||
+		$rules["en"]["namespaceAliases"]["ILLproject"] !== "Wikidebates" ||
+		$rules["en"]["namespaceCase"][""] !== "first-letter" ) {
+		throw new RuntimeException( "Unexpected exported title rules" );
+	}
+	echo "\n\$illTitleRules = " . var_export( $rules, true ) . ";\n";
+' "$config"/*/title-rules.json > "$config/title-rules.php"
+cat >> "$config/title-rules.php" <<'PHP'
+foreach ( $illTitleRules as $illLang => $illRules ) {
+	$wgWikiSeoInterlanguageArticleUrls[$illLang] = array_replace( $wgWikiSeoInterlanguageArticleUrls[$illLang], $illRules );
+}
+unset( $illTitleRules, $illLang, $illRules );
+PHP
+for lang in "${langs[@]}"; do
+	cat "$config/title-rules.php" >> "$config/$lang/LocalSettings.php"
+done
+echo 'PASS exported six receiver-local namespace and case rules'
 
 edit_page() {
 	local lang=$1 title=$2 content=$3
@@ -183,6 +212,10 @@ test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=p
 test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Legacy_spelling_central' AND ll_lang='en' AND ll_title='  ILLalias : legacy__spelling  '")" = 1
 echo 'PASS backfill and normalized lookup preserve the original raw mapping'
 
+edit_page fr 'Normalized project central' '[[en: ILLproject: normalized__project fixture]]'
+edit_page en 'Project:Normalized project fixture' 'Native peer using a receiving-only alias'
+edit_page fr 'Normalized colon central' '[[en: topic: A__colon fixture]]'
+edit_page en 'Topic: A colon fixture' 'Ordinary colon peer'
 edit_page fr 'French ordinary' 'French body [[en:English ordinary]]'
 edit_page fr 'Debat:Exemple' 'Synthetic debate [[en:Debate:Example]]'
 edit_page fr 'Argument:Exemple' 'Synthetic argument [[en:Argument:Example]]'
@@ -406,6 +439,8 @@ for en, fr in (
 	('Argument:Example', 'Argument:Exemple'),
 	('Institutional information', 'Informations institutionnelles'),
 	('Shared page', 'Shared page'),
+	('Project:Normalized project fixture', 'Normalized project central'),
+	('Topic: A colon fixture', 'Normalized colon central'),
 ):
 	verify_cluster({'en': (18781, en), 'fr': (18782, fr)})
 
