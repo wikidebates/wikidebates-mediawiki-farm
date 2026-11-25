@@ -94,8 +94,7 @@ $wgAPIPropModules['langlinks'] = [
 PHP
 done
 
-# The production supplemental table predates the new dictionary schema.
-# Provision the original table, then create the central auxiliary dictionary.
+# Provision only the historical supplemental table. No schema migration.
 sql ill_ci_fr <<'SQL'
 CREATE TABLE interlanguage_links (
 	ill_from INT UNSIGNED NOT NULL,
@@ -105,7 +104,6 @@ CREATE TABLE interlanguage_links (
 	INDEX ill_lang_title (ill_lang, ill_title)
 ) ENGINE=InnoDB;
 SQL
-sql ill_ci_fr < extensions/Interlanguage/sql/interlanguage_title_keys.sql
 for lang in "${langs[@]}"; do
 	sql "ill_ci_$lang" <<'SQL'
 INSERT INTO interwiki (iw_prefix, iw_url, iw_api, iw_wikiid, iw_local, iw_trans)
@@ -140,7 +138,7 @@ done
 for lang in "${langs[@]}"; do
 	sql -e "CREATE USER 'ill_client_$lang'@'%' IDENTIFIED BY 'ci-only-ill-client'; GRANT ALL ON ill_ci_$lang.* TO 'ill_client_$lang'@'%';"
 	if [[ "$lang" != fr ]]; then
-		sql -e "GRANT SELECT ON ill_ci_fr.* TO 'ill_client_$lang'@'%'; GRANT INSERT, DELETE ON ill_ci_fr.interlanguage_links TO 'ill_client_$lang'@'%'; GRANT INSERT ON ill_ci_fr.interlanguage_title_keys TO 'ill_client_$lang'@'%';"
+		sql -e "GRANT SELECT ON ill_ci_fr.* TO 'ill_client_$lang'@'%'; GRANT INSERT, DELETE ON ill_ci_fr.interlanguage_links TO 'ill_client_$lang'@'%';"
 	fi
 	printf '\n$wgDBuser = "ill_client_%s";\n$wgDBpassword = "ci-only-ill-client";\n' "$lang" >> "$config/$lang/LocalSettings.php"
 done
@@ -187,34 +185,27 @@ edit_page() {
 	printf '%s\n' "$content" | MW_CONFIG_FILE="$config/$lang/LocalSettings.php" \
 		php maintenance/run.php edit --user Admin --summary 'Disposable integration fixture' "$title"
 }
-# Simulate an existing mapping before dictionary maintenance is enabled.
-# Direct SQL here is confined to the disposable fixture and forces a raw
-# spelling that would have been missed by the legacy exact lookup.
+# Simulate a common noncanonical spelling in a historical native mapping.
+# All raw rows must remain unchanged; no dictionary or backfill.
 edit_page fr 'Legacy spelling central' 'Legacy link [[en:Template:Legacy spelling]]'
-sql ill_ci_fr -e "UPDATE langlinks JOIN page ON page_id=ll_from SET ll_title='  ILLalias : legacy__spelling  ' WHERE page_title='Legacy_spelling_central' AND ll_lang='en'"
-build_title_keys() {
-	MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php ./extensions/Interlanguage/maintenance/buildTitleKeys.php "$@"
-}
-if build_title_keys; then
-	echo 'Incomplete dictionary unexpectedly passed its coverage check' >&2
-	exit 1
-fi
-for lang in "${langs[@]}"; do
-	printf '\n$wgInterlanguageMaintainTitleKeys = true;\n' >> "$config/$lang/LocalSettings.php"
-done
-build_title_keys --apply
-build_title_keys
-for lang in en de es it pt; do
-	printf '\n$wgInterlanguageUseTitleKeys = true;\n' >> "$config/$lang/LocalSettings.php"
-done
+sql ill_ci_fr -e "UPDATE langlinks JOIN page ON page_id=ll_from SET ll_title='Template: Legacy_spelling' WHERE page_title='Legacy_spelling_central' AND ll_lang='en'"
 edit_page en 'Template:Legacy spelling' 'Target in the English template namespace'
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Legacy_spelling' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Legacy_spelling_central%'")" = 1
-test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Legacy_spelling_central' AND ll_lang='en' AND ll_title='  ILLalias : legacy__spelling  '")" = 1
-echo 'PASS backfill and normalized lookup preserve the original raw mapping'
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Legacy_spelling_central' AND ll_lang='en' AND ll_title='Template: Legacy_spelling'")" = 1
+echo 'PASS bounded exact variants preserve the original raw mapping without a backfill'
 
-edit_page fr 'Normalized project central' '[[en: ILLproject: normalized__project fixture]]'
-edit_page en 'Project:Normalized project fixture' 'Native peer using a receiving-only alias'
-edit_page fr 'Normalized colon central' '[[en: topic: A__colon fixture]]'
+# Unusual alias/case/spacing forms are deliberately not recovered at parse
+# time. They are still valid titles to the receiving MediaWiki parser.
+edit_page fr 'Unusual spelling central' '[[en:Template:Unusual spelling]]'
+sql ill_ci_fr -e "UPDATE langlinks JOIN page ON page_id=ll_from SET ll_title='  ILLalias : unusual__spelling  ' WHERE page_title='Unusual_spelling_central' AND ll_lang='en'"
+edit_page en 'Template:Unusual spelling' 'Valid target outside the bounded spelling set'
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Unusual_spelling' AND pp_propname='wikirouge-langlinks'")" = 0
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Unusual_spelling_central' AND ll_title='  ILLalias : unusual__spelling  '")" = 1
+echo 'PASS unusual spellings are neither scanned nor silently rewritten'
+
+edit_page fr 'Normalized project central' '[[en: Wikidebates: Normalized project fixture]]'
+edit_page en 'Project:Normalized project fixture' 'Native peer using the local project namespace'
+edit_page fr 'Normalized colon central' '[[en: Topic: A colon fixture]]'
 edit_page en 'Topic: A colon fixture' 'Ordinary colon peer'
 edit_page fr 'French ordinary' 'French body [[en:English ordinary]]'
 edit_page fr 'Debat:Exemple' 'Synthetic debate [[en:Debate:Example]]'
@@ -635,8 +626,8 @@ printf '%s\n' '$GLOBALS["wgInterlanguagePurgeLinkUpdateLanguages"] = [ "en" ]; $
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='English_redirect_target' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Property redirect peer%'")" = 1
 echo 'PASS authorized targeted refresh reaches the final redirect destination'
 
-# Native updates maintain the dictionary; the three user-visible wikicode
-# forms and a receiving-only namespace alias all resolve on the English wiki.
+# The three common wikicode forms resolve through exact indexed variants.
+# An arbitrary receiving-only alias is intentionally an offline audit concern.
 edit_page fr 'Syntax one central' '[[en:Template:Syntax one]]'
 edit_page fr 'Syntax two central' '[[en: Template:Syntax two]]'
 edit_page fr 'Syntax three central' '[[en: Template: Syntax three]]'
@@ -645,16 +636,18 @@ edit_page en 'Template:Syntax one' 'First equivalent form'
 edit_page en 'Template:Syntax two' 'Second equivalent form'
 edit_page en 'Template:Syntax three' 'Third equivalent form'
 edit_page en 'Template:Syntax alias' 'Receiving-only namespace alias'
-for variant in one two three alias; do
+for variant in one two three; do
 	test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Syntax_$variant' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Syntax_${variant}_central%'")" = 1
 done
-echo 'PASS all three native link spellings, underscores, capitalization and a local namespace alias'
-edit_page fr 'Syntax one central' '[[en: ILLalias: Syntax__one]]'
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Syntax_alias' AND pp_propname='wikirouge-langlinks'")" = 0
+echo 'PASS all three common native link spellings; arbitrary namespace alias remains unsupported'
+edit_page fr 'Syntax one central' '[[en: Template: Syntax one]]'
+sql ill_ci_fr -e "UPDATE langlinks JOIN page ON page_id=ll_from SET ll_title='Template:Syntax_one' WHERE page_title='Syntax_one_central' AND ll_lang='en'"
 edit_page en 'Template:Syntax one' 'Same translation after changing raw spelling'
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Syntax_one' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Syntax_one_central%'")" = 1
 
-# Unknown colons belong to the main namespace. A deliberately shared coarse
-# bucket must not conflate the two actual DB keys or a template.
+# Unknown colons belong to the main namespace; exact spelling generation
+# must not conflate distinct DB keys or the template namespace.
 edit_page fr 'Colon tight central' '[[en:Topic:Same tail]]'
 edit_page fr 'Colon spaced central' '[[en:Topic: Same tail]]'
 edit_page fr 'Colon template central' '[[en:Template:Same tail]]'
@@ -667,23 +660,21 @@ test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=p
 echo 'PASS ordinary colons and namespaces remain distinct after candidate discovery'
 
 # Two native sources claim the same identity through different spellings.
-edit_page fr 'Ambiguous syntax first' '[[en:ILLalias: Ambiguous syntax]]'
+edit_page fr 'Ambiguous syntax first' '[[en:Template: Ambiguous syntax]]'
 edit_page fr 'Ambiguous syntax second' '[[en:Template:Ambiguous_syntax]]'
 edit_page en 'Template:Ambiguous syntax' 'No arbitrary central source'
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Ambiguous_syntax' AND pp_propname='wikirouge-langlinks'")" = 0
-echo 'PASS normalized native ambiguity suppresses automatic inference'
+echo 'PASS ambiguity among supported native spellings suppresses automatic inference'
 
 # Historical supplemental rows may point to a differently named local page.
-# Fixture SQL bypasses normal writers, so run the documented backfill first.
+# Direct fixture SQL is immediately visible through the original indexes.
 edit_page fr 'Supplemental reverse central' 'No native English link'
-edit_page fr 'Native preferred central' '[[en:ILLalias: Native preferred fixture]]'
+edit_page fr 'Native preferred central' '[[en:Template: Native preferred fixture]]'
 edit_page fr 'Supplemental competitor central' 'Competing fallback'
 edit_page fr 'Shadowed central' '[[en:Native shadow target]]'
-sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','ILLalias: Supplemental fixture' FROM page WHERE page_title='Supplemental_reverse_central'"
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Template: Supplemental_fixture' FROM page WHERE page_title='Supplemental_reverse_central'"
 sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Template:Native_preferred_fixture' FROM page WHERE page_title='Supplemental_competitor_central'"
 sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Shadowed supplemental' FROM page WHERE page_title='Shadowed_central'"
-build_title_keys --apply
-build_title_keys
 edit_page en 'Template:Supplemental fixture' 'Supplemental peer with another title'
 edit_page en 'Template:Native preferred fixture' 'Native priority'
 edit_page en 'Shadowed supplemental' 'Native link on central source overrides this fallback'
@@ -692,12 +683,13 @@ test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=p
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Shadowed_supplemental' AND pp_propname='wikirouge-langlinks'")" = 0
 echo 'PASS differently named supplemental peers and native priority'
 
-# Old dictionary keys may remain, but can never resurrect a removed mapping.
+# Removing the raw mapping is immediately authoritative.
 edit_page fr 'Syntax one central' 'Removed native translation'
 edit_page en 'Template:Syntax one' 'Local page after removal'
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Syntax_one' AND pp_propname='wikirouge-langlinks'")" = 0
-test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_title_keys WHERE itk_lang='en' AND itk_title LIKE '%Syntax%one%'")" -gt 0
-echo 'PASS historical dictionary keys cannot resurrect deleted mappings'
+echo 'PASS deleted mappings cannot be resurrected'
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='ill_ci_fr' AND table_name='interlanguage_title_keys'")" = 0
+echo 'PASS no auxiliary table, flags, backfill or grants'
 
 # EXPLAIN actual runtime SQL with more realistic central mapping cardinality.
 # These synthetic rows are confined to the disposable MariaDB service.
@@ -711,22 +703,17 @@ SELECT 1000000+seq,'en',CONCAT('Plan native ',seq) FROM seq_1_to_5000;
 INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title)
 SELECT 2000000+seq,'en',CONCAT('Plan supplemental ',seq) FROM seq_1_to_5000;
 SQL
-build_title_keys --apply
-build_title_keys
-for title in 'Template:Legacy spelling' 'Shared page'; do
-	MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php ./ops/interlanguage/explainTitleLookup.php --title="$title" --strict
+for title in 'Template:Legacy spelling' 'Shared page' 'Plan native 2500' 'Plan supplemental 2500' 'Absent plan fixture' 'Template:English redirect target'; do
+	MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php ./ops/interlanguage/explainTitleLookup.php --title="$title" --strict --repeat=50
 done
 sql ill_ci_fr <<'SQL'
 DELETE FROM langlinks WHERE ll_from BETWEEN 1000001 AND 1005000;
 DELETE FROM interlanguage_links WHERE ill_from BETWEEN 2000001 AND 2005000;
 DELETE FROM page WHERE page_id BETWEEN 1000001 AND 1005000 OR page_id BETWEEN 2000001 AND 2005000;
-DELETE FROM interlanguage_title_keys WHERE itk_lang='en' AND (itk_title LIKE 'Plan native %' OR itk_title LIKE 'Plan supplemental %');
 SQL
-echo 'PASS actual central normalized reverse queries use indexes with 10000 synthetic distractors'
-build_title_keys
-echo 'PASS current native and supplemental mapping spellings are indexed'
+echo 'PASS actual central exact queries use indexes with 10000 synthetic distractors'
 
-# Page lifecycle checks use the same restricted accounts as normalized reads.
+# Page lifecycle checks use the same restricted accounts as exact reads.
 # Activate targeted refresh only for these fixtures, after the plain-purge
 # contract tests above. Never change receiving API permissions.
 for lang in fr en de es it pt; do
@@ -777,11 +764,10 @@ done
 echo 'PASS central deletion cleans the deleted ID and refreshes former peers'
 
 # Dependent move without redirect: only a unique effective supplemental
-# row may follow the same local page ID. Its noncanonical raw spelling
-# requires normalized candidate verification, not direct SQL equality.
+# row may follow the same local page ID. Its common noncanonical spelling
+# is included in the bounded exact lookup.
 edit_page fr 'Lifecycle supplemental central' '[[de:Lifecycle German peer]]'
-sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','ILLalias: lifecycle__automatic_old' FROM page WHERE page_title='Lifecycle_supplemental_central'"
-build_title_keys --apply
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Template: Lifecycle_automatic_old' FROM page WHERE page_title='Lifecycle_supplemental_central'"
 edit_page en 'Template:Lifecycle automatic old' 'Automatically linked template'
 edit_page de 'Lifecycle German peer' 'Another native peer'
 run_purges
@@ -806,7 +792,7 @@ echo 'PASS dependent template deletion cleans only supplemental data and notifie
 
 # A native mapping remains editorial data even when the dependent page
 # is moved with a redirect, or subsequently deleted.
-edit_page fr 'Lifecycle native central' '[[en:ILLalias: Lifecycle native old]]'
+edit_page fr 'Lifecycle native central' '[[en:Template: Lifecycle native old]]'
 edit_page en 'Template:Lifecycle native old' 'Native mapped template'
 native_raw=$(sql ill_ci_fr -e "SELECT ll_title FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Lifecycle_native_central' AND ll_lang='en'")
 move_page en 'Template:Lifecycle native old' 'Template:Lifecycle native new'
@@ -821,26 +807,39 @@ echo 'PASS native links unchanged across dependent move and deletion of its redi
 # Two conflicting automatic claims cannot be arbitrarily retargeted.
 edit_page fr 'Lifecycle conflict first' 'First source'
 edit_page fr 'Lifecycle conflict second' 'Second source'
-sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','ILLalias: Lifecycle conflict old' FROM page WHERE page_title IN ('Lifecycle_conflict_first','Lifecycle_conflict_second')"
-build_title_keys --apply
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Template: Lifecycle_conflict_old' FROM page WHERE page_title IN ('Lifecycle_conflict_first','Lifecycle_conflict_second')"
 edit_page en 'Template:Lifecycle conflict old' 'Ambiguous automatic peer'
 move_page en 'Template:Lifecycle conflict old' 'Template:Lifecycle conflict new' --noredirects
-test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title IN ('Lifecycle_conflict_first','Lifecycle_conflict_second') AND ill_lang='en' AND ill_title='ILLalias: Lifecycle conflict old'")" = 2
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title IN ('Lifecycle_conflict_first','Lifecycle_conflict_second') AND ill_lang='en' AND ill_title='Template: Lifecycle_conflict_old'")" = 2
 echo 'PASS ambiguous automatic mappings are not retargeted'
 
-# Direct normalized deletion with a competing literal main-namespace
-# title in the same coarse index bucket must not remove that other row.
+# A direct template deletion must not remove a similarly named literal
+# main-namespace title.
 edit_page fr 'Lifecycle normalized deletion' 'Derived mapping'
 edit_page fr 'Lifecycle colon survives' 'Unrelated mapping'
-sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en',' ILLalias: lifecycle__delete ' FROM page WHERE page_title='Lifecycle_normalized_deletion'"
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Template: Lifecycle_delete' FROM page WHERE page_title='Lifecycle_normalized_deletion'"
 sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Topic: Lifecycle delete' FROM page WHERE page_title='Lifecycle_colon_survives'"
-build_title_keys --apply
 edit_page en 'Template:Lifecycle delete' 'To be removed'
 delete_page en 'Template:Lifecycle delete'
 test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Lifecycle_normalized_deletion' AND ill_lang='en'")" = 0
 test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Lifecycle_colon_survives' AND ill_lang='en'")" = 1
-echo 'PASS normalized deletion verifies namespace and preserves an unrelated colon title'
-build_title_keys
+echo 'PASS bounded exact deletion verifies namespace and preserves an unrelated colon title'
+
+# Run the actual read-only audit across all six restricted DB accounts.
+python3 tests/ci/interlanguageMappingAudit.py --config-dir="$config" --report="$config/bounded-audit.json" --examples=0
+python3 - "$config/bounded-audit.json" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as source:
+	report = json.load(source)
+assert report["counts"]["bounded_exact_lookup_languages"] == 5, report["counts"]
+risks = report["review"]["NATIVE_REVERSE_LOOKUP_RISK"]
+assert any(row["source_title"] == "Unusual_spelling_central" and row["lang"] == "en" for row in risks), risks
+assert not any(row["source_title"] == "Legacy_spelling_central" and row["lang"] == "en" for row in risks), risks
+assert any(row["source_title"] == "Legacy_spelling_central" and row["lang"] == "en"
+	for row in report["observations"]["BOUNDED_VARIANT_SUPPORTED"]), report["observations"]
+print("PASS real six-edition audit identifies unusual spellings without flagging supported ones")
+PY
 
 # Validate the actual cleanup utility on the disposable central database.
 # Preserve all valid supplemental rows and every native langlink.
