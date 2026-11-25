@@ -369,6 +369,13 @@ def analyze(central, editions):
 	counts["title_key_unindexable_spellings"] = len(unindexable)
 	readers = {lang for lang in LANGS[1:] if editions.get(lang, {}).get("title_key_reader", False)}
 	counts["title_key_active_readers"] = len(readers)
+	writers = {lang for lang in LANGS[1:] if editions.get(lang, {}).get("title_key_writer", False)}
+	if dictionary.get("writer_enabled", False):
+		writers.add("fr")
+	counts["title_key_active_writers"] = len(writers)
+	if readers:
+		for lang in sorted(set(LANGS[1:]) - writers):
+			check("NORMALIZED_INDEX_DEPENDENT_WRITER_DISABLED", lang=lang)
 	if readers and not dictionary.get("present", False):
 		issue("NORMALIZED_INDEX_UNAVAILABLE", readers=sorted(readers))
 	if readers and not dictionary.get("writer_enabled", False):
@@ -462,7 +469,19 @@ def analyze(central, editions):
 		if len(sources) > 1:
 			issue("TARGET_SHARED_BY_CENTRAL_PAGES", lang=lang, target_id=target_id, sources=sorted(sources))
 
+	# A whole-page redirect can be a legitimate translation link, but its
+	# URL is not the destination page's canonical URL. Report only effective
+	# mappings here, not native-shadowed supplemental rows. This is a DB
+	# observation, not proof of a live hreflang tag or target indexability.
 	for source, page, expected, chosen in clusters:
+		for code, (raw, mapped) in expected.items():
+			if code == "fr" or not mapped.get("redirect") or mapped.get("redirect_status") != "valid":
+				continue
+			dest = mapped["destination"]
+			check("HREFLANG_EFFECTIVE_REDIRECT", source=source, source_title=page["key"],
+				lang=code, target=raw, redirect_title=mapped["key"], destination=dest["key"],
+				destination_id=dest["id"], shared_target=len(target_sources[code, dest["id"]]) > 1)
+			counts["hreflang_effective_redirect_targets"] += 1
 		for lang, target in chosen.items():
 			context = dict(source=source, source_title=page["key"], lang=lang, target=target["key"])
 			if len(target_sources[lang, target["id"]]) > 1:
@@ -500,10 +519,20 @@ def analyze(central, editions):
 				elif any(not equivalent(p, raw, wanted, wanted_raw) for raw, p in resolved):
 					issue("STORED_PEER_MISMATCH", peer=code, expected=display,
 						actual=sorted(actual[code]), **context)
-				elif actual[code] != {display}:
-					counts["stored_peer_equivalent_namespace_forms"] += 1
-					observe("STORED_PEER_EQUIVALENT", peer=code, expected=display,
-						actual=sorted(actual[code]), **context)
+				else:
+					if actual[code] != {display}:
+						counts["stored_peer_equivalent_namespace_forms"] += 1
+						observe("STORED_PEER_EQUIVALENT", peer=code, expected=display,
+							actual=sorted(actual[code]), **context)
+					# The property is semantically correct, yet may still publish
+					# a noncanonical alias. A normal purge alone cannot fix the
+					# canonical target if the effective mapping still uses it.
+					for raw, resolved_page in resolved:
+						if resolved_page.get("redirect") and resolved_page.get("redirect_status") == "valid":
+							check("HREFLANG_STORED_REDIRECT", peer=code, actual=raw,
+								destination=resolved_page["destination"]["key"],
+								destination_id=resolved_page["destination"]["id"], **context)
+							counts["hreflang_stored_redirect_peers"] += 1
 			for code in set(actual) - set(expected):
 				if code in LANGS:
 					issue("STORED_EXTRA_PEER", peer=code, actual=sorted(actual[code]), **context)

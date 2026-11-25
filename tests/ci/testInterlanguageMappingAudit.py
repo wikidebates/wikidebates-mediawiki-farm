@@ -93,6 +93,42 @@ class MappingAuditTests(unittest.TestCase):
 		self.assertIn("TARGET_REDIRECT_VALID", report["observations"])
 		self.assertIn("REDUNDANT_FALLBACK", report["observations"])
 		self.assertEqual(report["counts"]["effective_existing_resolved_targets"], 2)
+		row, = report["review"]["HREFLANG_EFFECTIVE_REDIRECT"]
+		self.assertEqual((row["target"], row["destination"], row["shared_target"]),
+			("Debate", "Template:Actual", False))
+		self.assertNotIn("HREFLANG_STORED_REDIRECT", report["review"])
+
+	def test_hreflang_shadowed_redirect_is_not_effective(self):
+		central, editions = fixture()
+		editions["en"]["targets"]["Old debate"] = page(8, "Old_debate", redirect=True,
+			redirect_status="valid", destination=editions["en"]["targets"]["Debate"])
+		central["links"].append(["interlanguage_links", 1, "en", "Old debate"])
+		report = analyze(central, editions)
+		self.assertIn("REDUNDANT_FALLBACK", report["observations"])
+		self.assertNotIn("HREFLANG_EFFECTIVE_REDIRECT", report["review"])
+		self.assertNotIn("HREFLANG_STORED_REDIRECT", report["review"])
+
+	def test_stored_redirect_is_equivalent_but_not_canonical(self):
+		central, editions = fixture()
+		editions["en"]["targets"]["Old debate"] = page(8, "Old_debate", redirect=True,
+			redirect_status="valid", destination=editions["en"]["targets"]["Debate"])
+		editions["de"]["stored"]["4"][1][1] = "Old debate"
+		report = analyze(central, editions)
+		self.assertEqual(report["issues"], {})
+		row, = report["review"]["HREFLANG_STORED_REDIRECT"]
+		self.assertEqual((row["lang"], row["peer"], row["actual"], row["destination"]),
+			("de", "en", "Old debate", "Debate"))
+		self.assertNotIn("HREFLANG_EFFECTIVE_REDIRECT", report["review"])
+
+	def test_shared_redirect_destination_is_not_a_unique_group(self):
+		central, editions = fixture()
+		editions["en"]["targets"]["Old debate"] = page(8, "Old_debate", redirect=True,
+			redirect_status="valid", destination=editions["en"]["targets"]["Debate"])
+		central["links"].append(["langlinks", 2, "en", "Old debate"])
+		report = analyze(central, editions)
+		self.assertIn("TARGET_SHARED_BY_CENTRAL_PAGES", report["issues"])
+		row, = report["review"]["HREFLANG_EFFECTIVE_REDIRECT"]
+		self.assertTrue(row["shared_target"])
 
 	def test_shared_file_and_message_are_legitimate_virtual_peers(self):
 		central, editions = fixture()
@@ -202,6 +238,8 @@ class MappingAuditTests(unittest.TestCase):
 		self.assertIn("NORMALIZED_INDEX_UNAVAILABLE", report["issues"])
 		self.assertIn("NORMALIZED_INDEX_CENTRAL_WRITER_DISABLED", report["review"])
 		self.assertIn("NORMALIZED_INDEX_LOCAL_KEY_UNVERIFIED", report["review"])
+		self.assertIn("NORMALIZED_INDEX_DEPENDENT_WRITER_DISABLED", report["review"])
+		self.assertEqual(report["counts"]["title_key_active_writers"], 0)
 
 	def test_legacy_risk_retained_when_reader_is_disabled(self):
 		central, editions = fixture()
