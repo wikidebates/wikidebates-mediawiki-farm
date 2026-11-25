@@ -683,8 +683,31 @@ echo 'PASS deleted mappings cannot be resurrected by cached normalization'
 # cache. The dependent SQL account has only the historical mapping grants.
 edit_page fr 'Memo first central' 'First source'
 edit_page fr 'Memo second central' 'Second source'
-printf '%s\n' '$db = \MediaWiki\MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase("ill_ci_fr"); $a = (int)$db->selectField("page","page_id",["page_namespace"=>0,"page_title"=>"Memo_first_central"],__FILE__); $b = (int)$db->selectField("page","page_id",["page_namespace"=>0,"page_title"=>"Memo_second_central"],__FILE__); $lookup = static fn () => InterlanguageTitleLookup::findCandidates($db,["Memo peer"],"en",false,true); if (!$a || !$b || $lookup() !== []) { exit(1); } $db->insert("interlanguage_links",["ill_from"=>$a,"ill_lang"=>"en","ill_title"=>"  Memo__peer  "],__FILE__); if (array_keys($lookup()) !== [$a] || array_keys($lookup()) !== [$a]) { exit(1); } $db->insert("interlanguage_links",["ill_from"=>$b,"ill_lang"=>"en","ill_title"=>"memo peer"],__FILE__); if (count($lookup() ?? []) !== 2) { exit(1); } $db->delete("interlanguage_links",["ill_from"=>$a,"ill_lang"=>"en"],__FILE__); if (array_keys($lookup()) !== [$b]) { exit(1); } $db->delete("interlanguage_links",["ill_from"=>$b,"ill_lang"=>"en"],__FILE__); if ($lookup() !== []) { exit(1); } echo "PASS live mapping changes with a warm native object cache\n";' |
-	ILL_CI_USE_HASH_CACHE=1 MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php eval
+cat > "$config/memo-mutation.php" <<'PHP'
+<?php
+$db = \MediaWiki\MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase( 'ill_ci_fr' );
+$a = (int)$db->selectField( 'page', 'page_id', [ 'page_namespace' => 0, 'page_title' => 'Memo_first_central' ], __FILE__ );
+$b = (int)$db->selectField( 'page', 'page_id', [ 'page_namespace' => 0, 'page_title' => 'Memo_second_central' ], __FILE__ );
+$lookup = static fn () => InterlanguageTitleLookup::findCandidates( $db, [ 'Memo peer' ], 'en', false, true );
+$check = static function ( bool $ok, string $message ) {
+	if ( !$ok ) {
+		fwrite( STDERR, $message . "\n" );
+		exit( 1 );
+	}
+};
+$check( $a && $b && $lookup() === [], 'Expected no initial claim' );
+$db->insert( 'interlanguage_links', [ 'ill_from' => $a, 'ill_lang' => 'en', 'ill_title' => '  Memo__peer  ' ], __FILE__ );
+$check( array_keys( $lookup() ?? [] ) === [ $a ] && array_keys( $lookup() ?? [] ) === [ $a ], 'Expected first live claim and warm lookup' );
+$db->insert( 'interlanguage_links', [ 'ill_from' => $b, 'ill_lang' => 'en', 'ill_title' => 'memo peer' ], __FILE__ );
+$check( count( $lookup() ?? [] ) === 2, 'Expected immediate ambiguity' );
+$db->delete( 'interlanguage_links', [ 'ill_from' => $a, 'ill_lang' => 'en' ], __FILE__ );
+$check( array_keys( $lookup() ?? [] ) === [ $b ], 'Expected only the surviving claim' );
+$db->delete( 'interlanguage_links', [ 'ill_from' => $b, 'ill_lang' => 'en' ], __FILE__ );
+$check( $lookup() === [], 'Expected no remaining claims' );
+echo "PASS live mapping changes with a warm native object cache\n";
+PHP
+printf '%s\n' 'require getenv( "ILL_CI_MEMO_SCRIPT" );' |
+	ILL_CI_MEMO_SCRIPT="$config/memo-mutation.php" ILL_CI_USE_HASH_CACHE=1 MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php eval
 test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='ill_ci_fr' AND table_name='interlanguage_title_keys'")" = 0
 echo 'PASS no auxiliary table, flags or grants required'
 
