@@ -145,37 +145,7 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 			$pages[$row->page_id] = $describeRedirect( $row );
 		}
 	}
-	$dictionary = [
-		'present' => class_exists( 'InterlanguageTitleKeys' ) && $db->tableExists( 'interlanguage_title_keys', __FILE__ ),
-		'writer_enabled' => (bool)( $GLOBALS['wgInterlanguageMaintainTitleKeys'] ?? false ),
-		'missing' => [],
-		'unindexable' => [],
-	];
-	if ( $dictionary['present'] ) {
-		$spellings = [];
-		foreach ( $links as [ $table, $source, $code, $raw ] ) {
-			$spellings[$code][$raw] = true;
-		}
-		foreach ( $spellings as $code => $raws ) {
-			foreach ( array_chunk( array_map( 'strval', array_keys( $raws ) ), 500 ) as $chunk ) {
-				$foundKeys = [];
-				foreach ( $db->select( 'interlanguage_title_keys', [ 'itk_title', 'itk_key' ], [
-					'itk_lang' => (string)$code, 'itk_title' => $chunk,
-				], __FILE__ ) as $row ) {
-					$foundKeys[$row->itk_title][$row->itk_key] = true;
-				}
-				foreach ( $chunk as $raw ) {
-					$expected = InterlanguageTitleKeys::storedKeys( $raw );
-					if ( !$expected ) {
-						$dictionary['unindexable'][] = [ $code, $raw ];
-					} elseif ( array_diff( $expected, array_keys( $foundKeys[$raw] ?? [] ) ) ) {
-						$dictionary['missing'][] = [ $code, $raw ];
-					}
-				}
-			}
-		}
-	}
-	$data = [ 'links' => $links, 'pages' => (object)$pages, 'title_keys' => $dictionary ];
+	$data = [ 'links' => $links, 'pages' => (object)$pages ];
 } else {
 	$targets = json_decode( file_get_contents( getenv( 'WD_ILL_TARGETS' ) ), true, 512, JSON_THROW_ON_ERROR );
 	$parsed = [];
@@ -223,11 +193,8 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 		$key = $entry['dbkey'];
 		if ( isset( $found[$ns][$key] ) ) {
 			$entry = [ 'status' => 'exists' ] + $found[$ns][$key];
-			if ( class_exists( 'InterlanguageTitleKeys' ) ) {
-				$entry['title_key_compatible'] = (bool)array_intersect(
-					InterlanguageTitleKeys::storedKeys( (string)$raw ),
-					InterlanguageTitleKeys::lookupKeys( $entry['lookup'], $services->getMainConfig()->get( 'OverrideUcfirstCharacters' ) )
-				);
+			if ( method_exists( 'InterlanguageExtension', 'getLookupTitleTexts' ) ) {
+				$entry['lookup_spellings'] = InterlanguageExtension::getLookupTitleTexts( Title::makeTitle( $ns, $key ) );
 			}
 		} elseif ( $ns === NS_FILE || $ns === NS_MEDIAWIKI ) {
 			$entry['status'] = $missingStatus( Title::makeTitle( $ns, $key ) );
@@ -268,9 +235,7 @@ if ( getenv( 'WD_ILL_MODE' ) === 'central' ) {
 	}
 	$data = [
 		'targets' => (object)$parsed, 'stored' => (object)$stored, 'stored_pages' => (object)$storedPages,
-		'title_key_reader' => (bool)( $GLOBALS['wgInterlanguageUseTitleKeys'] ?? false ),
-		'title_key_writer' => (bool)( ( $GLOBALS['wgInterlanguageMaintainTitleKeys'] ?? false ) ||
-			( $GLOBALS['wgInterlanguageUseTitleKeys'] ?? false ) ),
+		'bounded_exact_lookup' => method_exists( 'InterlanguageExtension', 'getLookupTitleTexts' ),
 	];
 }
 if ( file_put_contents( getenv( 'WD_ILL_OUTPUT' ), json_encode( $data, JSON_THROW_ON_ERROR | JSON_INVALID_UTF8_SUBSTITUTE ) ) === false ) {
@@ -278,7 +243,7 @@ if ( file_put_contents( getenv( 'WD_ILL_OUTPUT' ), json_encode( $data, JSON_THRO
 }
 '''
 
-def snapshot(root, directory, lang, mode, targets=()):
+def snapshot(root, directory, lang, mode, targets=(), config_dir=None):
 	code = directory / "snapshot.php"
 	code.write_text(PHP, encoding="utf-8")
 	input_path = directory / "targets.json"
@@ -287,8 +252,13 @@ def snapshot(root, directory, lang, mode, targets=()):
 	output.unlink(missing_ok=True)
 	env = dict(os.environ, WD_ILL_LANG=lang, WD_ILL_MODE=mode,
 		WD_ILL_AUDIT_CODE=str(code), WD_ILL_TARGETS=str(input_path), WD_ILL_OUTPUT=str(output))
+	command = ["php", "maintenance/run.php", "eval"]
+	if config_dir is None:
+		command.append("--wiki=" + lang)
+	else:
+		env["MW_CONFIG_FILE"] = str(config_dir / lang / "LocalSettings.php")
 	result = subprocess.run(
-		["php", "maintenance/run.php", "eval", "--wiki=" + lang],
+		command,
 		input="require getenv( 'WD_ILL_AUDIT_CODE' );\n",
 		text=True, cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
 		check=False,
@@ -362,29 +332,9 @@ def analyze(central, editions):
 			# the same group. Section/interwiki/over-limit chains are not verified.
 			check(kind, **details)
 
-	dictionary = central.get("title_keys", {})
-	missing_keys = {tuple(row) for row in dictionary.get("missing", [])}
-	unindexable = {tuple(row) for row in dictionary.get("unindexable", [])}
-	counts["title_key_missing_spellings"] = len(missing_keys)
-	counts["title_key_unindexable_spellings"] = len(unindexable)
-	readers = {lang for lang in LANGS[1:] if editions.get(lang, {}).get("title_key_reader", False)}
-	counts["title_key_active_readers"] = len(readers)
-	writers = {lang for lang in LANGS[1:] if editions.get(lang, {}).get("title_key_writer", False)}
-	if dictionary.get("writer_enabled", False):
-		writers.add("fr")
-	counts["title_key_active_writers"] = len(writers)
-	if readers:
-		for lang in sorted(set(LANGS[1:]) - writers):
-			check("NORMALIZED_INDEX_DEPENDENT_WRITER_DISABLED", lang=lang)
-	if readers and not dictionary.get("present", False):
-		issue("NORMALIZED_INDEX_UNAVAILABLE", readers=sorted(readers))
-	if readers and not dictionary.get("writer_enabled", False):
-		check("NORMALIZED_INDEX_CENTRAL_WRITER_DISABLED", readers=sorted(readers))
-	if dictionary.get("present", False):
-		for lang, raw in sorted(missing_keys):
-			check("NORMALIZED_INDEX_KEY_MISSING", lang=lang, target=raw, reader_active=lang in readers)
-		for lang, raw in sorted(unindexable):
-			check("NORMALIZED_INDEX_UNINDEXABLE", lang=lang, target=raw, reader_active=lang in readers)
+	counts["bounded_exact_lookup_languages"] = sum(
+		bool(editions.get(lang, {}).get("bounded_exact_lookup")) for lang in LANGS[1:]
+	)
 
 	for table, source, lang, raw in central["links"]:
 		counts[table] += 1
@@ -415,19 +365,17 @@ def analyze(central, editions):
 			classify_redirect("TARGET", target, context)
 		if key(raw) != target["key"] or raw != target["lookup"]:
 			observe("SYNTAX_VARIANT", canonical_title=target["key"], **context)
-		# An activated reader is not by itself proof of coverage. Check the
-		# actual dictionary spelling and its compatibility with the receiver.
-		if lang in readers:
-			compatible = target.get("title_key_compatible")
-			if compatible is not True:
-				check("NORMALIZED_INDEX_LOCAL_KEY_UNVERIFIED", compatible=compatible, **context)
-			elif (dictionary.get("present", False) and (lang, raw) not in missing_keys
-				and (lang, raw) not in unindexable):
-				counts["normalized_index_compatible_mappings"] += 1
-				if raw != target["lookup"]:
-					observe("NORMALIZED_VARIANT_INDEXED", expected_lookup=target["lookup"], **context)
-		elif table == "langlinks" and raw != target["lookup"]:
-			check("NATIVE_REVERSE_LOOKUP_RISK", expected_lookup=target["lookup"], **context)
+		# The actual receiver's bounded lookup set is authoritative for
+		# spelling coverage, not proof of a complete or rendered group.
+		# Older snapshots lack this field; retain their exact-only warning.
+		spellings = target.get("lookup_spellings", [target["lookup"]])
+		if raw not in spellings:
+			kind = "NATIVE_REVERSE_LOOKUP_RISK" if table == "langlinks" else "SUPPLEMENTAL_REVERSE_LOOKUP_RISK"
+			check(kind, expected_lookup=target["lookup"], supported_spellings=spellings, **context)
+		elif "lookup_spellings" in target:
+			counts["bounded_exact_supported_mappings"] += 1
+			if raw != target["lookup"]:
+				observe("BOUNDED_VARIANT_SUPPORTED", expected_lookup=target["lookup"], **context)
 
 	clusters = []
 	for source, langs in groups.items():
@@ -635,6 +583,7 @@ def public_observation():
 def main():
 	parser = argparse.ArgumentParser(description=__doc__)
 	parser.add_argument("--root", type=Path, default=Path.cwd())
+	parser.add_argument("--config-dir", type=Path, help="Optional directory containing one LocalSettings.php per edition (disposable integration or separate installations)")
 	parser.add_argument("--public", action="store_true", help="Only a bounded public API observation, no database access")
 	parser.add_argument("--examples", type=int, default=5)
 	parser.add_argument("--report", type=Path, help="Optional complete JSON report; not printed in full by default")
@@ -644,13 +593,16 @@ def main():
 	root = args.root.resolve()
 	if not (root / "maintenance/run.php").is_file():
 		parser.error("Run from the farm MediaWiki installation root, or set --root")
+	config_dir = args.config_dir.resolve() if args.config_dir else None
+	if config_dir is not None and not all((config_dir / lang / "LocalSettings.php").is_file() for lang in LANGS):
+		parser.error("--config-dir must contain a LocalSettings.php for all six editions")
 	with tempfile.TemporaryDirectory(prefix="ill-audit-") as tmp:
 		directory = Path(tmp)
-		central = snapshot(root, directory, "fr", "central")
+		central = snapshot(root, directory, "fr", "central", config_dir=config_dir)
 		editions = {}
 		for lang in LANGS[1:]:
 			raws = [row[3] for row in central["links"] if row[2] == lang]
-			editions[lang] = snapshot(root, directory, lang, "resolve", raws)
+			editions[lang] = snapshot(root, directory, lang, "resolve", raws, config_dir=config_dir)
 			print(f"SNAPSHOT {lang}: {len(set(raws))} distinct mapped titles", flush=True)
 		# Resolve the actual persisted peer strings on their own editions as
 		# well. This includes aliases not present in the central link tables.
@@ -665,7 +617,7 @@ def main():
 		for lang in LANGS:
 			unresolved = extra[lang] - set(editions[lang]["targets"])
 			if unresolved:
-				identities = snapshot(root, directory, lang, "identity", unresolved)
+				identities = snapshot(root, directory, lang, "identity", unresolved, config_dir=config_dir)
 				editions[lang]["targets"].update(identities["targets"])
 				print(f"IDENTITIES {lang}: {len(unresolved)} additional persisted titles", flush=True)
 		report = analyze(central, editions)

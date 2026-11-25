@@ -23,8 +23,8 @@ de purge, les quatre timers dédiés et les deux workers permanents, ainsi
 que l'activation des notifications de fallback. Le nettoyage historique
 a déjà été exécuté. Ne pas rejouer ces opérations par défaut.
 
-Pour la normalisation des correspondances, la recette des déplacements
-et suppressions, l'activation du nouvel index et la génération des règles
+Pour les recherches ponctuelles, la recette des déplacements
+et suppressions, les mesures comparables et la génération des règles
 hreflang, suivre [la procédure de déploiement dédiée](interlanguage-normalized-rollout.md).
 Ne pas reconstruire globalement les caches pendant cette activation.
 
@@ -231,3 +231,6 @@ crontab lui-même. Le code de sortie zéro signifie que l'audit a abouti,
 pas que les anomalies sont absentes. Comparer les rapports et examiner
 les écarts ; ne pas transformer les observations en nettoyage automatique.
 L'audit de base ne certifie pas le HTML public ni l'indexabilité des cibles.
+Il compare les graphies brutes au petit ensemble de recherches exactes
+réellement utilisé par le wiki destinataire. Les anomalies inhabituelles
+se corrigent à la source, et non par un parcours coûteux pendant le rendu.

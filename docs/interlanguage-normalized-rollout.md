@@ -1,19 +1,22 @@
-# Activation progressive de la normalisation Interlanguage
+# Déploiement des recherches ponctuelles Interlanguage
 
 ## Périmètre et décisions
 
 Cette procédure concerne les six éditions FR (centrale), EN, DE, ES, IT, PT,
-MediaWiki 1.43.12 et PHP 8.4. Elle s'applique après validation des PR
-Interlanguage #10 et #11, WikiSEO #17 et ferme #199 à #203, et choix du
-commit exact du déploiement. Ne pas redéployer une branche intermédiaire.
-La version du code ne constitue pas une preuve de l'activation du nouvel
-index ou de la mise à jour des propriétés persistantes.
+MediaWiki 1.43.12 et PHP 8.4. Elle s'applique après validation et intégration
+de la version hybride (Interlanguage #15). Ne pas déployer une branche
+intermédiaire. Les deux architectures expérimentales de normalisation
+exhaustive sont abandonnées.
 
-La migration ne touche pas au wikicode, aux liens natifs, aux correspondances
-historiques ni aux caches globaux. La table auxiliaire contient uniquement
-des clés de découverte de titres bruts. Le wiki destinataire décide de
-l'identité exacte d'un candidat à l'aide du parseur de titres MediaWiki.
-Une ambiguïté ou une recherche incomplète n'autorise pas un nouveau lien.
+Les tables langlinks et interlanguage_links restent les seules sources de
+vérité. Les recherches exactes utilisent leurs index de langue/titre, avec
+un ensemble borné de graphies usuelles vérifiées par le parseur local.
+Aucune tranche linguistique n'est lue. Les variantes inhabituelles et les
+conflits qui échappent à cet ensemble relèvent de l'audit hors rendu.
+Une ambiguïté détectée ou une collecte tronquée n'autorise pas une déduction.
+Il n'existe plus de nouvelle table, de backfill ou de paramètre de
+normalisation. Le déploiement ne touche pas au wikicode, aux correspondances
+historiques ni aux caches globaux.
 
 Les redirections distantes restent une question séparée. WikiSEO sait
 normaliser les titres et préfixes connus mais ne doit pas inventer leur
@@ -55,112 +58,66 @@ d'accéder aux bases des autres éditions.
 
 Déployer avec la procédure ordinaire de fast-forward et de mise à jour des
 sous-modules à leurs commits épinglés (pas de --remote). Ne pas lancer
-un update global MediaWiki uniquement pour cette nouvelle table.
+un update global MediaWiki : aucune migration du schéma n'est nécessaire.
 
-## 2. Schéma auxiliaire central
+## 2. Vérifier le schéma existant
 
-À ce stade, après le chargement des extensions, les paramètres
-InterlanguageMaintainTitleKeys et InterlanguageUseTitleKeys doivent rester
-désactivés. Sur FR seulement, vérifier que la table n'existe pas déjà,
-et vérifier les index existants sur langlinks et interlanguage_links.
+Les index (ll_lang,ll_title) et (ill_lang,ill_title), ainsi que les clés
+primaires sur identifiant source/langue, suffisent. Leurs noms peuvent
+différer de ceux de la CI. Ne pas créer de table ou ajouter de droits SQL.
 
-```bash
-printf '%s\n' '$db = \MediaWiki\MediaWikiServices::getInstance()->getConnectionProvider()->getPrimaryDatabase(); echo $db->getDomainID(), "\n"; foreach (["langlinks","interlanguage_links","interlanguage_title_keys"] as $table) { if ($db->tableExists($table,__FILE__)) { foreach ($db->query("SHOW INDEX FROM ".$db->tableName($table),__FILE__) as $row) { echo $table," ",$row->Key_name," ",$row->Seq_in_index," ",$row->Column_name,"\n"; } } else { echo $table,": absent\n"; } }' |
-	/usr/bin/php8.4 maintenance/run.php eval --wiki=fr
-```
+La table interlanguage_title_keys éventuellement créée pendant l'essai
+précédent est ignorée. Ne pas la remplir. Avant toute suppression, vérifier
+que les six processus et maintenances utilisent le nouveau code, que les
+anciens paramètres restent désactivés ou retirés, que la table est vide ou
+sauvegardée hors du webroot et que le retour arrière n'en dépend pas.
+La suppression SQL est une opération séparée, explicitement approuvée ;
+elle ne doit jamais toucher les tables des correspondances.
 
-Vérifier que le domaine est bien celui de FR. Les recherches de liens
-nécessitent les index sur (ll_lang,ll_title) et (ill_lang,ill_title), en plus
-des clés primaires sur identifiant source/langue. Si un index est absent,
-faire examiner le schéma par l'administrateur SQL ; ne pas lancer un ALTER
-TABLE à l'aveugle.
+## 3. Configuration
 
-Si et seulement si la table auxiliaire est absente, créer exclusivement
-cette table sur FR avec la maintenance SQL de MediaWiki qui interprète les
-variables de schéma (préfixe et options de table) :
+Aucune nouvelle option de normalisation. Retirer les deux paramètres
+InterlanguageMaintainTitleKeys et InterlanguageUseTitleKeys s'ils ont été
+ajoutés lors de l'essai. Conserver les paramètres API, notifications et
+purges existants. L'actualisation ciblée secondaire garde son opt-in
+actuel tant que les droits réels et le coût des tâches de production ne
+sont pas vérifiés. Ne pas introduire de nouveau paramètre.
 
-```bash
-/usr/bin/php8.4 maintenance/run.php sql --wiki=fr \
-	extensions/Interlanguage/sql/interlanguage_title_keys.sql
-```
+Vérifier que PHP-FPM et les workers permanents chargent le nouveau code
+selon la procédure du serveur. Ne pas vider les files de tâches.
 
-Vérifier les colonnes, InnoDB et les index de la table créée. Si elle existe
-déjà, contrôler sa conformité au fichier SQL ; ne pas la supprimer ni
-la recréer. Le DBA doit vérifier les privilèges des comptes effectifs
-FR et des cinq dépendants sur cette table centrale : SELECT et INSERT,
-sans nouveau droit UPDATE ou DELETE, sans élargissement des droits sur
-les autres bases. Conserver le résultat de cette vérification en privé.
-La création de la table peut nécessiter un compte d'administration SQL.
+## 4. Plans et temps de recherche
 
-## 3. Activer les écrivains, pas encore les lecteurs
-
-Après le chargeur Interlanguage, configurer sur les six wikis :
-
-```php
-$wgInterlanguageMaintainTitleKeys = true;
-```
-
-Sur les cinq dépendants, conserver pour l'instant :
-
-```php
-$wgInterlanguageUseTitleKeys = false;
-```
-
-Vérifier que les processus PHP-FPM et les workers CLI utilisent cette
-configuration (redémarrage/rechargement selon la procédure du serveur).
-Ne pas modifier les réglages existants des API, des notifications ou de
-purge pour réaliser cette migration. Ne pas activer un lecteur avant que
-tous les écrivains maintiennent les nouvelles clés.
-
-Puis, sur FR seulement :
-
-```bash
-/usr/bin/php8.4 maintenance/run.php \
-	./extensions/Interlanguage/maintenance/buildTitleKeys.php --wiki=fr --apply
-
-/usr/bin/php8.4 maintenance/run.php \
-	./extensions/Interlanguage/maintenance/buildTitleKeys.php --wiki=fr
-```
-
-La première commande ajoute uniquement les clés auxiliaires manquantes ;
-la seconde est une vérification en lecture seule. Exiger Missing auxiliary
-keys: 0. Examiner séparément Unindexable spellings : des titres invalides
-peuvent exister et ne doivent pas être artificiellement normalisés.
-L'audit utilise les tables réelles et le parseur de chaque édition, sans
-requête HTTP publique. Relancer l'audit privé avant d'activer les lecteurs.
-
-## 4. Activer et vérifier les lecteurs progressivement
-
-Commencer par EN, puis DE, ES, IT, PT une fois les contrôles réussis.
-Sur chaque wiki dépendant, après le chargeur :
-
-```php
-$wgInterlanguageUseTitleKeys = true;
-```
-
-Après EN, exécuter sur des titres locaux existants et traduits connus,
-par exemple :
+Sur EN puis les autres dépendants, choisir des titres existants, des
+correspondances supplémentaires, des titres sans traduction et des cibles
+de redirections. Par exemple :
 
 ```bash
 /usr/bin/php8.4 maintenance/run.php \
 	./ops/interlanguage/explainTitleLookup.php --wiki=en \
-	--title='Wikidebates:Main Page'
+	--title='Wikidebates:Main Page' --repeat=50
 ```
 
-Vérifier le plan : itk_lookup, ll_lang, ill_lang_title, rd_ns_title et
-les clés primaires doivent être disponibles. --strict refuse un balayage
-central complet ou une découverte incomplète ; le choix de plan dépend
-des statistiques et de la cardinalité réelles. Le test CI sur MariaDB
-10.11 et 10 000 lignes supplémentaires n'est pas une mesure de la
-production. Un plan inattendu doit être étudié avant de poursuivre, sans
-imposer aveuglément un FORCE INDEX. La commande ne lance ni purge ni rendu.
+Examiner les plans SQL générés réellement (index langue/titre,
+rd_ns_title, clés primaires). --strict refuse les balayages centraux
+complets ou les recherches incomplètes. Un plan inattendu doit être
+étudié sans imposer un FORCE INDEX à l'aveugle.
 
-Contrôler le rapport après chaque étape (les autres lecteurs peuvent
-encore être désactivés). Vérifier les compteurs title_key_active_writers,
-title_key_active_readers, title_key_missing_spellings et les alertes
-NORMALIZED_INDEX_*. À la fin, attendre six écrivains et cinq lecteurs ;
-ne pas confondre les écarts de propriétés historiques ou les titres
-virtuels avec des échecs du nouvel index.
+Comparer les temps médians historiques et bornés sur les mêmes titres
+et la même base. Le diagnostic distingue les deux recherches centrales
+ponctuelles de la découverte complète (incluant la recherche des alias
+locaux et, seulement en cas d'échec natif, la recherche supplémentaire).
+Le comparateur historique peut ne pas retrouver une graphie variante :
+c'est un comparateur de coût. Les temps CI ne mesurent pas la production.
+Ce diagnostic ne purge, ne rend et ne modifie aucune page.
+
+L'audit indique bounded_exact_lookup_languages (cinq dépendants après
+déploiement), les variantes supportées et les risques
+NATIVE_REVERSE_LOOKUP_RISK / SUPPLEMENTAL_REVERSE_LOOKUP_RISK pour les
+graphies non découvertes. Examiner ces risques et corriger les liens
+natifs dans le wikicode ; ne pas réécrire automatiquement langlinks.
+Ne pas confondre une variante syntaxique valide avec une propriété
+persistante incorrecte ou une ambiguïté effective.
 
 ## 5. Exporter les règles hreflang réelles
 
@@ -212,8 +169,6 @@ pas les redirections ni l'indexabilité des cibles.
 
 ```bash
 bash tests/ci/runInterlanguageMappingAudit.sh
-/usr/bin/php8.4 maintenance/run.php \
-	./extensions/Interlanguage/maintenance/buildTitleKeys.php --wiki=fr
 python3 tests/ci/interlanguageMappingAudit.py --public
 ```
 
@@ -234,16 +189,12 @@ d'exploitation séparé.
 
 ## Retour arrière
 
-En cas d'échec, désactiver immédiatement les lecteurs normalisés des
-wikis concernés (InterlanguageUseTitleKeys = false), conserver les
-écrivains uniquement si la table et leurs droits sont corrects, et
-recharger la configuration des processus selon la procédure habituelle.
-Si la table ou les droits sont en cause, désactiver tous les lecteurs
-avant les écrivains. La lecture exacte historique reste disponible.
-Les clés auxiliaires devenues inutiles ne sont pas des correspondances et
-peuvent rester en place ; aucune suppression SQL n'est nécessaire.
-Avant toute reprise, réactiver les écrivains, refaire le backfill et
-vérifier la couverture.
+En cas d'échec fonctionnel ou de performance, restaurer les versions et
+configurations sauvegardées selon la procédure de release. Il n'existe
+plus de commutateur de normalisation. Ne pas supprimer la table
+auxiliaire avant la recette. Un retour au code antérieur doit conserver
+les anciens lecteurs et écrivains désactivés tant que la table n'existe
+pas ou n'est pas alimentée.
 
 En cas de problème de hreflang, restaurer les anciennes routes sauvegardées
 sans réintroduire de balises manuelles concurrentes. Une version logicielle
