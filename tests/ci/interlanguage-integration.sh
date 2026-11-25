@@ -666,6 +666,122 @@ echo 'PASS historical dictionary keys cannot resurrect deleted mappings'
 build_title_keys
 echo 'PASS current native and supplemental mapping spellings are indexed'
 
+# Page lifecycle checks use the same restricted accounts as normalized reads.
+# Activate targeted refresh only for these fixtures, after the plain-purge
+# contract tests above. Never change receiving API permissions.
+for lang in fr en de es it pt; do
+	printf '\n$wgInterlanguagePurgeLinkUpdateLanguages = [ "fr", "en", "de", "es", "it", "pt" ];\n' >> "$config/$lang/LocalSettings.php"
+done
+move_page() {
+	local lang=$1 old=$2 new=$3
+	shift 3
+	printf '%s|%s\n' "$old" "$new" |
+		MW_CONFIG_FILE="$config/$lang/LocalSettings.php" php maintenance/run.php moveBatch --u Admin "$@"
+}
+delete_page() {
+	local lang=$1 title=$2
+	printf '%s\n' "$title" |
+		MW_CONFIG_FILE="$config/$lang/LocalSettings.php" php maintenance/run.php deleteBatch --u Admin
+}
+run_dependent_purges() {
+	MW_CONFIG_FILE="$config/$1/LocalSettings.php" php maintenance/run.php runJobs --type=purgeDependentWikis --maxjobs=100
+}
+
+# Central move: page ID is stable, including a supplemental DE peer.
+edit_page fr 'Lifecycle central old' '[[en:Lifecycle English peer]]'
+edit_page en 'Lifecycle English peer' 'Native peer'
+edit_page de 'Lifecycle central old' 'Automatic same-title peer'
+run_purges
+run_dependent_purges de
+central_id=$(sql ill_ci_fr -e "SELECT page_id FROM page WHERE page_namespace=0 AND page_title='Lifecycle_central_old'")
+test -n "$central_id"
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links WHERE ill_from=$central_id AND ill_lang='de'")" = 1
+move_page fr 'Lifecycle central old' 'Template:Lifecycle central new'
+test "$(sql ill_ci_fr -e "SELECT page_id FROM page WHERE page_namespace=10 AND page_title='Lifecycle_central_new'")" = "$central_id"
+run_purges
+for lang in en de; do
+	test "$(sql "ill_ci_$lang" -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title IN ('Lifecycle_English_peer','Lifecycle_central_old') AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Template:Lifecycle_central_new%'")" = 1
+done
+echo 'PASS central move preserves mapping ID and refreshes native and supplemental peers'
+
+# Central deletion: core's link-deletion update removes native data and the
+# extension deletes only the supplemental rows for the actual deleted ID.
+delete_page fr 'Template:Lifecycle central new'
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM page WHERE page_id=$central_id")" = 0
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links WHERE ill_from=$central_id")" = 0
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM langlinks WHERE ll_from=$central_id")" = 0
+run_purges
+for lang in en de; do
+	test "$(sql "ill_ci_$lang" -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title IN ('Lifecycle_English_peer','Lifecycle_central_old') AND pp_propname='wikirouge-langlinks'")" = 0
+done
+echo 'PASS central deletion cleans the deleted ID and refreshes former peers'
+
+# Dependent move without redirect: only a unique effective supplemental
+# row may follow the same local page ID. Its noncanonical raw spelling
+# requires normalized candidate verification, not direct SQL equality.
+edit_page fr 'Lifecycle supplemental central' '[[de:Lifecycle German peer]]'
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','ILLalias: lifecycle__automatic_old' FROM page WHERE page_title='Lifecycle_supplemental_central'"
+build_title_keys --apply
+edit_page en 'Template:Lifecycle automatic old' 'Automatically linked template'
+edit_page de 'Lifecycle German peer' 'Another native peer'
+run_purges
+run_dependent_purges en
+old_id=$(sql ill_ci_en -e "SELECT page_id FROM page WHERE page_namespace=10 AND page_title='Lifecycle_automatic_old'")
+move_page en 'Template:Lifecycle automatic old' 'Template:Lifecycle automatic new' --noredirects
+test "$(sql ill_ci_en -e "SELECT page_id FROM page WHERE page_namespace=10 AND page_title='Lifecycle_automatic_new'")" = "$old_id"
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page WHERE page_namespace=10 AND page_title='Lifecycle_automatic_old'")" = 0
+test "$(sql ill_ci_fr -e "SELECT ill_title FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Lifecycle_supplemental_central' AND ill_lang='en'")" = 'Template:Lifecycle automatic new'
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_id=$old_id AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Lifecycle_supplemental_central%'")" = 1
+run_dependent_purges en
+test "$(sql ill_ci_de -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Lifecycle_German_peer' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Template:Lifecycle automatic new%'")" = 1
+echo 'PASS unique supplemental mapping follows dependent page ID without UPDATE permission'
+
+# Delete a non-content-namespace peer and ensure native DE is preserved.
+delete_page en 'Template:Lifecycle automatic new'
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Lifecycle_supplemental_central' AND ill_lang='en'")" = 0
+run_dependent_purges en
+test "$(sql ill_ci_de -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Lifecycle_German_peer' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Lifecycle_supplemental_central%' AND pp_value NOT LIKE '%Lifecycle automatic new%'")" = 1
+test "$(sql ill_ci_fr -e "SELECT ll_title FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Lifecycle_supplemental_central' AND ll_lang='de'")" = 'Lifecycle German peer'
+echo 'PASS dependent template deletion cleans only supplemental data and notifies peers'
+
+# A native mapping remains editorial data even when the dependent page
+# is moved with a redirect, or subsequently deleted.
+edit_page fr 'Lifecycle native central' '[[en:ILLalias: Lifecycle native old]]'
+edit_page en 'Template:Lifecycle native old' 'Native mapped template'
+native_raw=$(sql ill_ci_fr -e "SELECT ll_title FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Lifecycle_native_central' AND ll_lang='en'")
+move_page en 'Template:Lifecycle native old' 'Template:Lifecycle native new'
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Lifecycle_native_new' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Lifecycle_native_central%'")" = 1
+delete_page en 'Template:Lifecycle native old'
+# Emit the disposable fixture's actual property state on failure.
+sql ill_ci_en -e "SELECT page_title,pp_value FROM page LEFT JOIN page_props ON pp_page=page_id AND pp_propname='wikirouge-langlinks' WHERE page_namespace=10 AND page_title IN ('Lifecycle_native_old','Lifecycle_native_new')"
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Lifecycle_native_new' AND pp_propname='wikirouge-langlinks'")" = 0
+test "$(sql ill_ci_fr -e "SELECT ll_title FROM langlinks JOIN page ON page_id=ll_from WHERE page_title='Lifecycle_native_central' AND ll_lang='en'")" = "$native_raw"
+echo 'PASS native links unchanged across dependent move and deletion of its redirect'
+
+# Two conflicting automatic claims cannot be arbitrarily retargeted.
+edit_page fr 'Lifecycle conflict first' 'First source'
+edit_page fr 'Lifecycle conflict second' 'Second source'
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','ILLalias: Lifecycle conflict old' FROM page WHERE page_title IN ('Lifecycle_conflict_first','Lifecycle_conflict_second')"
+build_title_keys --apply
+edit_page en 'Template:Lifecycle conflict old' 'Ambiguous automatic peer'
+move_page en 'Template:Lifecycle conflict old' 'Template:Lifecycle conflict new' --noredirects
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title IN ('Lifecycle_conflict_first','Lifecycle_conflict_second') AND ill_lang='en' AND ill_title='ILLalias: Lifecycle conflict old'")" = 2
+echo 'PASS ambiguous automatic mappings are not retargeted'
+
+# Direct normalized deletion with a competing literal main-namespace
+# title in the same coarse index bucket must not remove that other row.
+edit_page fr 'Lifecycle normalized deletion' 'Derived mapping'
+edit_page fr 'Lifecycle colon survives' 'Unrelated mapping'
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en',' ILLalias: lifecycle__delete ' FROM page WHERE page_title='Lifecycle_normalized_deletion'"
+sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) SELECT page_id,'en','Topic: Lifecycle delete' FROM page WHERE page_title='Lifecycle_colon_survives'"
+build_title_keys --apply
+edit_page en 'Template:Lifecycle delete' 'To be removed'
+delete_page en 'Template:Lifecycle delete'
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Lifecycle_normalized_deletion' AND ill_lang='en'")" = 0
+test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_links JOIN page ON page_id=ill_from WHERE page_title='Lifecycle_colon_survives' AND ill_lang='en'")" = 1
+echo 'PASS normalized deletion verifies namespace and preserves an unrelated colon title'
+build_title_keys
+
 # Validate the actual cleanup utility on the disposable central database.
 # Preserve all valid supplemental rows and every native langlink.
 sql ill_ci_fr -e "INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title) VALUES (4294967294,'pt','Orphan cleanup fixture')"
