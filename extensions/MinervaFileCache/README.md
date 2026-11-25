@@ -227,6 +227,13 @@ et conserve les contrôles HTTP, de confidentialité, de réponse et de débit
 existants. Les options de reprise et de filtrage par catégorie/espace de noms
 ne sont pas cumulables avec `--page-id`.
 
+En mode ciblé hors prévisualisation, une redirection réellement constatée
+sur PRIMARY donne `Completed 1 pages; {"BYPASS":1,"bypassReasons":{"redirect":1}}`
+sans requête HTTP ni publication de cache. Le coordinateur reconnaît déjà
+cette exclusion et conserve ses contrôles de révision et de génération avant
+l'acquittement. Une page absente reste `Completed 0 pages` (non acquittable).
+Les parcours globaux et les prévisualisations excluent toujours les redirections.
+
 Pour une préparation quotidienne sélective, ajouter `--skip-valid` à un
 appel `--page-id`. La commande compare l'identité de la page sur la base
 primaire et la **clé exacte** de la variante mobile (URL relative, protocole,

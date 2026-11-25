@@ -161,7 +161,10 @@ class PrewarmMinervaFileCache extends Maintenance {
 				$this->output('Selected ' . count($categories) . " categories.\n");
 			}
 			while (true) {
-				$conditions = ['page_is_redirect' => 0];
+				// A targeted live preparation must distinguish a real redirect on
+				// PRIMARY from a missing page. Bulk scans and previews still exclude
+				// redirects. Do not request the redirect or its destination over HTTP.
+				$conditions = $pageId !== null && !$dryRun ? [] : ['page_is_redirect' => 0];
 				if ($pageId !== null) {
 					$conditions['page_id'] = $pageId;
 				} else {
@@ -172,8 +175,8 @@ class PrewarmMinervaFileCache extends Maintenance {
 				}
 				$rows = $categories === null ?
 					$dbr->select('page', $skipValid ?
-							['page_id', 'page_namespace', 'page_title', 'page_content_model', 'page_latest', 'page_touched'] :
-							['page_id', 'page_namespace', 'page_title', 'page_content_model'],
+							['page_id', 'page_namespace', 'page_title', 'page_content_model', 'page_is_redirect', 'page_latest', 'page_touched'] :
+							['page_id', 'page_namespace', 'page_title', 'page_content_model', 'page_is_redirect'],
 						$conditions, __METHOD__, ['ORDER BY' => 'page_id ASC', 'LIMIT' => self::BATCH_SIZE]) :
 					Prewarm::categoryPageBatch($dbr, $categories, $lastId, $namespace, self::BATCH_SIZE);
 				$inBatch = 0;
@@ -190,7 +193,14 @@ class PrewarmMinervaFileCache extends Maintenance {
 						$this->fatalError('Refusing to request a page URL outside $wgServer: ' . $url);
 						return false;
 					}
-					if ($dryRun) {
+					$localBypassReason = null;
+					if (!$dryRun && $pageId !== null && (int)$row->page_is_redirect === 1) {
+						// Reuse the coordinator's existing explicit redirect policy
+						// result. This is a local PRIMARY classification, not a
+						// synthetic HTTP response or a successful cache publication.
+						$state = 'BYPASS';
+						$localBypassReason = 'redirect';
+					} elseif ($dryRun) {
 						$state = 'DRY_RUN';
 						$this->output("$id $url\n");
 					} elseif (Prewarm::hasFlowBoardContentModel($row->page_content_model ?? null)) {
@@ -280,7 +290,7 @@ class PrewarmMinervaFileCache extends Maintenance {
 					}
 					$stats[$state] = ($stats[$state] ?? 0) + 1;
 					if (!$dryRun && $state === 'BYPASS') {
-						$reason = Prewarm::bypassReason(200, $header);
+						$reason = $localBypassReason ?? Prewarm::bypassReason(200, $header);
 						$bypassReasons[$reason] = ($bypassReasons[$reason] ?? 0) + 1;
 					}
 					$count++;
