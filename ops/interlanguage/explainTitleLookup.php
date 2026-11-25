@@ -126,7 +126,7 @@ class WikidebatesExplainInterlanguageLookup extends Maintenance {
 		$this->output( 'Central full scans: ' . ( $fullScans ? implode( ', ', $fullScans ) : 'none' ) . "\n" );
 		$config = $this->getServiceContainer()->getMainConfig();
 		$cache = $this->getServiceContainer()->getObjectCacheFactory()->getLocalServerInstance( $config->get( 'MainCacheType' ) );
-		$this->output( 'Normalization cache: ' . get_class( $cache ) . "\n" );
+		$this->output( 'Configured core object cache (not required by Interlanguage): ' . get_class( $cache ) . "\n" );
 		$this->output( sprintf( "First native lookup: %.3f ms; first supplemental lookup: %.3f ms\n", $nativeMs, $supplementalMs ) );
 
 		// Compare complete lookup wall time with the historical exact native

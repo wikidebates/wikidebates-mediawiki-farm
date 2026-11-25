@@ -716,14 +716,14 @@ test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=p
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Shadowed_supplemental' AND pp_propname='wikirouge-langlinks'")" = 0
 echo 'PASS differently named supplemental peers and native priority'
 
-# A cached normalization must never resurrect a removed mapping.
+# Live discovery must never resurrect a removed mapping.
 edit_page fr 'Syntax one central' 'Removed native translation'
 edit_page en 'Template:Syntax one' 'Local page after removal'
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Syntax_one' AND pp_propname='wikirouge-langlinks'")" = 0
-echo 'PASS deleted mappings cannot be resurrected by cached normalization'
+echo 'PASS deleted mappings cannot be resurrected'
 
-# A live mutation in the same process must be visible even with an object
-# cache. The dependent SQL account has only the historical mapping grants.
+# A live mutation in the same process must be visible regardless of the
+# configured core cache. The dependent account has only historical grants.
 edit_page fr 'Memo first central' 'First source'
 edit_page fr 'Memo second central' 'Second source'
 cat > "$config/memo-mutation.php" <<'PHP'
@@ -747,7 +747,32 @@ $db->delete( 'interlanguage_links', [ 'ill_from' => $a, 'ill_lang' => 'en' ], __
 $check( array_keys( $lookup() ?? [] ) === [ $b ], 'Expected only the surviving claim' );
 $db->delete( 'interlanguage_links', [ 'ill_from' => $b, 'ill_lang' => 'en' ], __FILE__ );
 $check( $lookup() === [], 'Expected no remaining claims' );
-echo "PASS live mapping changes with a warm native object cache\n";
+echo "PASS live mapping changes in one process with the core cache enabled\n";
+// Compare the optimized lookup against the receiver's real title parser
+// on forms where whitespace, entities, namespaces, capitalization and IP
+// canonicalization can affect identity. Nothing is stored in a new table.
+$forms = [
+	"  ILLalias : argument__with\u{00A0}spaces  ",
+	"Template:\u{200E}école\u{3000}",
+	"Template:Ar\u{202E}gument",
+	'Template:ﬃx',
+	'Template&#58;Argument',
+	' :Template:Argument#',
+	'Topic: A__colon',
+	'Topic:Single:',
+	'Template:X',
+	'User:2001:db8::1',
+	'User talk:2001:DB8:0:0:0:0:0:1',
+];
+foreach ( $forms as $raw ) {
+	$title = Title::newFromText( $raw );
+	$check( $title && $title->canExist() && !$title->isExternal() && $title->getFragment() === '', 'Invalid equivalence fixture: ' . $raw );
+	$db->insert( 'interlanguage_links', [ 'ill_from' => $a, 'ill_lang' => 'en', 'ill_title' => $raw ], __FILE__ );
+	$rows = InterlanguageTitleLookup::findCandidates( $db, [ $title->getPrefixedText() ], 'en', false, true );
+	$check( array_keys( $rows ?? [] ) === [ $a ], 'Optimized discovery disagrees with MediaWiki title parser: ' . $raw );
+	$db->delete( 'interlanguage_links', [ 'ill_from' => $a, 'ill_lang' => 'en' ], __FILE__ );
+}
+echo "PASS optimized discovery agrees with real Unicode, namespace, fragment, entity and IPv6 title parsing\n";
 PHP
 printf '%s\n' 'require getenv( "ILL_CI_MEMO_SCRIPT" );' |
 	ILL_CI_MEMO_SCRIPT="$config/memo-mutation.php" ILL_CI_USE_HASH_CACHE=1 MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php eval

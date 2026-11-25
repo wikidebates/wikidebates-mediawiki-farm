@@ -10,11 +10,12 @@ l'extension, sans paramètre d'activation, table auxiliaire ni backfill.
 
 Les tables langlinks et interlanguage_links restent les seules sources de
 vérité. Une lecture indexée de la tranche linguistique fournit les
-graphies réelles; le parseur MediaWiki du wiki destinataire détermine leur
-identité. Le cache natif ne mémorise qu'une transformation de titres simples,
-jamais les correspondances ou les identifiants sources. Les alias et
-préfixes interwiki sont interprétés en direct. L'absence de cache ne change
-pas le résultat. Les mises à jour SQL directes n'exigent plus de backfill.
+graphies réelles. Un filtre conservateur sur la fin des titres écarte
+uniquement les graphies qui ne peuvent pas convenir. Le parseur MediaWiki
+du wiki destinataire détermine ensuite leur identité exacte. Les alias et
+préfixes interwiki sont interprétés en direct. Aucun cache spécifique de
+normalisation, aucune invalidation interwiki ni aucun backfill ne sont
+nécessaires, même après une mise à jour SQL directe.
 
 La contrepartie est une lecture de tranche d'index par table consultée lors
 d'un véritable parse, au lieu d'une recherche ponctuelle sur un index
@@ -106,12 +107,12 @@ Sur un wiki dépendant, exécuter sur un titre connu :
 
 Examiner le plan réel (index de langue/titre, index de redirections et
 clés primaires), les temps SQL, les temps complets de recherche et le
-backend de cache effectivement sélectionné. La comparaison avec la
+backend de cache natif effectivement sélectionné (non requis par Interlanguage). La comparaison avec la
 recherche exacte historique est une référence de coût, pas d'équivalence
 des résultats. --strict refuse un balayage central complet ou une
 découverte incomplète. Les temps de CI ne constituent pas une mesure de
 la production. Le script ne purge, ne rend et ne modifie aucune page
-(les entrées de mémoisation du cache natif peuvent être créées).
+(MediaWiki peut utiliser ses caches habituels).
 
 Vérifier normalized_lookup_languages et les alertes NORMALIZED_LOOKUP_*
 du rapport. Les cinq wikis dépendants doivent utiliser la version
@@ -194,9 +195,8 @@ d'exploitation séparé.
 En cas de problème de performance ou de fonctionnalité, restaurer les
 versions logicielles et configurations sauvegardées selon la procédure de
 release. Il n'existe plus de commutateur de normalisation à modifier.
-Les entrées dérivées du cache natif expirent naturellement ; elles ne
-sont pas des correspondances. Ne pas supprimer de table pour revenir
-sur la normalisation. Une ancienne table auxiliaire restée inutilisée
+Il n'existe pas de cache de correspondances spécifique à invalider.
+Ne pas supprimer de table pour revenir sur la normalisation. Une ancienne table auxiliaire restée inutilisée
 peut être conservée pendant la recette.
 
 En cas de problème de hreflang, restaurer les anciennes routes sauvegardées
