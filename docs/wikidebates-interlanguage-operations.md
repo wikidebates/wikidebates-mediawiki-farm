@@ -24,7 +24,7 @@ que l'activation des notifications de fallback. Le nettoyage historique
 a déjà été exécuté. Ne pas rejouer ces opérations par défaut.
 
 Pour la normalisation des correspondances, la recette des déplacements
-et suppressions, l'activation du nouvel index et la génération des règles
+et suppressions, les mesures de recherche et la génération des règles
 hreflang, suivre [la procédure de déploiement dédiée](interlanguage-normalized-rollout.md).
 Ne pas reconstruire globalement les caches pendant cette activation.
 

@@ -210,46 +210,38 @@ class MappingAuditTests(unittest.TestCase):
 		self.assertIn("STORED_ORPHAN_PAGE", report["issues"])
 		self.assertIn("STORED_LINKS_MALFORMED", report["issues"])
 
-	def test_normalized_index_only_removes_legacy_risk_with_evidence(self):
+	def test_live_normalized_lookup_supports_variants_without_schema(self):
 		central, editions = fixture()
 		raw = "Template: Debate"
 		central["links"][0][3] = raw
-		target = page(3, "Template:Debate", namespace=10, title_key_compatible=True)
+		target = page(3, "Template:Debate", namespace=10)
 		editions["en"]["targets"] = {raw: target, "Debate": target}
-		editions["en"]["title_key_reader"] = True
-		central["title_keys"] = dict(present=True, writer_enabled=True, missing=[], unindexable=[])
+		editions["en"]["normalized_lookup"] = dict(mode="live", max_spellings=20000, max_candidates=256)
 		report = analyze(central, editions)
 		self.assertNotIn("NATIVE_REVERSE_LOOKUP_RISK", report["review"])
-		self.assertIn("NORMALIZED_VARIANT_INDEXED", report["observations"])
-		self.assertEqual(report["counts"]["normalized_index_compatible_mappings"], 1)
+		self.assertIn("NORMALIZED_VARIANT_SUPPORTED", report["observations"])
+		self.assertEqual(report["counts"]["normalized_lookup_languages"], 1)
 
-		central["title_keys"]["missing"] = [["en", raw]]
-		report = analyze(central, editions)
-		self.assertIn("NORMALIZED_INDEX_KEY_MISSING", report["review"])
-		self.assertNotIn("NORMALIZED_VARIANT_INDEXED", report["observations"])
-		self.assertEqual(report["counts"].get("normalized_index_compatible_mappings", 0), 0)
-
-	def test_normalized_index_reports_missing_schema_writer_and_local_key(self):
-		central, editions = fixture()
-		editions["en"]["title_key_reader"] = True
-		editions["en"]["targets"]["Debate"]["title_key_compatible"] = False
-		central["title_keys"] = dict(present=False, writer_enabled=False, missing=[], unindexable=[])
-		report = analyze(central, editions)
-		self.assertIn("NORMALIZED_INDEX_UNAVAILABLE", report["issues"])
-		self.assertIn("NORMALIZED_INDEX_CENTRAL_WRITER_DISABLED", report["review"])
-		self.assertIn("NORMALIZED_INDEX_LOCAL_KEY_UNVERIFIED", report["review"])
-		self.assertIn("NORMALIZED_INDEX_DEPENDENT_WRITER_DISABLED", report["review"])
-		self.assertEqual(report["counts"]["title_key_active_writers"], 0)
-
-	def test_legacy_risk_retained_when_reader_is_disabled(self):
+	def test_live_normalized_lookup_reports_exceeded_bounds(self):
 		central, editions = fixture()
 		raw = " Debate "
 		central["links"][0][3] = raw
-		editions["en"]["targets"][raw] = page(3, "Debate", title_key_compatible=True)
-		central["title_keys"] = dict(present=True, writer_enabled=True, missing=[], unindexable=[])
+		central["links"].append(["langlinks", 2, "en", "Debate"])
+		editions["en"]["targets"][raw] = editions["en"]["targets"]["Debate"]
+		editions["en"]["normalized_lookup"] = dict(mode="live", max_spellings=1, max_candidates=1)
+		report = analyze(central, editions)
+		self.assertIn("NORMALIZED_LOOKUP_RANGE_LIMIT", report["review"])
+		self.assertIn("NORMALIZED_LOOKUP_CANDIDATE_LIMIT", report["review"])
+		self.assertNotIn("NORMALIZED_VARIANT_SUPPORTED", report["observations"])
+
+	def test_legacy_risk_retained_before_new_code_is_deployed(self):
+		central, editions = fixture()
+		raw = " Debate "
+		central["links"][0][3] = raw
+		editions["en"]["targets"][raw] = page(3, "Debate")
 		report = analyze(central, editions)
 		self.assertIn("NATIVE_REVERSE_LOOKUP_RISK", report["review"])
-		self.assertNotIn("NORMALIZED_VARIANT_INDEXED", report["observations"])
+		self.assertNotIn("NORMALIZED_VARIANT_SUPPORTED", report["observations"])
 
 
 if __name__ == "__main__":

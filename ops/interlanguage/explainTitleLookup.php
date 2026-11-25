@@ -1,8 +1,8 @@
 <?php
 
 /**
- * Read-only SQL plan diagnostic on a dependent wiki with the normalized
- * dictionary enabled. Capture the actual generated statements, not a
+ * Read-only SQL plan and timing diagnostic on a dependent wiki.
+ * Capture the actual generated statements, not a
  * separately written approximation of the runtime query.
  */
 if ( PHP_SAPI !== 'cli' ) {
@@ -19,15 +19,18 @@ class WikidebatesExplainInterlanguageLookup extends Maintenance {
 		$this->addDescription( 'EXPLAIN the actual Interlanguage normalized reverse lookup statements.' );
 		$this->addOption( 'title', 'Local page title, including its real namespace.', true, true );
 		$this->addOption( 'strict', 'Fail on a central full table or full index scan in the generated plan.' );
+		$this->addOption( 'repeat', 'Measure 1 to 100 lookups per branch; default 1.', false, true );
 	}
 
 	public function execute() {
 		$domain = $GLOBALS['wgInterlanguageExtensionDB'] ?? false;
 		$language = $GLOBALS['wgLanguageCode'] ?? '';
-		if ( !$domain || !( $GLOBALS['wgInterlanguageUseTitleKeys'] ?? false ) ||
-			!class_exists( 'InterlanguageTitleKeys' )
-		) {
-			throw new RuntimeException( 'Run on a dependent wiki with the normalized reader enabled.' );
+		if ( !$domain || !class_exists( 'InterlanguageTitleLookup' ) ) {
+			throw new RuntimeException( 'Run on a dependent wiki with the schema-free lookup deployed.' );
+		}
+		$repeat = (int)$this->getOption( 'repeat', 1 );
+		if ( $repeat < 1 || $repeat > 100 ) {
+			throw new RuntimeException( 'Repeat must be between 1 and 100.' );
 		}
 		$title = Title::newFromText( $this->getOption( 'title' ) );
 		if ( !$title || !$title->canExist() || $title->isExternal() || $title->getFragment() !== '' ) {
@@ -36,19 +39,21 @@ class WikidebatesExplainInterlanguageLookup extends Maintenance {
 		$provider = $this->getServiceContainer()->getConnectionProvider();
 		$local = $provider->getReplicaDatabase();
 		$central = $provider->getPrimaryDatabase( $domain );
-		if ( $central->getType() !== 'mysql' || !$central->tableExists( 'interlanguage_title_keys', __METHOD__ ) ) {
-			throw new RuntimeException( 'The MySQL/MariaDB central dictionary is not available.' );
+		if ( $central->getType() !== 'mysql' ) {
+			throw new RuntimeException( 'The SQL plan diagnostic requires MySQL/MariaDB.' );
 		}
 
 		$logger = new class extends AbstractLogger {
 			public array $statements = [];
+			public bool $capture = true;
 			public function log( $level, $message, array $context = [] ): void {
 				$method = $context['method'] ?? '';
 				$sql = $context['sql'] ?? null;
-				if ( is_string( $sql ) && preg_match( '/^\s*SELECT\b/i', $sql ) &&
+				if ( $this->capture && is_string( $sql ) && preg_match( '/^\s*SELECT\b/i', $sql ) &&
 					in_array( $method, [
 						'InterlanguageExtension::getLocalRedirectTitles',
-						'InterlanguageTitleKeys::findCandidates',
+						'InterlanguageTitleLookup::matchingSpellings',
+						'InterlanguageTitleLookup::findCandidates',
 					], true )
 				) {
 					$this->statements[] = [
@@ -65,24 +70,35 @@ class WikidebatesExplainInterlanguageLookup extends Maintenance {
 			$db->setFlag( DBO_DEBUG );
 		}
 		$extension = new InterlanguageExtension();
-		// Also works with the first normalized-index version, where this
-		// internal alias collector was private.
-		$method = new ReflectionMethod( InterlanguageExtension::class, 'getLocalRedirectTitles' );
-		$targets = $method->invoke( $extension, $local, $title );
+		$targets = $extension->getLocalRedirectTitles( $local, $title );
 		if ( $targets === null ) {
 			throw new RuntimeException( 'Redirect alias discovery exceeded its bounds.' );
 		}
-		$native = InterlanguageTitleKeys::findCandidates( $central, $targets, $language, true );
-		$supplemental = InterlanguageTitleKeys::findCandidates( $central, $targets, $language, false );
+		$start = hrtime( true );
+		$native = InterlanguageTitleLookup::findCandidates( $central, $targets, $language, true );
+		$nativeMs = ( hrtime( true ) - $start ) / 1e6;
+		$start = hrtime( true );
+		$supplemental = InterlanguageTitleLookup::findCandidates( $central, $targets, $language, false );
+		$supplementalMs = ( hrtime( true ) - $start ) / 1e6;
 
 		$statements = $logger->statements;
-		$reverseQueries = 0;
+		$logger->capture = false;
+		$rangeQueries = 0;
+		$pointQueries = 0;
 		$localQueries = 0;
 		$fullScans = [];
 		foreach ( $statements as $statement ) {
-			$isReverse = $statement['method'] === 'InterlanguageTitleKeys::findCandidates';
+			$isRange = $statement['method'] === 'InterlanguageTitleLookup::matchingSpellings';
+			$isPoint = $statement['method'] === 'InterlanguageTitleLookup::findCandidates';
+			$isReverse = $isRange || $isPoint;
 			$db = $isReverse ? $central : $local;
-			$isReverse ? $reverseQueries++ : $localQueries++;
+			if ( $isRange ) {
+				$rangeQueries++;
+			} elseif ( $isPoint ) {
+				$pointQueries++;
+			} else {
+				$localQueries++;
+			}
 			$this->output( ( $isReverse ? 'CENTRAL' : 'LOCAL' ) . ' ' . $statement['method'] .
 				' (' . $statement['runtime_ms'] . " ms)\n" );
 			foreach ( $db->query( 'EXPLAIN ' . $statement['sql'], __METHOD__ ) as $row ) {
@@ -99,14 +115,48 @@ class WikidebatesExplainInterlanguageLookup extends Maintenance {
 				}
 			}
 		}
-		if ( $reverseQueries !== 2 || $localQueries < 1 ) {
-			throw new RuntimeException( 'Expected both central candidate queries and the local redirect lookup.' );
+		if ( $rangeQueries !== 2 || $localQueries < 1 ) {
+			throw new RuntimeException( 'Expected both central language range reads and the local redirect lookup.' );
 		}
 		$this->output( 'Local indexed alias queries: ' . $localQueries . "\n" );
-		$this->output( 'Central candidate queries: ' . $reverseQueries . "\n" );
+		$this->output( 'Central language range queries: ' . $rangeQueries . "\n" );
+		$this->output( 'Central candidate point queries: ' . $pointQueries . "\n" );
 		$this->output( 'Verified native candidates: ' . ( $native === null ? 'incomplete' : count( $native ) ) . "\n" );
 		$this->output( 'Verified supplemental candidates: ' . ( $supplemental === null ? 'incomplete' : count( $supplemental ) ) . "\n" );
 		$this->output( 'Central full scans: ' . ( $fullScans ? implode( ', ', $fullScans ) : 'none' ) . "\n" );
+		$config = $this->getServiceContainer()->getMainConfig();
+		$cache = $this->getServiceContainer()->getObjectCacheFactory()->getLocalServerInstance( $config->get( 'MainCacheType' ) );
+		$this->output( 'Normalization cache: ' . get_class( $cache ) . "\n" );
+		$this->output( sprintf( "First native lookup: %.3f ms; first supplemental lookup: %.3f ms\n", $nativeMs, $supplementalMs ) );
+
+		// Compare complete lookup wall time with the historical exact native
+		// SQL query. These have different coverage, so the latter is a cost
+		// reference, not a correctness or result-equivalence oracle.
+		$measure = function ( callable $lookup ) use ( $repeat ): string {
+			$times = [];
+			for ( $i = 0; $i < $repeat; $i++ ) {
+				$start = hrtime( true );
+				$lookup();
+				$times[] = ( hrtime( true ) - $start ) / 1e6;
+			}
+			sort( $times, SORT_NUMERIC );
+			$middle = intdiv( $repeat, 2 );
+			$median = $repeat % 2 ? $times[$middle] : ( $times[$middle - 1] + $times[$middle] ) / 2;
+			return sprintf( 'median=%.3f ms max=%.3f ms n=%d', $median, max( $times ), $repeat );
+		};
+		$this->output( 'BENCH native normalized: ' . $measure( static fn () =>
+			InterlanguageTitleLookup::findCandidates( $central, $targets, $language, true ) ) . "\n" );
+		$this->output( 'BENCH supplemental normalized: ' . $measure( static fn () =>
+			InterlanguageTitleLookup::findCandidates( $central, $targets, $language, false ) ) . "\n" );
+		$this->output( 'BENCH historical native exact: ' . $measure( static function () use ( $central, $targets, $language ) {
+			foreach ( $central->select( [ 'langlinks', 'page' ],
+				[ 'page_id', 'page_namespace', 'page_title', 'page_is_redirect' ],
+				[ 'll_lang' => $language, 'll_title' => $targets, 'page_id = ll_from' ],
+				__METHOD__, [ 'LIMIT' => 2 ]
+			) as $row ) {
+				// Consume the result just as the real lookup does.
+			}
+		} ) . "\n" );
 		if ( $this->hasOption( 'strict' ) && ( $fullScans || $native === null || $supplemental === null ) ) {
 			throw new RuntimeException( 'A central query plan scanned a full table/index or candidate discovery was incomplete.' );
 		}
