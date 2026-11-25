@@ -32,7 +32,7 @@
 	"skins/MinervaNeue": {
 		"repo": "wikimedia/mediawiki-skins-MinervaNeue",
 		"branch": "REL1_43",
-		"fork_pin": "1c171203b984f73253d84ec81848c6a40fbdd8a1",
+		"fork_pin": "0d742faa5159da1d29b6ea80d7c365e5035db705",
 		"upstream_base": "f112a99b194d35a132c3eaa89edc3edd756a5f52"
 	}
 }
