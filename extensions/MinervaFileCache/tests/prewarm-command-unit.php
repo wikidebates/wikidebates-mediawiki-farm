@@ -73,7 +73,8 @@ namespace {
 			$after = $target === null ? (int)$match[1] : 0;
 			$pages = array_filter($this->pages, static function ($page) use ($conditions, $target, $after) {
 				return ($target === null ? $page->page_id > $after : $page->page_id === $target) &&
-					!$page->page_is_redirect &&
+					(!isset($conditions['page_is_redirect']) ||
+						(int)$page->page_is_redirect === $conditions['page_is_redirect']) &&
 					(!isset($conditions['page_namespace']) || $page->page_namespace === $conditions['page_namespace']);
 			});
 			return array_slice(array_values($pages), 0, (int)$options['LIMIT']);
@@ -323,11 +324,30 @@ namespace {
 			!str_contains($GLOBALS['prewarmRequests'][1][0], '/Two_moved'),
 			'Bulk Minerva scans keep using the replica connection');
 
-		$GLOBALS['prewarmRequests'] = [];
+		foreach (['android', 'iphone'] as $device) {
+			$GLOBALS['prewarmRequests'] = [];
+			$GLOBALS['prewarmOutput'] = [];
+			$runner = new PrewarmMinervaFileCache();
+			$runner->setOptions(['page-id' => '4', 'device' => $device,
+				'skip-valid' => true, 'delay-ms' => '250']);
+			checkPrewarmCli($runner->execute() === true && count($GLOBALS['prewarmRequests']) === 0,
+				'Redirect page IDs do not generate a mobile request');
+			checkPrewarmCli(str_contains(implode('', $GLOBALS['prewarmOutput']),
+				'Completed 1 pages; {"BYPASS":1,"bypassReasons":{"redirect":1}}'),
+				'Explicit PRIMARY redirect uses the existing coordinator BYPASS-redirect contract');
+		}
+		$GLOBALS['prewarmOutput'] = [];
 		$runner = new PrewarmMinervaFileCache();
-		$runner->setOptions(['page-id' => '4', 'delay-ms' => '250']);
-		checkPrewarmCli($runner->execute() === true && count($GLOBALS['prewarmRequests']) === 0,
-			'Redirect page IDs do not generate a mobile request');
+		$runner->setOptions(['page-id' => '999999', 'skip-valid' => true]);
+		checkPrewarmCli($runner->execute() === true && count($GLOBALS['prewarmRequests']) === 0 &&
+			str_contains(implode('', $GLOBALS['prewarmOutput']), 'Completed 0 pages; {"bypassReasons":[]}'),
+			'A missing target must never be falsely reported as a verified redirect or acknowledged');
+		$GLOBALS['prewarmOutput'] = [];
+		$runner = new PrewarmMinervaFileCache();
+		$runner->setOptions(['page-id' => '4', 'dry-run' => true]);
+		checkPrewarmCli($runner->execute() === true &&
+			str_contains(implode('', $GLOBALS['prewarmOutput']), 'Completed 0 pages;'),
+			'Targeted preview continues to exclude redirects');
 		$runner = new PrewarmMinervaFileCache();
 		$runner->setOptions(['page-id' => '0']);
 		try {
