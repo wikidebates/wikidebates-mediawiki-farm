@@ -14,6 +14,20 @@ sauvegarde de l'administrateur contient 3 714 entrées. La table
 interlanguage_links est InnoDB, clé primaire (ill_from, ill_lang).
 Ces chiffres sont un instantané et non des constantes de nettoyage.
 
+## Mise à jour du 25 novembre 2026 : nouveau chantier de fiabilisation
+
+Les observations historiques ci-dessous sont conservées pour traçabilité.
+Elles ne décrivent plus nécessairement la configuration de production :
+l'administrateur a confirmé la configuration des 30 routes, les six API
+de purge, les quatre timers dédiés et les deux workers permanents, ainsi
+que l'activation des notifications de fallback. Le nettoyage historique
+a déjà été exécuté. Ne pas rejouer ces opérations par défaut.
+
+Pour la normalisation des correspondances, la recette des déplacements
+et suppressions, l'activation du nouvel index et la génération des règles
+hreflang, suivre [la procédure de déploiement dédiée](interlanguage-normalized-rollout.md).
+Ne pas reconstruire globalement les caches pendant cette activation.
+
 ## Conditions préalables aux purges
 
 Le relevé a trouvé seulement cinq URL API renseignées parmi les trente
