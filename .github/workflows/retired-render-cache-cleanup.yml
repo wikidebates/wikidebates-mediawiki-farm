@@ -1,0 +1,36 @@
+{
+	"name": "Offline retired render-cache cleanup",
+	"on": {
+		"pull_request": {
+			"paths": [
+				"ops/cache/pruneRetiredRenderCaches.py",
+				"tests/ci/testPruneRetiredRenderCaches.py",
+				".github/workflows/retired-render-cache-cleanup.yml"
+			]
+		},
+		"workflow_dispatch": {}
+	},
+	"permissions": {
+		"contents": "read"
+	},
+	"jobs": {
+		"retired-cache-cleanup": {
+			"runs-on": "ubuntu-24.04",
+			"timeout-minutes": 5,
+			"steps": [
+				{
+					"uses": "actions/checkout@v5",
+					"with": {
+						"persist-credentials": false,
+						"sparse-checkout": "ops/cache/pruneRetiredRenderCaches.py\ntests/ci/testPruneRetiredRenderCaches.py",
+						"sparse-checkout-cone-mode": false
+					}
+				},
+				{
+					"name": "Disposable cache files and lock contracts",
+					"run": "python3 -m py_compile ops/cache/pruneRetiredRenderCaches.py\npython3 tests/ci/testPruneRetiredRenderCaches.py"
+				}
+			]
+		}
+	}
+}
