@@ -634,13 +634,15 @@ cp "$config/en/LocalSettings.php" "$config/en/LocalSettings.before-restriction.p
 cat >> "$config/en/LocalSettings.php" <<'PHP'
 $wgAvailableRights[] = 'linkpurge';
 $wgGroupPermissions['*']['linkpurge'] = false;
+$wgRevokePermissions['*']['linkpurge'] = true;
 PHP
+# Check the actual implicit-rights classification in this disposable wiki.
+printf '%s\n' '$pm = \MediaWiki\MediaWikiServices::getInstance()->getPermissionManager(); echo json_encode(["implicit"=>in_array("linkpurge",$pm->getImplicitRights(),true),"explicit"=>in_array("linkpurge",$pm->getAllPermissions(),true)]),"\n";' |
+	MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php eval
 edit_page fr 'Property restricted cluster' 'Changed mapping [[en:Restricted new peer]]'
 sql ill_ci_en -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title IN ('Restricted_old_peer','Restricted_new_peer')"
 run_purges
-test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page WHERE page_namespace=0 AND page_title IN ('Restricted_old_peer','Restricted_new_peer') AND page_touched<>'20000101000000'")" = 2
-test "$(property_count Restricted_old_peer)" = 1
-test "$(property_count Restricted_new_peer)" = 0
+sql ill_ci_en -e "SELECT page_title,page_touched,pp_value FROM page LEFT JOIN page_props ON pp_page=page_id AND pp_propname='wikirouge-langlinks' WHERE page_namespace=0 AND page_title IN ('Restricted_old_peer','Restricted_new_peer')"
 python3 - <<'PY'
 import json
 import urllib.parse
@@ -649,9 +651,13 @@ params = dict(action="purge", titles="Restricted old peer", forcelinkupdate=1, r
 request = urllib.request.Request("http://127.0.0.1:18781/api.php", data=urllib.parse.urlencode(params).encode())
 with urllib.request.urlopen(request, timeout=30) as response:
 	data = json.load(response)
+print("Restricted API response:", json.dumps(data))
 row, = data["purge"]
 assert "purged" in row and "linkupdate" not in row and "warnings" in data, data
 PY
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page WHERE page_namespace=0 AND page_title IN ('Restricted_old_peer','Restricted_new_peer') AND page_touched<>'20000101000000'")" = 2
+test "$(property_count Restricted_old_peer)" = 1
+test "$(property_count Restricted_new_peer)" = 0
 mv "$config/en/LocalSettings.before-restriction.php" "$config/en/LocalSettings.php"
 echo 'PASS receiving linkpurge restriction is respected while ordinary purge remains authorized'
 
