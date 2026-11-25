@@ -594,29 +594,66 @@ property_count() {
 test "$(property_count Property_old_peer)" = 1
 test "$(property_count Property_new_peer)" = 0
 edit_page fr 'Property refresh cluster' 'Changed mapping [[en:Property new peer]]'
-run_purges
+# Exercise plain core purge directly, before the queued targeted job runs.
+python3 - <<'PY'
+import json
+import urllib.parse
+import urllib.request
+params = dict(action="purge", titles="Property old peer|Property new peer", format="json")
+request = urllib.request.Request("http://127.0.0.1:18781/api.php", data=urllib.parse.urlencode(params).encode())
+with urllib.request.urlopen(request, timeout=30) as response:
+	data = json.load(response)
+assert len(data["purge"]) == 2 and all("purged" in row and "linkupdate" not in row for row in data["purge"]), data
+PY
 test "$(property_count Property_old_peer)" = 1
 test "$(property_count Property_new_peer)" = 0
 echo 'PASS ordinary remote purges do not refresh the persisted property'
 
-# The sender opts in for only EN. Use the default MediaWiki 1.43
-# implicit linkpurge right, without changing receiving permissions.
-# Denied/missing API acknowledgements are covered by the PHP smoke test.
-printf '%s\n' '$GLOBALS["wgInterlanguagePurgeLinkUpdateLanguages"] = [ "en" ]; $job = new InterlanguageCentralExtensionPurgeJob( Title::newFromText( "Property refresh cluster" ), [ "ill" => [ "en" => [ "Property old peer" => true, "Property new peer" => true ] ] ] ); if ( !$job->run() ) { exit( 1 ); }' |
-	MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php eval
+# No opt-in, permission change or manually triggered job. The actual
+# queued central edit requests targeted secondary-data refresh by default.
+run_purges
 test "$(property_count Property_old_peer)" = 0
 test "$(property_count Property_new_peer)" = 1
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_title='Property_new_peer' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Property_refresh_cluster%'")" = 1
-echo 'PASS authorized non-recursive remote link updates remove old and persist new peer properties'
+echo 'PASS automatic non-recursive remote link updates remove old and persist new peer properties'
 
 # A request addressed to the stored redirect alias should update the real
 # translated page, not merely the redirect page's cache.
 edit_page fr 'Redirect cluster' 'Expanded translation group [[en:English redirect alias]] [[de:Property redirect peer]]'
 run_purges
-printf '%s\n' '$GLOBALS["wgInterlanguagePurgeLinkUpdateLanguages"] = [ "en" ]; $job = new InterlanguageCentralExtensionPurgeJob( Title::newFromText( "Redirect cluster" ), [ "ill" => [ "en" => [ "English redirect alias" => true ] ] ] ); if ( !$job->run() ) { exit( 1 ); }' |
-	MW_CONFIG_FILE="$config/fr/LocalSettings.php" php maintenance/run.php eval
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='English_redirect_target' AND pp_propname='wikirouge-langlinks' AND pp_value LIKE '%Property redirect peer%'")" = 1
-echo 'PASS authorized targeted refresh reaches the final redirect destination'
+echo 'PASS automatic targeted refresh reaches the final redirect destination'
+
+# A receiving wiki can deliberately deny linkpurge without denying purge.
+# Respect the restriction; no alternate identity, rights grant or retry.
+edit_page fr 'Property restricted cluster' 'Initial mapping [[en:Restricted old peer]]'
+edit_page en 'Restricted old peer' 'Old translation'
+edit_page en 'Restricted new peer' 'New translation'
+run_purges
+cp "$config/en/LocalSettings.php" "$config/en/LocalSettings.before-restriction.php"
+cat >> "$config/en/LocalSettings.php" <<'PHP'
+$wgAvailableRights[] = 'linkpurge';
+$wgGroupPermissions['*']['linkpurge'] = false;
+PHP
+edit_page fr 'Property restricted cluster' 'Changed mapping [[en:Restricted new peer]]'
+sql ill_ci_en -e "UPDATE page SET page_touched='20000101000000' WHERE page_namespace=0 AND page_title IN ('Restricted_old_peer','Restricted_new_peer')"
+run_purges
+test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page WHERE page_namespace=0 AND page_title IN ('Restricted_old_peer','Restricted_new_peer') AND page_touched<>'20000101000000'")" = 2
+test "$(property_count Restricted_old_peer)" = 1
+test "$(property_count Restricted_new_peer)" = 0
+python3 - <<'PY'
+import json
+import urllib.parse
+import urllib.request
+params = dict(action="purge", titles="Restricted old peer", forcelinkupdate=1, redirects=1, format="json")
+request = urllib.request.Request("http://127.0.0.1:18781/api.php", data=urllib.parse.urlencode(params).encode())
+with urllib.request.urlopen(request, timeout=30) as response:
+	data = json.load(response)
+row, = data["purge"]
+assert "purged" in row and "linkupdate" not in row and "warnings" in data, data
+PY
+mv "$config/en/LocalSettings.before-restriction.php" "$config/en/LocalSettings.php"
+echo 'PASS receiving linkpurge restriction is respected while ordinary purge remains authorized'
 
 # Native updates need no dictionary maintenance; the three user-visible wikicode
 # forms and a receiving-only namespace alias all resolve on the English wiki.
@@ -735,11 +772,7 @@ SQL
 echo 'PASS actual central normalized reverse queries use indexes with 10000 synthetic distractors'
 
 # Page lifecycle checks use the same restricted accounts as normalized reads.
-# Activate targeted refresh only for these fixtures, after the plain-purge
-# contract tests above. Never change receiving API permissions.
-for lang in fr en de es it pt; do
-	printf '\n$wgInterlanguagePurgeLinkUpdateLanguages = [ "fr", "en", "de", "es", "it", "pt" ];\n' >> "$config/$lang/LocalSettings.php"
-done
+# Targeted refresh is automatic for dependent peers, with the original receiving rights.
 move_page() {
 	local lang=$1 old=$2 new=$3
 	shift 3

@@ -86,8 +86,10 @@ Aucun nouveau paramètre n'est nécessaire à la normalisation.
 Les anciennes options InterlanguageMaintainTitleKeys et
 InterlanguageUseTitleKeys peuvent être retirées si elles avaient été
 ajoutées. Conserver tous les réglages existants des API, des notifications,
-du cache et des namespaces. Le mécanisme facultatif de mise à jour
-secondaire des purges garde sa configuration distincte.
+du cache et des namespaces. Le troisième paramètre ajouté lors de l'essai,
+InterlanguagePurgeLinkUpdateLanguages, devient également inutile : les jobs
+asynchrones demandent automatiquement une mise à jour secondaire ciblée
+aux éditions dépendantes. FR conserve les purges ordinaires.
 
 Vérifier que PHP-FPM et les workers CLI utilisent le nouveau code
 (redémarrage/rechargement selon la procédure du serveur).
@@ -178,9 +180,12 @@ l'examen des canonicals ou des caches personnalisés.
 
 Ne pas lancer de reconstruction globale de page_props, des caches Vector
 ou Minerva, ni de purge générale dans cette procédure. Vérifier en lien
-avec le chantier SEO les purges ciblées avec forcelinkupdate et redirects
-seulement lorsque leur autorisation a été constatée. Ne jamais élargir les
-droits anonymes pour obtenir une recette positive. Les opérations sur les
+avec le chantier SEO que les purges automatiques ciblées obtiennent bien
+les deux acquittements purge et linkupdate sur les éditions dépendantes.
+MediaWiki vérifie lui-même les droits, indépendamment. Si linkpurge est
+refusé, la purge ordinaire peut réussir et le job signale l'absence de
+mise à jour, sans contourner la restriction ni réessayer automatiquement.
+Ne jamais élargir les droits anonymes pour obtenir une recette positive. Les opérations sur les
 données éditoriales et les propriétés anciennes relèvent du chantier
 d'exploitation séparé.
 
