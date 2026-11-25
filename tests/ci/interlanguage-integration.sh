@@ -663,6 +663,31 @@ edit_page en 'Template:Syntax one' 'Local page after removal'
 test "$(sql ill_ci_en -e "SELECT COUNT(*) FROM page_props JOIN page ON pp_page=page_id WHERE page_namespace=10 AND page_title='Syntax_one' AND pp_propname='wikirouge-langlinks'")" = 0
 test "$(sql ill_ci_fr -e "SELECT COUNT(*) FROM interlanguage_title_keys WHERE itk_lang='en' AND itk_title LIKE '%Syntax%one%'")" -gt 0
 echo 'PASS historical dictionary keys cannot resurrect deleted mappings'
+
+# EXPLAIN actual runtime SQL with more realistic central mapping cardinality.
+# These synthetic rows are confined to the disposable MariaDB service.
+sql ill_ci_fr <<'SQL'
+INSERT INTO page (page_id,page_namespace,page_title,page_random,page_touched,page_latest,page_len)
+SELECT 1000000+seq,0,CONCAT('ILL_plan_native_',seq),0.5,'20000101000000',0,0 FROM seq_1_to_5000;
+INSERT INTO page (page_id,page_namespace,page_title,page_random,page_touched,page_latest,page_len)
+SELECT 2000000+seq,0,CONCAT('ILL_plan_supplemental_',seq),0.5,'20000101000000',0,0 FROM seq_1_to_5000;
+INSERT INTO langlinks (ll_from,ll_lang,ll_title)
+SELECT 1000000+seq,'en',CONCAT('Plan native ',seq) FROM seq_1_to_5000;
+INSERT INTO interlanguage_links (ill_from,ill_lang,ill_title)
+SELECT 2000000+seq,'en',CONCAT('Plan supplemental ',seq) FROM seq_1_to_5000;
+SQL
+build_title_keys --apply
+build_title_keys
+for title in 'Template:Legacy spelling' 'Shared page'; do
+	MW_CONFIG_FILE="$config/en/LocalSettings.php" php maintenance/run.php ./ops/interlanguage/explainTitleLookup.php --title="$title" --strict
+done
+sql ill_ci_fr <<'SQL'
+DELETE FROM langlinks WHERE ll_from BETWEEN 1000001 AND 1005000;
+DELETE FROM interlanguage_links WHERE ill_from BETWEEN 2000001 AND 2005000;
+DELETE FROM page WHERE page_id BETWEEN 1000001 AND 1005000 OR page_id BETWEEN 2000001 AND 2005000;
+DELETE FROM interlanguage_title_keys WHERE itk_lang='en' AND (itk_title LIKE 'Plan native %' OR itk_title LIKE 'Plan supplemental %');
+SQL
+echo 'PASS actual central normalized reverse queries use indexes with 10000 synthetic distractors'
 build_title_keys
 echo 'PASS current native and supplemental mapping spellings are indexed'
 
