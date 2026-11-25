@@ -111,6 +111,18 @@ Le comparateur historique peut ne pas retrouver une graphie variante :
 c'est un comparateur de coût. Les temps CI ne mesurent pas la production.
 Ce diagnostic ne purge, ne rend et ne modifie aucune page.
 
+Référence CI (run 45605516081, MariaDB 10.11, 5 000 lignes natives et
+5 000 supplémentaires synthétiques, 50 mesures par titre et par branche) :
+les six médianes des recherches natives historiques sont comprises entre
+0,127 et 0,167 ms, celles des recherches natives bornées entre 0,101 et
+0,175 ms et celles des recherches supplémentaires bornées entre 0,136 et
+0,205 ms. La découverte inverse complète (hors lecture finale du groupe,
+rendu et éventuelle écriture du fallback) est comprise entre 0,448 et
+0,778 ms. Aucun balayage central complet. Le cas à variantes historiques
+non reconnues compare le coût, pas des résultats identiques. Reprendre
+les mesures sur le serveur avant toute décision de production.
+
+
 L'audit indique bounded_exact_lookup_languages (cinq dépendants après
 déploiement), les variantes supportées et les risques
 NATIVE_REVERSE_LOOKUP_RISK / SUPPLEMENTAL_REVERSE_LOOKUP_RISK pour les
