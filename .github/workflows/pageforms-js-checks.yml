@@ -41,7 +41,7 @@
 			"timeout-minutes": 10,
 			"steps": [
 				{
-					"uses": "actions/checkout@v5",
+					"uses": "actions/checkout@v7",
 					"with": {
 						"persist-credentials": false,
 						"sparse-checkout": "extensions/PageFormsWikidebates\nresources/lib/jquery"
