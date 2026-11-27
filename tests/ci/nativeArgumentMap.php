@@ -29,6 +29,15 @@ use MediaWiki\Registration\ExtensionRegistry;
 use SMW\Services\ServicesFactory;
 
 same($expectedSMW, SMW_VERSION, 'Exact locked farm SMW version');
+$core = $root . '/extensions/Wikidebates';
+$files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($core . '/debatephp', FilesystemIterator::SKIP_DOTS));
+foreach ($files as $file) {
+	check($file->getExtension() !== 'lua', 'No bundled executable Lua sources: ' . $file->getFilename());
+}
+foreach (['argument-contract', 'serialized-contract', 'i18n-contract', 'fullstack-contract'] as $contract) {
+	check(is_file($core . '/debatephp/tests/fixtures/' . $contract . '.json'), 'Frozen contract present: ' . $contract);
+}
+check(!is_file($core . '/debatephp/tools/compileI18n.php'), 'Obsolete translation compiler retired');
 check(!\MediaWiki\MediaWikiServices::getInstance()->getMainConfig()->has('DebatePHPMode'), 'No production renderer mode configuration');
 check(class_exists(\MediaWiki\Extension\DebatePHP\ArgumentRenderer::class), 'Canonical Argument renderer available');
 check(class_exists(\MediaWiki\Extension\DebatePHP\DebateRenderer::class), 'Canonical Debate renderer available');
@@ -49,6 +58,6 @@ $schema = $GLOBALS;
 check(\SMW\Site::isReady(), 'SMW ready');
 $fsUser = \MediaWiki\User\User::newSystemUser('Wikidebates farm native map test', ['steal' => false]);
 check($fsUser !== null, 'Synthetic test author');
-fsArgumentMapCases(false);
+fsArgumentMapCases();
 check(!class_exists(\MediaWiki\Extension\Scribunto\Engines\LuaCommon\LuaEngine::class, false), 'No Lua engine loaded');
 echo "OK: native ArgumentMap on pinned farm SMW " . SMW_VERSION . " without Lua" . ($archive ? " (archive enabled)" : "") . "\n";
