@@ -34,7 +34,7 @@
 			"timeout-minutes": 12,
 			"steps": [
 				{
-					"uses": "actions/checkout@v5",
+					"uses": "actions/checkout@v7",
 					"with": {
 						"persist-credentials": false,
 						"sparse-checkout": "composer.json\ncomposer.local.json\ncomposer.lock"
