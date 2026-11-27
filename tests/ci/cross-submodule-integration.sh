@@ -51,6 +51,8 @@ composer install --no-interaction --prefer-dist --no-progress
 # Exercise the three native hover modes against the exact Composer lock, without Lua.
 php tests/ci/nativeArgumentMap.php
 php tests/ci/nativeArgumentMap.php --archive
+WD_TEST_ARGUMENTMAP_DIRECT=1 php tests/ci/nativeArgumentMap.php
+WD_TEST_ARGUMENTMAP_DIRECT=1 php tests/ci/nativeArgumentMap.php --archive
 php maintenance/run.php install \
     --confpath "$config" \
     --dbtype sqlite \
