@@ -29,7 +29,12 @@ use MediaWiki\Registration\ExtensionRegistry;
 use SMW\Services\ServicesFactory;
 
 same($expectedSMW, SMW_VERSION, 'Exact locked farm SMW version');
-same('optimized', \MediaWiki\MediaWikiServices::getInstance()->getMainConfig()->get('DebatePHPMode'), 'Canonical optimized renderer is the default');
+check(!\MediaWiki\MediaWikiServices::getInstance()->getMainConfig()->has('DebatePHPMode'), 'No production renderer mode configuration');
+check(class_exists(\MediaWiki\Extension\DebatePHP\ArgumentRenderer::class), 'Canonical Argument renderer available');
+check(class_exists(\MediaWiki\Extension\DebatePHP\DebateRenderer::class), 'Canonical Debate renderer available');
+foreach (['ArgumentReferenceRenderer', 'ReferenceRenderer', 'Renderer'] as $legacy) {
+	check(!class_exists('MediaWiki\\Extension\\DebatePHP\\' . $legacy), 'Obsolete renderer not available: ' . $legacy);
+}
 same($archive, ExtensionRegistry::getInstance()->isLoaded('WikidebatesLuaArchive'), 'Standalone archive loaded only when explicitly requested');
 $handler = \MediaWiki\MediaWikiServices::getInstance()->getContentHandlerFactory()->getContentHandler('Scribunto');
 check($handler instanceof \MediaWiki\Extension\WikidebatesLuaArchive\ArchiveContentHandler, 'Automatic or standalone inert source handler coexists with locked SMW');
