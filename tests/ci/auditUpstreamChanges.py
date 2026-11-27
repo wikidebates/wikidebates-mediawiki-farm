@@ -25,7 +25,6 @@ PACKAGES = {
 	"mediawiki/semantic-media-wiki",
 	"mediawiki/semantic-result-formats",
 	"mediawiki/semantic-extra-special-properties",
-	"mediawiki/semantic-scribunto",
 }
 
 

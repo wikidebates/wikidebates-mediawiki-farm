@@ -46,10 +46,6 @@
 	path = extensions/ReplaceText
 	url = git@github.com:wikidebates/wikidebates-replacetext-custom.git
 	branch = main
-[submodule "extensions/Scribunto"]
-	path = extensions/Scribunto
-	url = https://github.com/wikimedia/mediawiki-extensions-Scribunto.git
-	branch = REL1_43
 [submodule "extensions/SpamBlacklist"]
 	path = extensions/SpamBlacklist
 	url = https://github.com/wikimedia/mediawiki-extensions-SpamBlacklist.git
@@ -198,10 +194,6 @@
 	path = extensions/ShortDescription
 	url = https://github.com/StarCitizenTools/mediawiki-extensions-ShortDescription.git
 	branch = main
-[submodule "extensions/VariablesLua"]
-	path = extensions/VariablesLua
-	url = https://github.com/Liquipedia/VariablesLua.git
-	branch = master
 [submodule "extensions/CrawlerBurstProtection"]
 	path = extensions/CrawlerBurstProtection
 	url = git@github.com:wikidebates/CrawlerBurstProtection.git

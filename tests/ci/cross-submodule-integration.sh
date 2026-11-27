@@ -47,7 +47,14 @@ node --check extensions/Wikidebates/modules/common/parse.js
 config=$(mktemp -d)
 trap 'rm -rf "$config"' EXIT
 mkdir -p "$config/cache"
+# Refuse a stale Composer lock or an accidentally retained execution dependency.
+composer validate --no-check-all --no-check-publish
 composer install --no-interaction --prefer-dist --no-progress
+for path in extensions/Scribunto extensions/VariablesLua; do
+	test -z "$(git ls-files --stage -- "$path")"
+	test ! -e "$path/extension.json"
+done
+php -r 'require "vendor/autoload.php"; if (\Composer\InstalledVersions::isInstalled("mediawiki/semantic-scribunto") || is_file("extensions/SemanticScribunto/extension.json")) { fwrite(STDERR, "Unexpected Lua execution dependency\n"); exit(1); }'
 # Exercise the three native hover modes against the exact Composer lock, without Lua.
 php tests/ci/nativeArgumentMap.php
 php tests/ci/nativeArgumentMap.php --archive
