@@ -23,8 +23,9 @@ La validation Git seule ne suffit pas à établir la version PHP-FPM.
 
 Sur FR et EN, vérifier les trois variantes de survol : carte complète,
 parent débat (POUR/CONTRE), parent argument (justifications/objections).
-Dans les outils réseau du navigateur, confirmer que le texte envoyé à
-action=parse commence par #argumentmap:render, et non #invoke.
+Dans les outils réseau du navigateur, confirmer que le survol appelle action=wikidebatesargumentmap lorsque
+l'API dédiée est activée, ou que le texte envoyé à action=parse commence
+par #argumentmap:render, et non #invoke.
 Vérifier les libellés, liens, surlignage, données vides et erreurs API.
 Conserver l'ancien moteur jusqu'à validation de ce lot.
 
@@ -79,7 +80,8 @@ dans .gitmodules, le paquet mediawiki/semantic-scribunto (uniquement),
 sa surveillance de versions, et les outils de surveillance LuaSandbox.
 Tous les autres paquets et références de composer.lock sont conservés.
 La CI vérifie le manifeste et le lock avec Composer, leur installation
-et les moteurs natifs, avec et sans le gestionnaire d'archives.
+et les moteurs natifs (lecture singleton et lecture directe), avec et
+sans le gestionnaire d'archives.
 Installer le nouveau lock avec `composer install` suivant la politique
 de déploiement existante, jamais avec `composer update` sur le serveur.
 
