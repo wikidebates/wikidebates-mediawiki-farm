@@ -53,23 +53,49 @@ pendant cette validation ; aucun changement SQL manuel n'est requis.
 
 ## Lot 3 : retrait physique
 
-Uniquement après succès du lot 2 et contrôle des usages de Lua par
-les autres applications du serveur :
+Ne pas fusionner ni déployer ce lot avant d'avoir validé les étapes 1 et 2
+en production et vérifié les autres usages de Lua sur le serveur. Il ne
+doit rester aucune déclaration de chargement des trois anciennes extensions
+dans les configurations effectivement utilisées.
 
-- Retirer les deux gitlinks Scribunto et VariablesLua avec leurs entrées
-  .gitmodules ; retirer mediawiki/semantic-scribunto du manifeste Composer
-  et régénérer le lock sans mettre à jour les autres dépendances.
-- Adapter les contrôles de CI et supprimer les automatismes de surveillance
-  LuaSandbox après désinstallation effective de cette surveillance sur
-  le serveur. Utiliser le script scripts/luasandbox/uninstall.sh de la
-  version encore installée (en root, sauvegarde incluse).
-- Retirer les vérifications et paramètres Lua devenus inutiles dans la
-  configuration locale et sitemap.sh. Ne pas supprimer les paquets PHP
-  ou fichiers de configuration LuaSandbox avant d'avoir confirmé qu'ils
-  ne sont utilisés par aucun autre site ni version PHP.
-- Conserver Variables, SemanticMediaWiki, les révisions et les données
-  sémantiques. Les anciens modules Lua dans les tests du core sont des
-  oracles, pas des dépendances d'exécution.
+Avant le changement Git, sauvegarder les configurations et les anciens
+répertoires des extensions, et désinstaller la surveillance LuaSandbox
+avec le script encore présent dans la version installée :
 
-Ces étapes sont des portes de validation distinctes : ce lot Git ne
-désactive, ne désinstalle et ne déploie rien sur le serveur.
+```sh
+sudo bash scripts/luasandbox/uninstall.sh
+```
+
+Ce script sauvegarde les fichiers de surveillance et retire seulement le
+cron et le script système ; il conserve les paquets PHP. Ne jamais utiliser
+une suppression récursive ou forcée pour faire disparaître un sous-module
+présent sur le serveur. Vérifier les éventuelles modifications locales et
+les conserver avant de désinitialiser les deux sous-modules retirés.
+Conserver leurs dépôts Git pour un retour arrière. Les éventuels fichiers
+résiduels ne doivent pas être effacés sans inventaire.
+
+Ce lot retire les gitlinks Scribunto et VariablesLua et leurs entrées
+dans .gitmodules, le paquet mediawiki/semantic-scribunto (uniquement),
+sa surveillance de versions, et les outils de surveillance LuaSandbox.
+Tous les autres paquets et références de composer.lock sont conservés.
+La CI vérifie le manifeste et le lock avec Composer, leur installation
+et les moteurs natifs, avec et sans le gestionnaire d'archives.
+Installer le nouveau lock avec `composer install` suivant la politique
+de déploiement existante, jamais avec `composer update` sur le serveur.
+
+Retirer les anciens paramètres et contrôles Lua dans LocalSettings.php
+et sitemap.sh. La suppression du paquet système LuaSandbox n'est pas
+automatisée : vérifier séparément son utilisation dans les autres sites
+et dans chaque version PHP, ainsi que les services PHP-FPM concernés.
+Conserver Variables, SemanticMediaWiki, WikidebatesLuaArchive sur FR/EN,
+les révisions et les données sémantiques. Aucun changement SQL manuel.
+Les modules Lua utilisés comme oracles de tests du core restent en place.
+
+Les contrôles finaux doivent confirmer les versions de toutes les
+dépendances, le fonctionnement des six wikis, les trois modes de survol,
+les historiques et la visibilité des révisions, ainsi que l'absence
+d'erreur PHP ou de cron. Restaurer si nécessaire le commit du lot 1,
+les trois anciennes extensions, le lock et la configuration sauvegardée ;
+ne pas charger simultanément Scribunto et l'archive.
+
+Ce lot Git ne désactive ni ne désinstalle quoi que ce soit sur le serveur.
