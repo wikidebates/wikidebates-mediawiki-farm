@@ -20,6 +20,7 @@ on:
       - 'extensions/Flow/**'
       - 'tests/phpunit/integration/WikidebatesFarmCombinedExtensionTest.php'
       - 'tests/ci/cross-submodule-integration.sh'
+      - 'tests/ci/nativeArgumentMap.php'
       - '.github/workflows/farm-cross-extension-checks.yml'
   push:
     branches:
@@ -38,6 +39,7 @@ on:
       - 'extensions/Flow/**'
       - 'tests/phpunit/integration/WikidebatesFarmCombinedExtensionTest.php'
       - 'tests/ci/cross-submodule-integration.sh'
+      - 'tests/ci/nativeArgumentMap.php'
       - '.github/workflows/farm-cross-extension-checks.yml'
   workflow_dispatch:
 

@@ -48,6 +48,8 @@ config=$(mktemp -d)
 trap 'rm -rf "$config"' EXIT
 mkdir -p "$config/cache"
 composer install --no-interaction --prefer-dist --no-progress
+# Exercise the three native hover modes against the exact Composer lock, without Lua.
+php tests/ci/nativeArgumentMap.php
 php maintenance/run.php install \
     --confpath "$config" \
     --dbtype sqlite \
