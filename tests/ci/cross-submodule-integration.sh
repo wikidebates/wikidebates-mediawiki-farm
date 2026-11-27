@@ -55,6 +55,8 @@ for path in extensions/Scribunto extensions/VariablesLua; do
 	test ! -e "$path/extension.json"
 done
 php -r 'require "vendor/autoload.php"; if (\Composer\InstalledVersions::isInstalled("mediawiki/semantic-scribunto") || is_file("extensions/SemanticScribunto/extension.json")) { fwrite(STDERR, "Unexpected Lua execution dependency\n"); exit(1); }'
+# Verify the isolated frozen native rendering contract before real SMW integration.
+python3 extensions/Wikidebates/debatephp/tests/checkNativeCorpus.py
 # Exercise the three native hover modes against the exact Composer lock, without Lua.
 php tests/ci/nativeArgumentMap.php
 php tests/ci/nativeArgumentMap.php --archive

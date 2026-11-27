@@ -34,17 +34,21 @@ $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($core . '/
 foreach ($files as $file) {
 	check($file->getExtension() !== 'lua', 'No bundled executable Lua sources: ' . $file->getFilename());
 }
-foreach (['argument-contract', 'serialized-contract', 'i18n-contract', 'fullstack-contract'] as $contract) {
+foreach (['argument-contract', 'serialized-contract', 'i18n-contract', 'fullstack-contract', 'native-boundary-contract', 'native-render-contract'] as $contract) {
 	check(is_file($core . '/debatephp/tests/fixtures/' . $contract . '.json'), 'Frozen contract present: ' . $contract);
 }
 check(!is_file($core . '/debatephp/tools/compileI18n.php'), 'Obsolete translation compiler retired');
+foreach (['legacy/Lua.php', 'legacy/Table.php', 'legacy/LegacyJson.php', 'regenerate.py'] as $obsolete) {
+	check(!is_file($core . '/debatephp/tests/' . $obsolete), 'Historical test implementation retired: ' . $obsolete);
+}
+check(!is_dir($core . '/tests/fullstack-dependencies'), 'No redundant SMW 6 laboratory lock');
 foreach (['DebatePHPMode', 'WikidebatesArgumentMapApi', 'WikidebatesArgumentMapDirectRead'] as $obsolete) {
 	check(!\MediaWiki\MediaWikiServices::getInstance()->getMainConfig()->has($obsolete), 'No obsolete renderer setting: ' . $obsolete);
 }
 check(!class_exists(\MediaWiki\Extension\DebatePHP\TrackedSemanticQuery::class), 'Obsolete query dispatcher retired');
 check(class_exists(\MediaWiki\Extension\DebatePHP\ArgumentRenderer::class), 'Canonical Argument renderer available');
 check(class_exists(\MediaWiki\Extension\DebatePHP\DebateRenderer::class), 'Canonical Debate renderer available');
-foreach (['ArgumentReferenceRenderer', 'ReferenceRenderer', 'Renderer'] as $legacy) {
+foreach (['ArgumentReferenceRenderer', 'ReferenceRenderer', 'Renderer', 'Lua', 'Table', 'LegacyJson'] as $legacy) {
 	check(!class_exists('MediaWiki\\Extension\\DebatePHP\\' . $legacy), 'Obsolete renderer not available: ' . $legacy);
 }
 same($archive, ExtensionRegistry::getInstance()->isLoaded('WikidebatesLuaArchive'), 'Standalone archive loaded only when explicitly requested');
