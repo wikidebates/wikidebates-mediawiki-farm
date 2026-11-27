@@ -12,7 +12,7 @@ dans Wikidebates core PR #156. Les autres modèles suspects doivent encore
 ni les sous-modules Lua, ni composer.json/lock, ni LocalSettings.php,
 ni les scripts système à ce stade. La CI de la ferme réutilise les
 cas d'intégration ArgumentMap du core avec la version exacte de SMW
-verrouillée par Composer et sans charger de moteur Lua. Les tests
+verrouillée par Composer et sans charger de moteur Lua, avec et sans le gestionnaire d'archives. Les tests
 interextensions habituels restent actifs.
 
 Suivre la politique Git existante : inspectFarmDeployment.sh, vérification
@@ -35,10 +35,10 @@ Une compatibilité indéfinie avec les vieux clients n'est pas promise.
 
 ## Lot 2 : archivage et désactivation
 
-Après fusion et intégration de Wikidebates core PR #157, le gestionnaire
-optionnel WikidebatesLuaArchive pourra conserver le modèle Scribunto et
+Wikidebates core PR #157 est également fusionnée et épinglée dans ce lot.
+Le gestionnaire optionnel WikidebatesLuaArchive peut conserver le modèle Scribunto et
 les espaces 828/829 sans exécuter de Lua. Voir la documentation
-extensions/Wikidebates/docs/lua-archive.md dans la version qui l'intègre.
+extensions/Wikidebates/docs/lua-archive.md pour les détails.
 
 Sur FR/EN seulement, sauvegarder la configuration et la base, vérifier
 les usages restants (dont le modèle Fix), puis remplacer ensemble les

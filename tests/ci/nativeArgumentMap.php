@@ -12,6 +12,10 @@ $expectedSMW = $versions['mediawiki/semantic-media-wiki'] ?? null;
 if (!is_string($expectedSMW)) {
 	throw new RuntimeException('Missing locked SMW version');
 }
+$archive = ($argv[1] ?? '') === '--archive';
+if ($archive) {
+	define('WD_TEST_LUA_ARCHIVE', true);
+}
 define('WD_FULLSTACK_TEST', true);
 putenv('MW_INSTALL_PATH=' . $root);
 putenv('WD_TEST_LANGUAGE=en');
@@ -25,6 +29,11 @@ use MediaWiki\Registration\ExtensionRegistry;
 use SMW\Services\ServicesFactory;
 
 same($expectedSMW, SMW_VERSION, 'Exact locked farm SMW version');
+same($archive, ExtensionRegistry::getInstance()->isLoaded('WikidebatesLuaArchive'), 'Expected archive configuration');
+if ($archive) {
+	$handler = \MediaWiki\MediaWikiServices::getInstance()->getContentHandlerFactory()->getContentHandler('Scribunto');
+	check($handler instanceof \MediaWiki\Extension\WikidebatesLuaArchive\ArchiveContentHandler, 'Inert source handler coexists with locked SMW');
+}
 foreach (['Scribunto', 'SemanticScribunto', 'VariablesLua'] as $name) {
 	check(!ExtensionRegistry::getInstance()->isLoaded($name), 'No Lua extension: ' . $name);
 }
@@ -38,4 +47,4 @@ $fsUser = \MediaWiki\User\User::newSystemUser('Wikidebates farm native map test'
 check($fsUser !== null, 'Synthetic test author');
 fsArgumentMapCases(false);
 check(!class_exists(\MediaWiki\Extension\Scribunto\Engines\LuaCommon\LuaEngine::class, false), 'No Lua engine loaded');
-echo "OK: native ArgumentMap on pinned farm SMW " . SMW_VERSION . " without Lua\n";
+echo "OK: native ArgumentMap on pinned farm SMW " . SMW_VERSION . " without Lua" . ($archive ? " (archive enabled)" : "") . "\n";
