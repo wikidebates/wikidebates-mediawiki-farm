@@ -29,6 +29,7 @@ use MediaWiki\Registration\ExtensionRegistry;
 use SMW\Services\ServicesFactory;
 
 same($expectedSMW, SMW_VERSION, 'Exact locked farm SMW version');
+same('optimized', \MediaWiki\MediaWikiServices::getInstance()->getMainConfig()->get('DebatePHPMode'), 'Canonical optimized renderer is the default');
 same($archive, ExtensionRegistry::getInstance()->isLoaded('WikidebatesLuaArchive'), 'Standalone archive loaded only when explicitly requested');
 $handler = \MediaWiki\MediaWikiServices::getInstance()->getContentHandlerFactory()->getContentHandler('Scribunto');
 check($handler instanceof \MediaWiki\Extension\WikidebatesLuaArchive\ArchiveContentHandler, 'Automatic or standalone inert source handler coexists with locked SMW');
