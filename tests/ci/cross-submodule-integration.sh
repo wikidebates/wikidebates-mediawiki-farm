@@ -60,6 +60,11 @@ php tests/ci/nativeArgumentMap.php
 php tests/ci/nativeArgumentMap.php --archive
 WD_TEST_ARGUMENTMAP_DIRECT=1 php tests/ci/nativeArgumentMap.php
 WD_TEST_ARGUMENTMAP_DIRECT=1 php tests/ci/nativeArgumentMap.php --archive
+# The deployed configuration will no longer need the three historical blocks.
+for lang in fr en de es it pt; do
+	MW_INSTALL_PATH="$PWD" php extensions/Wikidebates/tests/mediawikiRegistrationDefaults.php "$lang"
+done
+MW_INSTALL_PATH="$PWD" php extensions/Wikidebates/tests/mediawikiRegistrationDefaults.php fr disabled
 php maintenance/run.php install \
     --confpath "$config" \
     --dbtype sqlite \
