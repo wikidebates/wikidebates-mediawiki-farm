@@ -171,7 +171,7 @@ class ServerHealthMail extends Maintenance {
 		parent::__construct();
 
 		$this->addDescription(
-			'Surveille Apache, HTTPS, PHP-FPM et les crawlers furtifs, puis envoie un mail en cas d’anomalie.'
+			'Surveille Apache, HTTPS, PHP-FPM et les crawlers furtifs, puis notifie uniquement une pression ou une saturation PHP-FPM récente.'
 		);
 
 		$this->addOption(
@@ -272,16 +272,14 @@ class ServerHealthMail extends Maintenance {
 			$signature = $this->buildIssueSignature( $issues, $affectedWikiCodes );
 			$newEpisode = empty( $state['active'] );
 			$signatureChanged = ( $state['signature'] ?? '' ) !== $signature;
-			$escalation = !$newEpisode
-				&& ( $state['alertClass'] ?? 'traffic' ) !== 'server' && $hasServerIssues;
+			$notification = ServerIncidentArchive::notificationPlan( $newEpisode ? [] : $state, $issues, $serverPressure );
 			$lastArchiveAt = strtotime( (string)( $state['lastArchivedAt'] ?? '' ) ) ?: 0;
 			$periodicUpdate = time() - $lastArchiveAt >= 900;
 			$incidentId = ServerIncidentArchive::validId( $state['incidentId'] ?? null )
 				? $state['incidentId'] : ServerIncidentArchive::newId();
 
-			// One mail per episode, plus meaningful traffic-to-server escalation.
-			// Subsequent changes and 15-minute snapshots stay in the private archive.
-			if ( $newEpisode || $signatureChanged || $periodicUpdate ) {
+			// Archive every episode independently of the pressure-only notification policy.
+			if ( $newEpisode || $signatureChanged || $periodicUpdate || $notification['send'] ) {
 				$subject = $this->buildAlertSubject(
 					$affectedWikiCodes,
 					$hasServerIssues,
@@ -309,11 +307,12 @@ class ServerHealthMail extends Maintenance {
 					$issues,
 					$logs,
 					$serverPressure,
-					ServerIncidentArchive::loadRecentFpmProbe()
+					ServerIncidentArchive::loadRecentFpmProbe(),
+					$serverSnapshot['apacheActiveVhosts'] ?? []
 				);
 				$shortBody = $this->archiveAndSummarizeIncident( $document, $detailedBody );
 
-				if ( $newEpisode || $escalation ) {
+				if ( $notification['send'] ) {
 					$this->sendMail( $subject, $shortBody );
 					$this->output( "Alerte synthétique envoyée : $subject\n" );
 				} else {
@@ -329,9 +328,12 @@ class ServerHealthMail extends Maintenance {
 						? $now->format( DATE_ATOM )
 						: ( $state['startedAt'] ?? $now->format( DATE_ATOM ) ),
 					'lastArchivedAt' => $now->format( DATE_ATOM ),
-					'lastAlertAt' => ( $newEpisode || $escalation )
+					'lastAlertAt' => $notification['send']
 						? $now->format( DATE_ATOM )
 						: ( $state['lastAlertAt'] ?? $now->format( DATE_ATOM ) ),
+					'pressureNotified' => $notification['notified'],
+					'activePressureNotified' => $notification['active_notified'],
+					'notificationHighWater' => $notification['high_water'],
 					'alertClass' => $hasServerIssues || ( $state['alertClass'] ?? '' ) === 'server'
 						? 'server' : 'traffic',
 					'fpmMaxChildrenReached' => $server['phpFpmMaxChildrenReached']
@@ -370,7 +372,11 @@ class ServerHealthMail extends Maintenance {
 				false,
 				ServerIncidentArchive::loadRecentFpmProbe()
 			);
-			$this->sendMail( $subject, $this->archiveAndSummarizeIncident( $document, $body ) );
+			$shortBody = $this->archiveAndSummarizeIncident( $document, $body );
+			$sendRecovery = ( $state['pressureNotified'] ?? false ) === true;
+			if ( $sendRecovery ) {
+				$this->sendMail( $subject, $shortBody );
+			}
 			$this->saveState( [
 				'active' => false,
 				'signature' => '',
@@ -380,7 +386,7 @@ class ServerHealthMail extends Maintenance {
 					?? ( $state['fpmMaxChildrenReached'] ?? null ),
 			] );
 
-			$this->output( "Mail de retour à la normale envoyé.\n" );
+			$this->output( $sendRecovery ? "Mail de retour à la normale envoyé.\n" : "Retour à la normale archivé sans mail.\n" );
 			return;
 		}
 
@@ -493,7 +499,7 @@ class ServerHealthMail extends Maintenance {
 		}
 
 		foreach ( $phpFpmIssues as $issue ) {
-			if ( ( $issue['type'] ?? '' ) !== 'php-fpm-max-children-increase' ) {
+			if ( !in_array( $issue['type'] ?? '', [ 'php-fpm-max-children-increase', 'php-fpm-fallback-total' ], true ) ) {
 				return true;
 			}
 		}
